@@ -73,11 +73,12 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	if day:
 		# the sun: warm, higher, stronger, soft shadows; god rays through the ruins via volumetric fog
 		moon.name = "Sun"
-		moon.light_color = Color(1.0, 0.93, 0.8)
+		moon.light_color = Color(1.0, 0.86, 0.66)
+		moon.shadow_blur = 0.8
 		moon.rotation_degrees = Vector3(-42.0, -24.0, 0.0)
 		moon.light_angular_distance = 1.5
 		moon.light_volumetric_fog_energy = 2.2
-		sun_scale = 1.45
+		sun_scale = 1.8
 	_make_cluster_lights(lvl, terrain)
 	if WorldPalette.is_odyssey():
 		_make_demon()

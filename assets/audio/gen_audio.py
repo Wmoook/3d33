@@ -764,9 +764,34 @@ def gen_veil():
         write(os.path.join(ROOT, "piano", "piano_%d.wav" % m), x, 0.8)
 
 
+def sfx_trial():
+    """Trial complete (Forgotten Veil): short triumphant brass-ish major arpeggio + bell shimmer."""
+    d = 3.2
+    t = t_axis(d)
+    n = len(t)
+    x = np.zeros((n, 2))
+    for i, m in enumerate([62, 66, 69, 74]):
+        st = int(i * 0.11 * SR)
+        ln = n - st
+        tt = t[:ln]
+        v = osc_saw(midi(m), tt, (-6, 0, 7)) * 0.5 + sine(midi(m), tt) * 0.5
+        v = lp(v, 3200) * env_adsr(ln, 0.015, 0.25, 0.45, 1.4, 0.5)
+        x[st:] += pan(v * 0.28, -0.5 + i * 0.33)
+    for m in [86, 90, 93]:
+        b = bell(midi(m), d, 1.2) * 0.12
+        x[int(0.35 * SR):] += np.stack([b[: n - int(0.35 * SR)]] * 2, 1)
+    return reverb(x, 2.4, 0.9, 0.35, 8000)
+
+
+def gen_trial():
+    write(os.path.join(ROOT, "sfx", "trial.wav"), sfx_trial())
+
+
 if __name__ == "__main__":
     import sys
-    if "--veil" in sys.argv:
+    if "--trial" in sys.argv:
+        gen_trial()
+    elif "--veil" in sys.argv:
         gen_veil()   # only the Forgotten Veil set (keeps the Odyssey files byte-identical)
     else:
         main()

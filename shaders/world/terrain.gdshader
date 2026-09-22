@@ -28,7 +28,7 @@ const int M_AIR = 0; const int M_EARTH = 1; const int M_STONE = 2; const int M_M
 const int M_WATER = 5; const int M_CORRUPT = 6; const int M_FIRE = 7; const int M_OBSIDIAN = 8; const int M_GLASS = 9;
 const int M_GRASS = 10; const int M_FOLIAGE = 11; const int M_FLESH = 12; const int M_WOOD = 13; const int M_METAL = 14;
 const int M_CLOUD = 15; const int M_SAND = 16; const int M_GEM = 17; const int M_SNOW = 18; const int M_BONE = 19;
-const int M_RUIN = 20;
+const int M_RUIN = 20; const int M_CRAG = 21;
 
 vec2 huv(vec2 p) {
 	return (p + height_margin) / (level_size + 2.0 * height_margin);
@@ -434,6 +434,19 @@ void fragment() {
 		emit += albedo * 0.06;
 		rough = 0.95;
 		n = normalize(gn + vec3(0.0, (streak - 0.5) * 0.35, 0.0));
+	} else if (mat == M_CRAG) {
+		// mountain crag: tilted layered rock strata, sharp ledges catching the sun, scree on the slopes
+		vec3 rock = mix(albedo, vec3(dot(albedo, vec3(0.33))) * vec3(1.05, 0.97, 0.9), 0.6);
+		float sy = p.y * 1.3 + p.x * 0.22 + fbm2(p * vec2(0.08, 0.2)) * 2.0;
+		float fs = fract(sy);
+		float ledge = smoothstep(0.0, 0.12, fs) * (1.0 - smoothstep(0.55, 1.0, fs));
+		float band = hash12(vec2(floor(sy), 3.0));
+		albedo = rock * mix(0.6, 1.2, band) * mix(0.6, 1.15, ledge) * mix(0.85, 1.08, dh);
+		float scree = step(0.82, hash12(floor(p * 7.0))) * up;
+		albedo = mix(albedo, rock * 1.25, scree * 0.6);
+		rough = 0.85;
+		spec = 0.35;
+		n = normalize(gn + vec3(0.0, (ledge - 0.5) * 0.5, 0.0) + (dn - gn) * 0.5);
 	} else if (mat == M_RUIN) {
 		// weathered temple ashlar: big irregular world-space blocks (warped running bond, not the tile grid),
 		// darker mortar joints, chipped lighter edges, moss and lichen in joints and on ledges, rain streaks

@@ -52,14 +52,14 @@ var PRESETS := {
 		"sat": 1.12, "contrast": 1.12, "sky": 0.0, "moon": 0.0, "fill": 1.87, "fill_col": Color(1.0, 0.7, 0.62),
 		"parts": {"dust": 0.8}},
 	# --- daytime ruins (Forgotten Veil) ---
-	WorldPalette.Z_DAY: {"key": 0.9, "key_col": Color(1.0, 0.95, 0.86), "ambient": Color(0.78, 0.85, 1.0), "amb_e": 1.0,
-		"exposure": 0.95, "glow": 0.45, "sat": 1.06, "contrast": 1.05, "sky": 1.0, "moon": 1.0, "fill": 0.3,
+	WorldPalette.Z_DAY: {"key": 0.9, "key_col": Color(1.0, 0.95, 0.86), "ambient": Color(0.62, 0.74, 1.0), "amb_e": 0.75,
+		"exposure": 1.0, "glow": 0.35, "sat": 1.22, "contrast": 1.16, "sky": 1.0, "moon": 1.0, "fill": 0.3,
 		"fill_col": Color(1.0, 0.95, 0.85), "parts": {"dust": 0.35}},
-	WorldPalette.Z_RUINS: {"key": 2.2, "key_col": Color(0.9, 0.95, 1.0), "ambient": Color(0.66, 0.72, 0.8), "amb_e": 0.85,
-		"exposure": 1.35, "glow": 0.6, "sat": 1.0, "contrast": 1.08, "sky": 0.0, "moon": 1.0, "fill": 1.6,
+	WorldPalette.Z_RUINS: {"key": 2.2, "key_col": Color(0.9, 0.95, 1.0), "ambient": Color(0.6, 0.68, 0.8), "amb_e": 0.7,
+		"exposure": 1.3, "glow": 0.5, "sat": 1.12, "contrast": 1.14, "sky": 0.0, "moon": 1.0, "fill": 1.6,
 		"fill_col": Color(0.85, 0.92, 1.0), "parts": {"dust": 1.0}},
-	WorldPalette.Z_WATERWAY: {"key": 2.0, "key_col": Color(0.8, 0.92, 1.0), "ambient": Color(0.6, 0.75, 0.85), "amb_e": 0.9,
-		"exposure": 1.3, "glow": 0.8, "sat": 1.05, "contrast": 1.08, "sky": 0.0, "moon": 1.0, "fill": 1.5,
+	WorldPalette.Z_WATERWAY: {"key": 2.0, "key_col": Color(0.8, 0.92, 1.0), "ambient": Color(0.55, 0.72, 0.85), "amb_e": 0.75,
+		"exposure": 1.25, "glow": 0.6, "sat": 1.15, "contrast": 1.14, "sky": 0.0, "moon": 1.0, "fill": 1.5,
 		"fill_col": Color(0.75, 0.9, 1.0), "parts": {"dust": 0.5}},
 }
 
@@ -74,9 +74,9 @@ var FOG := {
 	WorldPalette.Z_TORNADO: [Color(0.8, 0.82, 0.9), 0.07, Color(0.01, 0.01, 0.014), 0.06],
 	WorldPalette.Z_BONES: [Color(0.85, 0.7, 0.5), 0.05, Color(0.012, 0.007, 0.003), 0.05],
 	WorldPalette.Z_DEEP: [Color(0.9, 0.45, 0.45), 0.055, Color(0.02, 0.004, 0.004), 0.05],
-	WorldPalette.Z_DAY: [Color(0.85, 0.9, 1.0), 0.012, Color(0.0, 0.0, 0.0), 0.0],
-	WorldPalette.Z_RUINS: [Color(0.75, 0.78, 0.82), 0.035, Color(0.0, 0.0, 0.0), 0.03],
-	WorldPalette.Z_WATERWAY: [Color(0.7, 0.85, 0.95), 0.045, Color(0.004, 0.01, 0.014), 0.12],
+	WorldPalette.Z_DAY: [Color(0.85, 0.9, 1.0), 0.004, Color(0.0, 0.0, 0.0), 0.0],
+	WorldPalette.Z_RUINS: [Color(0.75, 0.78, 0.82), 0.016, Color(0.0, 0.0, 0.0), 0.02],
+	WorldPalette.Z_WATERWAY: [Color(0.7, 0.85, 0.95), 0.022, Color(0.004, 0.01, 0.014), 0.08],
 }
 
 func build(lvl: EELevel, terrain: WorldTerrain, lights: WorldLights, zones: WorldZones) -> void:
@@ -155,6 +155,10 @@ func _make_environment() -> void:
 	environment.adjustment_enabled = true
 	environment.adjustment_contrast = 1.08
 	environment.adjustment_saturation = 1.08
+	if day:
+		environment.ssao_intensity = 2.2
+		environment.ssao_radius = 1.2
+		environment.tonemap_agx_contrast = 1.35
 	world_env = WorldEnvironment.new()
 	world_env.environment = environment
 	add_child(world_env)
@@ -210,6 +214,9 @@ func _make_post() -> void:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/world/post.gdshader")
 	rect.material = m
+	if day:
+		m.set_shader_parameter("vignette", 0.19)
+		m.set_shader_parameter("grain", 0.012)
 	post_layer.add_child(rect)
 	add_child(post_layer)
 

@@ -348,7 +348,7 @@ func _build_leaves() -> void:
 func _leaf_emitter(width: float, n: int) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.name = "Leaves"
-	p.amount = clampi(int(n * 0.35), 2, 10)
+	p.amount = clampi(int(n * 0.5), 3, 14)
 	p.lifetime = 7.0
 	p.preprocess = 6.0
 	p.randomness = 0.6
@@ -381,7 +381,7 @@ func _leaf_emitter(width: float, n: int) -> GPUParticles3D:
 		Color(0.36, 0.6, 0.14), Color(1.0, 0.72, 0.82), Color(1.0, 0.9, 0.94)], [0.0, 0.3, 0.55, 0.8, 0.84, 1.0])
 	p.process_material = pm
 	var q := QuadMesh.new()
-	q.size = Vector2(0.16, 0.24)
+	q.size = Vector2(0.2, 0.3)
 	var m := ShaderMaterial.new()
 	m.shader = LEAF_SHADER
 	q.material = m

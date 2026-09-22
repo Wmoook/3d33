@@ -13,7 +13,7 @@ static func is_odyssey() -> bool:
 
 # --- Material classes (index into the terrain shader's material tables) ---
 enum { M_AIR, M_EARTH, M_STONE, M_MARBLE, M_ICE, M_WATER, M_CORRUPT, M_FIRE, M_OBSIDIAN, M_GLASS,
-	M_GRASS, M_FOLIAGE, M_FLESH, M_WOOD, M_METAL, M_CLOUD, M_SAND, M_GEM, M_SNOW, M_BONE, M_RUIN, M_COUNT }
+	M_GRASS, M_FOLIAGE, M_FLESH, M_WOOD, M_METAL, M_CLOUD, M_SAND, M_GEM, M_SNOW, M_BONE, M_RUIN, M_CRAG, M_COUNT }
 
 # --- Atmosphere zones ---
 enum { Z_SURFACE, Z_EARTH, Z_HELL, Z_CORRUPT, Z_ICE, Z_LAKE, Z_TORNADO, Z_BONES, Z_DEEP,

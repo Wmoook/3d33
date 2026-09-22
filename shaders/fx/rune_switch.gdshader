@@ -27,13 +27,15 @@ void fragment() {
 	float on = on_amount;
 	float t = TIME;
 	// stone disc, top lit
-	vec3 stone = mix(vec3(0.26, 0.24, 0.3), vec3(0.44, 0.42, 0.48), 0.5 + 0.5 * p.y);
+	vec3 stone = mix(vec3(0.2, 0.18, 0.24), vec3(0.36, 0.34, 0.4), 0.5 + 0.5 * p.y);
+	// on: the whole face floods with a violet inner glow
+	stone = mix(stone, on_color * (0.55 + 0.25 * (1.0 - r)), on * 0.75);
 	// rune ring: groove + 8 carved ticks, a travelling glow when on
-	float ring = exp(-pow((r - 0.66) / 0.06, 2.0));
+	float ring = exp(-pow((r - 0.66) / 0.09, 2.0));
 	float ticks = step(0.8, cos(a * 8.0 + phase)) * exp(-pow((r - 0.8) / 0.06, 2.0));
 	float spin = 0.5 + 0.5 * sin(a * 3.0 - t * 3.0);
 	float rune = ring * (0.6 + 0.4 * mix(1.0, spin, on)) + ticks;
-	float glow = mix(0.28, 1.6 + 0.3 * sin(t * 4.0), on) + flash * 2.5;
+	float glow = mix(0.35, 2.6 + 0.4 * sin(t * 4.0), on) + flash * 2.5;
 	vec3 col = stone;
 	col = mix(col, on_color * glow * (1.0 + hc * 0.5), clamp(rune, 0.0, 1.0));
 	// lever: dark-outlined bar from the hub, swings from upper-left (off) to upper-right (on), glowing knob

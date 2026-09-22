@@ -289,7 +289,7 @@ func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
 		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels})
 
 ## Readability: the number of coins a coin door needs, once per connected piece (EE prints it on the door).
-func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, front: float) -> Array[Label3D]:
+func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, _front: float) -> Array[Label3D]:
 	var out: Array[Label3D] = []
 	var seen := {}
 	for t in tiles:
@@ -308,8 +308,8 @@ func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, front: fl
 					stack.append(n)
 		var l := Label3D.new()
 		l.text = str(need)
-		l.font_size = 64
-		l.outline_size = 18
+		l.font_size = 72
+		l.outline_size = 22
 		l.pixel_size = 0.0068
 		l.modulate = Color(1.0, 0.93, 0.62)
 		l.outline_modulate = Color(0.08, 0.04, 0.0)
@@ -321,7 +321,7 @@ func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, front: fl
 		for q in comp:
 			cm += Vector2(q) + Vector2(0.5, 0.5)
 		cm /= comp.size()
-		l.position = Vector3(cm.x, -cm.y, front + 0.12)
+		l.position = Vector3(cm.x, -cm.y, 0.24)   # in front of the bars (z 0.05 + radius)
 		l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(l)
 		out.append(l)
@@ -656,6 +656,22 @@ func _build_trophy() -> void:
 		gem.emission_enabled = true
 		gem.emission = Color(0.3, 0.65, 1.0)
 		gem.emission_energy_multiplier = 2.0
+		if not odyssey:
+			# daylight: a pale silver cup vanishes against a bright sky -> warm gold, self-lit, on a dark backing
+			metal.albedo_color = Color(1.0, 0.8, 0.35)
+			metal.emission = Color(1.0, 0.7, 0.25)
+			metal.emission_energy_multiplier = 0.9
+			var back := MeshInstance3D.new()
+			var bq := QuadMesh.new()
+			bq.size = Vector2(1.9, 1.9)
+			back.mesh = bq
+			var bm := ShaderMaterial.new()
+			bm.shader = preload("res://shaders/fx/glyph_halo.gdshader")
+			bm.set_shader_parameter("strength", 0.7)
+			back.material_override = bm
+			back.position = Vector3(0, 0, -0.35)
+			back.scale = Vector3.ONE * 2.6   # glyph_halo radius is 0.36 of the quad's local units
+			root.add_child(back)
 		c.set_surface_override_material(0, metal)
 		c.set_surface_override_material(1, gem)
 		c.scale = Vector3.ONE * 0.75

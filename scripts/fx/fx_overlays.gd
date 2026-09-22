@@ -77,6 +77,8 @@ func _build_field() -> void:
 	m.set_shader_parameter("mask_lin", tex)
 	m.set_shader_parameter("mask_near", tex)
 	m.set_shader_parameter("level_size", Vector2(lvl.width, lvl.height))
+	if not maps.is_odyssey():
+		m.set_shader_parameter("caustic_gain", 0.3)   # daylight: additive caustics would frost the stone white
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)

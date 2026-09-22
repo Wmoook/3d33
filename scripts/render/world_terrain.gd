@@ -281,9 +281,30 @@ func sky_paint_image() -> Image:
 		for k in 4:
 			buf[(y * W) * 4 + k] = buf[(y * W + 1) * 4 + k]
 			buf[(y * W + W - 1) * 4 + k] = buf[(y * W + W - 2) * 4 + k]
-	var img := Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
-	img.resize(W * 4, H * 4, Image.INTERPOLATE_CUBIC)
-	return img
+	# alpha = 1 where the painting really is sky (not fill behind the terrain)
+	for i in W * H:
+		buf[i * 4 + 3] = 255 if filled[i] else 0
+	return Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
+
+## Day levels: bare earth near open sky with no grass or foliage on top (the painted mountain peaks)
+## becomes layered rocky crag instead of soil.
+func _mark_crags(fgb: PackedByteArray) -> void:
+	# a tile is mountain crag when the column above it, up to open sky, is only bare earth (no grass,
+	# foliage or stone cap) - i.e. the painted peaks, not hills under a grass top
+	for x in W:
+		var run := true
+		for y in range(1, mini(H, 70)):
+			var i := y * W + x
+			if sky[i]:
+				run = true
+				continue
+			if not run:
+				continue
+			if solid[i] and mat_ids[i] == WorldPalette.M_EARTH:
+				mat_ids[i] = WorldPalette.M_CRAG
+				fgb[i * 4 + 3] = WorldPalette.M_CRAG
+			else:
+				run = false
 
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
@@ -418,7 +439,10 @@ func _classify() -> void:
 		if not solid[x] and sky[W + x]:
 			sky[x] = 1
 	if day:
+		_mark_crags(fgb)
 		for i in n:
+			if not sky[i] and _deferred[i] and level.bg[i] in WorldPalette.FV_SKY_BG:
+				sky[i] = 1   # painted sky seen through windows / behind the falls is real sky, not a wall
 			if sky[i]:
 				zones[i] = WorldPalette.Z_DAY
 			elif _deferred[i]:
@@ -500,7 +524,7 @@ const RELIEF := {
 	WorldPalette.M_GRASS: [0.06, 0.15], WorldPalette.M_FOLIAGE: [0.2, 2.0], WorldPalette.M_FLESH: [0.2, 0.7],
 	WorldPalette.M_WOOD: [0.05, 0.5], WorldPalette.M_METAL: [0.05, 0.2], WorldPalette.M_CLOUD: [0.1, 0.25],
 	WorldPalette.M_SAND: [0.0, 0.6], WorldPalette.M_GEM: [0.2, 0.08], WorldPalette.M_SNOW: [0.05, 0.9],
-	WorldPalette.M_BONE: [0.1, 0.9], WorldPalette.M_RUIN: [0.04, 1.1],
+	WorldPalette.M_BONE: [0.1, 0.9], WorldPalette.M_RUIN: [0.04, 1.1], WorldPalette.M_CRAG: [0.08, 1.6],
 }
 
 ## Surface pattern weights per material: [cobbles, domes, grain, strata].
@@ -514,7 +538,7 @@ const PATTERN := {
 	WorldPalette.M_MARBLE: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_GEM: [0.0, 0.0, 0.0, 0.0],
 	WorldPalette.M_GLASS: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_WATER: [0.0, 0.0, 0.0, 0.0],
 	WorldPalette.M_METAL: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_OBSIDIAN: [0.2, 0.0, 0.0, 0.0],
-	WorldPalette.M_ICE: [0.3, 0.3, 0.0, 0.0], WorldPalette.M_RUIN: [0.9, 0.0, 0.0, 0.25],
+	WorldPalette.M_ICE: [0.3, 0.3, 0.0, 0.0], WorldPalette.M_RUIN: [0.9, 0.0, 0.0, 0.25], WorldPalette.M_CRAG: [0.15, 0.0, 0.0, 1.0],
 }
 
 func _pattern_image() -> Image:
