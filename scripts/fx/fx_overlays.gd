@@ -37,6 +37,11 @@ var _tornado_dust: GPUParticles3D
 var _snow: GPUParticles3D
 var _spores: GPUParticles3D
 var _ash: GPUParticles3D
+var _refract_mat: ShaderMaterial
+
+func set_ball(p: Vector3) -> void:
+	if _refract_mat:
+		_refract_mat.set_shader_parameter("ball_pos", p)
 var _cull_t := 0.0
 var _focus := Vector3(-1000, 0, 0)
 var _zone_w := {}  # zone -> smoothed weight around the camera
@@ -313,6 +318,7 @@ func _build_refraction() -> void:
 	mi.mesh = st.commit()
 	var m := ShaderMaterial.new()
 	m.shader = preload("res://shaders/fx/water_refract.gdshader")
+	_refract_mat = m
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)

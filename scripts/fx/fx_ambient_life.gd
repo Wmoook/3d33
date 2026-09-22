@@ -64,6 +64,7 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 				top = y
 				break
 		_sky_top[x] = top
+	_build_deep()
 	_find_sites()
 	_bat_mm = _make_mm(_bat_mesh(), BAT_SHADER, MAX_BATS, false, "Bats")
 	_fish_mm = _make_mm(_fish_mesh(), FISH_SHADER, MAX_FISH, false, "Fish")
@@ -75,6 +76,31 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 		add_child(b)
 		_bubbles.append(b)
 	print("FxAmbientLife: roosts %d, firefly sites %d, fish sites %d" % [_roosts.size(), _ff_sites.size(), _fish_sites.size()])
+
+var _deep := PackedByteArray()
+
+## Water tiles below a real lake surface (a surface run >= 8 tiles wide), flooded straight down the column.
+func _build_deep() -> void:
+	_deep.resize(W * H)
+	var surf := {}
+	for t in maps.water_surface:
+		surf[t] = true
+	for t in maps.water_surface:
+		var x0 := t.x
+		while surf.has(Vector2i(x0 - 1, t.y)):
+			x0 -= 1
+		var x1 := t.x
+		while surf.has(Vector2i(x1 + 1, t.y)):
+			x1 += 1
+		if x1 - x0 + 1 < 8:
+			continue
+		var y := t.y
+		while y < H and maps.water[y * W + t.x] == 1:
+			_deep[y * W + t.x] = 1
+			y += 1
+
+func _deep_at(x: int, y: int) -> bool:
+	return x >= 0 and y >= 0 and x < W and y < H and _deep[y * W + x] == 1
 
 func open_at(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < W and y < H and _open[y * W + x] == 1
@@ -99,7 +125,7 @@ func _find_sites() -> void:
 						break
 				if ground:
 					_add_site(_ff_sites, _ff_bucket, Vector2i(x, y))
-			if _water(x, y) and _water(x, y - 1) and _water(x - 1, y) and _water(x + 1, y) and h.z < 0.3:
+			if _deep_at(x, y) and _deep_at(x, y - 1) and _deep_at(x - 1, y) and _deep_at(x + 1, y) and h.z < 0.3:
 				_add_site(_fish_sites, _fish_bucket, Vector2i(x, y))
 
 func _add_site(arr: Array[Vector2i], bucket: Dictionary, t: Vector2i) -> void:
@@ -380,7 +406,7 @@ func _update_fish(delta: float) -> void:
 		f.vel.x = lerpf(f.vel.x, target, delta * (0.6 if f.flee > 0.0 else 2.0))
 		f.vel.y = lerpf(f.vel.y, sin(t_now * 0.8 + f.ph) * 0.3, delta * 1.5)
 		var np: Vector2 = f.pos + f.vel * delta
-		if not _water(int(np.x), int(np.y)) or not _water(int(np.x), int(np.y) - 1):
+		if not _deep_at(int(np.x), int(np.y)) or not _deep_at(int(np.x), int(np.y) - 1):
 			f.face = -signf(f.vel.x) if absf(f.vel.x) > 0.05 else -f.face
 			f.vel = Vector2(f.face * f.base, -f.vel.y)
 			np = f.pos

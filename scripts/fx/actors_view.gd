@@ -60,6 +60,8 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 	blocks.set_ball_pos(world_pos)
 	if life:
 		life.set_ball(world_pos)
+	if overlays:
+		overlays.set_ball(world_pos)
 
 ## Shell calls this every frame with the camera's global position (culling / pooled FX focus).
 func update_camera(cam_pos: Vector3) -> void:
@@ -79,8 +81,17 @@ func create_ghost_ball() -> Node3D:
 
 ## Settings > Graphics "High-contrast gameplay glyphs".
 func set_high_contrast(on: bool) -> void:
+	set_glyph_boost(1.5 if on else 1.0)
+
+## 1.0 = default, 1.5 = +50% size/emission on keys, arrows, dots (+ coins/portals).
+func set_glyph_boost(amount: float) -> void:
 	if blocks:
-		blocks.set_high_contrast(on)
+		blocks.set_glyph_boost(amount)
+
+## Quality presets: the ball's carried light casts shadows (High/Ultra) or not (Low/Medium).
+func set_ball_shadows(on: bool) -> void:
+	if player:
+		player.set_shadows(on)
 
 func get_player_node() -> Node3D:
 	return player

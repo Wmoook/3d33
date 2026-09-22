@@ -61,6 +61,15 @@ var _materialize := 1.0
 var _glow_flash := 0.0
 ## Ghost replay ball: translucent + desaturated, no lights/trail/bursts/aura. Set before adding to the tree.
 var ghost := false
+## Ball-light shadows (quality presets switch this via ActorsView.set_ball_shadows).
+var shadows_default := true
+## Ghost fade (shell sets 0..1 at replay start/end).
+var modulate_alpha := 1.0:
+	set(v):
+		modulate_alpha = clampf(v, 0.0, 1.0)
+		if _mat and ghost:
+			_mat.set_shader_parameter("ghost_alpha", ghost_alpha * modulate_alpha)
+			visible = modulate_alpha > 0.001
 var ghost_alpha := 0.35
 ## Test hook: when non-empty, these uniform values override the automatic expression.
 var face_override := {}
@@ -88,9 +97,8 @@ func _ready() -> void:
 	_env_light.light_energy = 1.0
 	_env_light.omni_range = 6.0
 	_env_light.omni_attenuation = 2.0
-	# No shadows: an omni shadow re-renders the dense terrain around the ball every frame (measured by shell as
-	# the bulk of the actors' cost in the inferno). The light is kept short-ranged so it doesn't leak far.
-	_env_light.shadow_enabled = false
+	# Shadows on at High/Ultra (world supplies a cheap shadow-only terrain proxy); presets toggle set_shadows().
+	_env_light.shadow_enabled = shadows_default
 	_env_light.shadow_bias = 0.06
 	# dual-paraboloid = 2 shadow passes instead of 6; the world's moon-occluder curtain (layer 20) never casts
 	_env_light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
@@ -158,6 +166,11 @@ func _ready() -> void:
 		_env_light = null
 		_trail = null
 		bursts = null
+
+func set_shadows(on: bool) -> void:
+	shadows_default = on
+	if _env_light:
+		_env_light.shadow_enabled = on
 
 static var _ghost_sh: Shader
 ## The hero shader, but alpha-blended and desaturated (built once from the hero code).

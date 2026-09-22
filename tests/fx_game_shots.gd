@@ -11,6 +11,7 @@ const SPOTS := [
 	["spawn", Vector2(65, 11)],
 	["dot92", Vector2(90, 13)],
 	["lake", Vector2(330, 186)],
+	["lake_close", Vector2(330, 186)],
 	["inferno", Vector2(150, 110)],
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
@@ -47,6 +48,8 @@ func _ready() -> void:
 			ghost = game.actors.create_ghost_ball()
 			game.actors.get_parent().add_child(ghost)
 		await _wait(2.0)
+		if s[0] == "lake_close" and game.rig:
+			game.rig.set("zoom", 2.0)
 		if s[0] == "keytouch":
 			game.sim.sim_event.emit(&"key", {"color": &"red", "tile": Vector2i(86, 12)})
 			for i in 8:

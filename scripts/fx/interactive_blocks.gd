@@ -44,6 +44,7 @@ var _field_mat: ShaderMaterial
 var _halo_mats := {}
 var _hc_mats: Array[ShaderMaterial] = []
 var _hc := false
+var _coin_scale := 1.0
 var _glyph_mats: Array[ShaderMaterial] = []
 var _barriers: Array = [] # [{mat, reps: Array[Vector2i], open: float, target: float, id}]
 var _coins: Array = []    # [{node, tile, collected, t}]
@@ -473,7 +474,7 @@ func _collect(c: Dictionary) -> void:
 func _restore_coin(c: Dictionary) -> void:
 	c.collected = false
 	c.root.visible = true
-	c.root.scale = Vector3.ONE * (1.35 if _hc else 1.0)
+	c.root.scale = Vector3.ONE * _coin_scale
 	c.root.position = EECoords.tile_center(c.tile.x, c.tile.y, -0.1)
 
 # ============================================================================ portals
@@ -618,14 +619,19 @@ func _build_trophy() -> void:
 
 ## Accessibility: gameplay glyphs (keys, arrows, dots, crown glints) +50% size and emission; coins/portals too.
 func set_high_contrast(on: bool) -> void:
-	_hc = on
+	set_glyph_boost(1.5 if on else 1.0)
+
+func set_glyph_boost(amount: float) -> void:
+	var k := clampf((amount - 1.0) / 0.5, 0.0, 3.0)   # shader "hc" 1.0 == +50%
+	_hc = k > 0.0
+	_coin_scale = 1.0 + 0.35 * k
 	for m in _hc_mats:
-		m.set_shader_parameter("hc", 1.0 if on else 0.0)
+		m.set_shader_parameter("hc", k)
 	for c in _coins:
 		if not c.collected:
-			c.root.scale = Vector3.ONE * (1.35 if on else 1.0)
+			c.root.scale = Vector3.ONE * _coin_scale
 	if _portal_mat:
-		_portal_mat.set_shader_parameter("intensity", 1.5 if on else 1.0)
+		_portal_mat.set_shader_parameter("intensity", 1.0 + 0.5 * k)
 
 func key_triggered(color: StringName, tile = null) -> void:
 	for id in KEY_IDS:

@@ -324,6 +324,13 @@ func key_time_left(color: StringName) -> float:
 	return maxf(0.0, 5.0 - (_offset - float(_keys_timer[color])) / 30.0)
 
 
+## True while a key's 5 s are over but EE keeps it active because turning it off would trap the
+## player inside a door of that colour (PlayState.switchKey/keysquene). It turns off on the first
+## tick after the player has fully left the door tiles. key_time_left() is 0 meanwhile.
+func key_expiry_pending(color: StringName) -> bool:
+	return _keys.get(color, false) and ((_offset - float(_keys_timer[color])) / 30.0) >= 5.0
+
+
 ## Current dynamic solidity of a layer-0 tile for the local player (doors/gates/coin doors).
 ## One-way platforms (e.g. 62) and half blocks count as solid; out of bounds is solid.
 func is_tile_solid_now(tx: int, ty: int) -> bool:

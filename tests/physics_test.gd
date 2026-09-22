@@ -81,6 +81,9 @@ func _init() -> void:
 	test_perf()
 	test_replay()
 	test_snapshot()
+	test_key_door_stay_inside()
+	test_key_gate_deferred()
+	test_key_door_real_level()
 	# break signal->lambda->sim reference cycles so nothing leaks at exit
 	for s in _sims:
 		for c in s.sim_event.get_connections():
@@ -505,3 +508,182 @@ func test_snapshot() -> void:
 	run(s2, i2, 200)
 	run(fresh, i3, 200)
 	check("continuation after restore == fresh run", s2.state_hash() == fresh.state_hash())
+
+
+## Is the box overlapping any tile with this id?
+func overlaps_id(sim: EESim, id: int) -> bool:
+	var x0 := int(sim.px) >> 4
+	var y0 := int(sim.py) >> 4
+	for ty in range(y0, int(ceil((sim.py + 16.0) / 16.0))):
+		for tx in range(x0, int(ceil((sim.px + 16.0) / 16.0))):
+			if sim.get_tile(tx, ty) == id:
+				return true
+	return false
+
+
+func test_key_door_stay_inside() -> void:
+	print("[key door: stay inside past the timer]")
+	# floor at row 9; red key (4,8); a 5-wide red door (8..12, 8); open to the right
+	var l := make_level(40, 10)
+	put(l, 2, 8, 255)
+	put(l, 4, 8, 6)
+	for x in range(8, 13):
+		put(l, x, 8, 23)
+	var sim := new_sim(l)
+	var inp := EEInput.new()
+	var ev := {"t": 0, "expired": -1, "door_close": -1}
+	sim.sim_event.connect(func(k, d):
+		if k == &"key_expired" and ev["expired"] < 0: ev["expired"] = ev["t"]
+		elif k == &"door_state" and d["kind"] == &"red" and not d["open"] and ev["door_close"] < 0: ev["door_close"] = ev["t"])
+	var tick := func(i: EEInput) -> void:
+		ev["t"] = sim.ticks() + 1
+		sim.tick(i)
+	# walk right into the doors, then release and coast to a stop inside
+	inp.right = true
+	while sim.px < 8.0 * 16.0 and sim.ticks() < 400:
+		tick.call(inp)
+	inp.right = false
+	for i in 150: tick.call(inp)
+	var straddle := fmod(sim.px, 16.0) != 0.0
+	check("stopped inside the red door (x=%.2f, straddling two door tiles: %s)" % [sim.px, straddle], overlaps_id(sim, 23) and sim.speed_x == 0.0)
+	# wait well past the 5 s key duration while inside
+	var ok := true
+	for i in 700:
+		tick.call(inp)
+		if not sim.is_key_active(&"red") or stuck(sim) or ev["expired"] >= 0:
+			ok = false
+	var door_open := true
+	for x in range(8, 13):
+		if sim.is_tile_solid_now(x, 8): door_open = false
+	check("7 s inside: key stays active, doors stay open, no key_expired, not stuck", ok and door_open)
+	check("API: key_time_left 0, key_expiry_pending true, is_tile_solid_now false (door open)",
+		sim.key_time_left(&"red") == 0.0 and sim.key_expiry_pending(&"red") and not sim.is_tile_solid_now(10, 8))
+	# move around freely inside the door region without leaving it
+	var free := true
+	var x_before := sim.px
+	inp.left = true
+	for i in 25:
+		tick.call(inp)
+		if stuck(sim) or not overlaps_id(sim, 23): free = false
+	inp.left = false
+	var moved_left := sim.px < x_before
+	for i in 60: tick.call(inp)
+	check("moves freely inside the open door (still active, never stuck)", free and moved_left and overlaps_id(sim, 23) and sim.is_key_active(&"red") and ev["expired"] < 0,
+		"x %.1f -> %.1f" % [x_before, sim.px])
+	# walk out to the right; the key must expire on the first tick after the box fully leaves
+	var left_tick := -1
+	inp.right = true
+	for i in 300:
+		tick.call(inp)
+		if left_tick < 0 and not overlaps_id(sim, 23):
+			left_tick = sim.ticks()
+		if left_tick > 0 and sim.ticks() > left_tick + 3:
+			break
+	inp.right = false
+	check("walked through and out the far side", left_tick > 0 and sim.px >= 13.0 * 16.0, "x=%.1f" % sim.px)
+	check("key_expired + door_state(closed) exactly one tick after leaving, not before",
+		ev["expired"] == left_tick + 1 and ev["door_close"] == left_tick + 1,
+		"left at t=%d, expired at t=%d, door closed at t=%d" % [left_tick, ev["expired"], ev["door_close"]])
+	check("door solid again after leaving", sim.is_tile_solid_now(10, 8) and not sim.is_key_active(&"red"))
+	# straddling two door tiles exactly (x = 9.5 tiles), key freshly taken
+	var s2 := new_sim(l)
+	var ev2 := {"t": 0, "expired": -1}
+	s2.sim_event.connect(func(k, _d): if k == &"key_expired" and ev2["expired"] < 0: ev2["expired"] = ev2["t"])
+	var i2 := EEInput.new()
+	run(s2, i2, 20)
+	s2.px = 4.0 * 16.0
+	s2.tick(i2)
+	s2.px = 9.0 * 16.0 + 8.0
+	var ok2 := true
+	for i in 700:
+		ev2["t"] = s2.ticks() + 1
+		s2.tick(i2)
+		if not s2.is_key_active(&"red") or stuck(s2) or s2.is_tile_solid_now(9, 8) or s2.is_tile_solid_now(10, 8): ok2 = false
+	check("straddling doors (9,8)+(10,8) for 7 s: both stay open, key active, not stuck", ok2 and ev2["expired"] < 0 and fmod(s2.px, 16.0) == 8.0,
+		"x=%.2f" % s2.px)
+
+
+func test_key_gate_deferred() -> void:
+	print("[key gate: activation deferred while inside the gate]")
+	# key (6,8), red gates (7,7),(7,8) right next to it. At x=100 the center is on the key tile
+	# while the box overlaps the gate: activating the key would close the gate on the player.
+	var l := make_level(20, 10)
+	put(l, 2, 8, 255)
+	put(l, 6, 8, 6)
+	put(l, 7, 8, 26)
+	put(l, 7, 7, 26)
+	var sim := new_sim(l)
+	var inp := EEInput.new()
+	var ev := {"t": 0, "on": -1, "key": -1}
+	sim.sim_event.connect(func(k, d):
+		if k == &"key" and ev["key"] < 0: ev["key"] = ev["t"]
+		elif k == &"door_state" and d["kind"] == &"red" and d["open"] and ev["on"] < 0: ev["on"] = ev["t"])
+	run(sim, inp, 30)
+	sim.px = 100.0
+	var ok := true
+	for i in 120:
+		ev["t"] = sim.ticks() + 1
+		sim.tick(inp)
+		if sim.is_key_active(&"red") or sim.is_tile_solid_now(7, 8) or stuck(sim):
+			ok = false
+	check("touched key while overlapping the gate: key NOT active, gate stays open, not stuck", ev["key"] > 0 and ok and overlaps_id(sim, 26),
+		"x=%.1f key touched t=%d" % [sim.px, ev["key"]])
+	var left_tick := -1
+	inp.left = true
+	for i in 60:
+		ev["t"] = sim.ticks() + 1
+		sim.tick(inp)
+		if left_tick < 0 and not overlaps_id(sim, 26): left_tick = sim.ticks()
+		if ev["on"] > 0: break
+	inp.left = false
+	check("key activates (gate closes) exactly one tick after the box leaves the gate",
+		left_tick > 0 and ev["on"] == left_tick + 1 and sim.is_key_active(&"red") and sim.is_tile_solid_now(7, 8),
+		"left t=%d active t=%d" % [left_tick, ev["on"]])
+
+
+func test_key_door_real_level() -> void:
+	print("[key door: real level, demon body]")
+	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	var sim := new_sim(lvl)
+	var inp := EEInput.new()
+	# a red-door tile in the demon (x 280-340, y 130-199) resting on a solid non-door tile
+	var spot := Vector2i(-1, -1)
+	var cnt := 0
+	for y in range(130, 199):
+		for x in range(280, 340):
+			if lvl.get_fg(x, y) == 23:
+				cnt += 1
+				if spot.x < 0 and lvl.get_fg(x, y + 1) != 23 and sim.is_tile_solid_now(x, y + 1) and lvl.get_fg(x, y - 1) == 23:
+					spot = Vector2i(x, y)
+	check("demon body has red doors (%d tiles); resting spot %s" % [cnt, spot], spot.x >= 0)
+	if spot.x < 0:
+		return
+	var key: Vector2i = lvl.find_all(6)[0]
+	sim.px = key.x * 16.0; sim.py = key.y * 16.0
+	sim.tick(inp)
+	check("red key taken", sim.is_key_active(&"red"))
+	sim.px = spot.x * 16.0; sim.py = spot.y * 16.0
+	sim.speed_x = 0.0; sim.speed_y = 0.0
+	var ev := {"t": 0, "expired": -1}
+	sim.sim_event.connect(func(k, _d): if k == &"key_expired" and ev["expired"] < 0: ev["expired"] = ev["t"])
+	var ok := true
+	for i in 800:
+		ev["t"] = sim.ticks() + 1
+		sim.tick(inp)
+		if not sim.is_key_active(&"red") or stuck(sim) or not overlaps_id(sim, 23):
+			ok = false
+	check("8 s resting inside the demon's red door: key active, door open, not stuck", ok and not sim.is_tile_solid_now(spot.x, spot.y) and ev["expired"] < 0,
+		"at %s pending=%s" % [Vector2i(int(sim.px) >> 4, int(sim.py) >> 4), sim.key_expiry_pending(&"red")])
+	# wander (jumping left/right) until the box has left every red door
+	var left_tick := -1
+	var plan := [[1, 0, 1], [0, 1, 1], [1, 0, 0], [0, 1, 0]]
+	for i in 3000:
+		var a: Array = plan[(i / 40) % plan.size()]
+		inp.left = a[0] == 1; inp.right = a[1] == 1; inp.jump = a[2] == 1
+		ev["t"] = sim.ticks() + 1
+		sim.tick(inp)
+		if ev["expired"] >= 0: break
+		if overlaps_id(sim, 23): left_tick = -1
+		elif left_tick < 0: left_tick = sim.ticks()
+	check("after leaving the door the key expires on the very next tick",
+		ev["expired"] > 0 and ev["expired"] == left_tick + 1, "left t=%d expired t=%d at %s" % [left_tick, ev["expired"], Vector2i(int(sim.px) >> 4, int(sim.py) >> 4)])
