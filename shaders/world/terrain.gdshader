@@ -211,8 +211,16 @@ void fragment() {
 		ao = mix(1.0, 0.4, smoothstep(0.0, 3.5, -wp.z));
 	} else if (layer == 1) {
 		vec3 c; int bm; float bb;
-		region_sample(bgcol_tex, p, 20.0, c, bm, bb);
+		vec2 bwarp = vec2(fbm2(p * 0.7 + 1.3), fbm2(p * 0.7 - 5.1)) * (scroll_rect.x >= 0.0 ? 0.45 : 0.0);
+		region_sample(bgcol_tex, p + bwarp, 20.0, c, bm, bb);
 		albedo = c * 0.85;
+		if (scroll_rect.x >= 0.0) {
+			// day ruins: the back walls are old dressed stone - large coursed blocks with dark joints
+			vec2 bq = vec2(p.x * 0.5 + hash12(vec2(floor(p.y * 0.5), 3.1)) * 3.0, p.y * 0.5);
+			vec2 bf = fract(bq);
+			float jn = 1.0 - smoothstep(0.02, 0.07, min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y)));
+			albedo *= mix(0.88, 1.08, hash12(floor(bq) + 2.0)) * (1.0 - jn * 0.45);
+		}
 		mat = -1;
 		int vzb = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
 		if (vzb == 2) { albedo *= 0.3; }   // inferno back walls stay the painting's near-black red
