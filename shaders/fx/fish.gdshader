@@ -11,8 +11,8 @@ void vertex() {
 
 void fragment() {
 	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 2.0);
-	ALBEDO = vec3(0.03, 0.08, 0.12);
+	ALBEDO = vec3(0.01, 0.03, 0.06);
 	ROUGHNESS = 0.3;
 	SPECULAR = 0.7;
-	EMISSION = vec3(0.08, 0.25, 0.4) * (0.35 + fres * 0.8);
+	EMISSION = vec3(0.3, 0.7, 1.0) * fres * 0.5;   // dark silhouette with a thin bright rim
 }

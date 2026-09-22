@@ -352,7 +352,7 @@ func _build_ambient() -> void:
 	_spores = _camera_emitter(220, 9.0, Color(0.85, 0.5, 1.0, 0.9), Vector3(0.1, 0.18, 0), 0.16, true)
 	_spores.name = "Spores"
 	add_child(_spores)
-	_ash = _camera_emitter(200, 8.0, Color(0.55, 0.45, 0.4, 0.9), Vector3(0.25, -0.35, 0), 0.12, true)
+	_ash = _camera_emitter(280, 8.0, Color(0.8, 0.62, 0.5, 1.0), Vector3(0.25, -0.35, 0), 0.17, true)
 	_ash.name = "Ash"
 	add_child(_ash)
 

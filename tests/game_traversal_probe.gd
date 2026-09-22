@@ -38,6 +38,12 @@ func _ready() -> void:
 		var total_ms := 0.0
 		var last := Time.get_ticks_usec()
 		var per_zone := {}
+		var last_zone := ""
+		var zone_change_ms := -100000
+		var world_zone := &""
+		var wz_change_ms := -100000
+		var near_change := 0
+		var hitches_total := 0
 		while _wp < PATH.size() and Time.get_ticks_msec() - t_pass < 180000:
 			await get_tree().process_frame
 			var now := Time.get_ticks_usec()
@@ -47,22 +53,34 @@ func _ready() -> void:
 			total_ms += ms
 			var tile := Vector2i(int(game._render_pos.x), int(-game._render_pos.y))
 			var zone: String = str(game._zone_info.name)
+			if zone != last_zone:
+				last_zone = zone
+				zone_change_ms = Time.get_ticks_msec()
+			var wz = game.world.current_zone if "current_zone" in game.world else &""
+			if wz != world_zone:
+				world_zone = wz
+				wz_change_ms = Time.get_ticks_msec()
+			var since := mini(Time.get_ticks_msec() - zone_change_ms, Time.get_ticks_msec() - wz_change_ms)
 			var z: Dictionary = per_zone.get(zone, {"frames": 0, "ms": 0.0, "hitches": 0, "worst": 0.0})
 			z.frames += 1
 			z.ms += ms
 			z.worst = maxf(z.worst, ms)
 			if ms > HITCH_MS:
 				z.hitches += 1
-				_log.append([p, ms, tile, zone, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)])
+				_log.append([p, ms, tile, zone, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), since])
+				hitches_total += 1
+				if since < 1500:
+					near_change += 1
 			per_zone[zone] = z
 		print("[trav] pass %d: %d frames, %.1f s, avg %.2f ms (%.0f fps)" % [p + 1, frames, total_ms / 1000.0, total_ms / maxi(frames, 1), 1000.0 * frames / maxf(total_ms, 1.0)])
+		print("[trav]   hitches: %d total, %d within 1.5 s of a zone change (shell card or world atmosphere)" % [hitches_total, near_change])
 		for zn in per_zone:
 			var z: Dictionary = per_zone[zn]
 			print("[trav]   %-22s frames %5d  avg %6.2f ms  worst %7.1f ms  hitches>25ms %d" % [zn, z.frames, z.ms / z.frames, z.worst, z.hitches])
 	_log.sort_custom(func(a, b): return a[1] > b[1])
 	print("[trav] worst frames (pass, ms, tile, zone, draws):")
 	for e in _log.slice(0, 30):
-		print("[trav]   pass %d  %7.1f ms  tile %s  %s  draws %d" % [e[0] + 1, e[1], e[2], e[3], e[4]])
+		print("[trav]   pass %d  %7.1f ms  tile %s  %s  draws %d  %d ms after zone change" % [e[0] + 1, e[1], e[2], e[3], e[4], e[5]])
 	get_tree().quit()
 
 ## God-mode steering toward the next waypoint (EE god flight, arrow keys).

@@ -203,12 +203,17 @@ func _boot() -> void:
 	pause_menu.warmup(6)
 	victory.show_stats({"time": 0.0, "coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "deaths": 0})
 	# Warm up: render a few frames at several places so pipelines compile before the reveal.
-	for k in [Vector2(65, 8), Vector2(140, 100), Vector2(215, 95), Vector2(320, 150), Vector2(150, 185)]:
+	# (every zone, so first-visit pipeline compiles / uploads happen behind the loading screen)
+	for k in [Vector2(65, 8), Vector2(190, 7), Vector2(310, 10), Vector2(384, 14), Vector2(110, 28), Vector2(338, 55),
+			Vector2(340, 90), Vector2(320, 150), Vector2(290, 175), Vector2(230, 185), Vector2(150, 185),
+			Vector2(100, 150), Vector2(140, 100), Vector2(215, 95), Vector2(200, 140), Vector2(40, 110), Vector2(40, 45)]:
 		rig.snap_to(Vector3(k.x, -k.y, 0))
 		rig.follow(Vector3(k.x, -k.y, 0), Vector2.ZERO, 0.016)
 		if world.has_method(&"update_focus"):
 			world.update_focus(Vector3(k.x, -k.y, 0), 0.016)
-		await _frames(2)
+		if actors.has_method(&"update_camera"):
+			actors.update_camera(rig.cam.global_position)
+		await _frames(3)
 	victory.visible = false
 	loading.set_progress(1.0, "Ready")
 	await _frames(8)
@@ -741,6 +746,12 @@ func _apply_quality() -> void:
 	# Geometry/shadow cost dominates (tests/game_perf.tscn): scale shadow atlas + mesh LOD with the preset.
 	vp.positional_shadow_atlas_size = [2048, 4096, 8192, 8192][q]
 	vp.mesh_lod_threshold = [4.0, 2.5, 1.5, 1.0][q]
+	# World's shadowed key light (a SpotLight): shadows only at ULTRA (world's suggestion for HIGH).
+	var key_light := world.get_node_or_null(^"Lights/KeyLight") as Light3D if world else null
+	if key_light:
+		if not _authored_env.has("key_shadow"):
+			_authored_env["key_shadow"] = key_light.shadow_enabled
+		key_light.shadow_enabled = _authored_env.key_shadow and q >= 3
 	# Depth of field on the far background at HIGH+, only when the world didn't author camera attributes.
 	var we := _find_world_env_node()
 	var world_attrs: CameraAttributes = we.camera_attributes if we else null

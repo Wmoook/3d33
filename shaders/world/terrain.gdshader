@@ -214,9 +214,9 @@ void fragment() {
 		if (vz == 2) {
 			// inferno depths: near-black basalt (the painting's black void) with rare glowing fissures
 			albedo = albedo * 0.12 + vec3(0.02, 0.012, 0.01);
-			float fis = smoothstep(0.975, 0.998, ridge(p * 0.28 + fbm2(p * 0.09) * 1.4));
+			float fis = smoothstep(0.991, 0.999, ridge(p * 0.2 + fbm2(p * 0.07) * 1.4)) * smoothstep(0.2, 0.7, fbm2(p * 0.05) + 0.5);
 			float pulse = 0.7 + 0.3 * sin(TIME * 0.8 + p.x * 0.1);
-			emit += vec3(1.0, 0.3, 0.05) * fis * 0.5 * pulse * smoothstep(-5.0, -9.0, wp.z);
+			emit += vec3(1.0, 0.3, 0.05) * fis * 0.35 * pulse * smoothstep(-5.0, -9.0, wp.z);
 		} else if (vz == 3) {
 			float vn = smoothstep(0.982, 0.998, ridge(p * 0.3 + fbm2(p * 0.1) * 1.5));
 			emit += vec3(0.6, 0.15, 1.0) * vn * 0.35;

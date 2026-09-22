@@ -27,12 +27,18 @@ func _ready() -> void:
 	if only == "" or only == "fish":
 		var f: Vector2i = life._fish_sites[life._fish_sites.size() / 2]
 		await _strip("fish", Vector2(f.x - 7, f.y), Vector2(f.x, f.y))
-	if only == "" or only == "fireflies":
+	if (only == "" or only == "fireflies") and not life._ff_sites.is_empty():
 		var t: Vector2i = life._ff_sites[life._ff_sites.size() / 3]
 		await _strip("fireflies", Vector2(t.x - 4, t.y), Vector2(t.x, t.y))
 	if only == "" or only == "moths":
-		await _strip("moths", Vector2(214, 164), Vector2(219, 164))
+		var best: Dictionary = life.maps.fire_chunks[0]
+		for ch in life.maps.fire_chunks:
+			if (ch.center as Vector2).distance_to(Vector2(220, 166)) < (best.center as Vector2).distance_to(Vector2(220, 166)):
+				best = ch
+		var top := Vector2(best.center.x, float(best.min.y) - 1.5)
+		await _strip("moths", top + Vector2(-8, 0), top + Vector2(-4, 0))
 	if only == "" or only == "wisps":
+		life._wisp_cd = 2.3
 		await _strip("wisps", Vector2(208, 100), Vector2(212, 100))
 	if only == "" or only == "ash":
 		await _strip("ash", Vector2(150, 106), Vector2(154, 106))
@@ -79,6 +85,10 @@ func _strip(name: String, start: Vector2, goal: Vector2) -> void:
 		var c := im.get_region(Rect2i(im.get_width() / 4, im.get_height() / 4, im.get_width() / 2, im.get_height() / 2))
 		strip.blit_rect(c, Rect2i(0, 0, fw, fh), Vector2i(i * fw, 0))
 	strip.save_png("user://fx_life_%s.png" % name)
+	var kinds := [0, 0, 0]
+	for g in life._glows:
+		kinds[g.kind] += 1
+	print("glows ff/moth/wisp ", kinds, " focus ", life.focus, " ball ", life.ball)
 	print("saved fx_life_", name)
 
 func _grab() -> Image:

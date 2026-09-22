@@ -103,6 +103,7 @@ func _ready() -> void:
 	if _nokey:
 		world.lights.key_light.visible = false
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	print("NEAR SILHOUETTES %d" % world.decor.near_silhouette_count)
 	print("CAVE PROPS %d, inside sky mask: %d %s" % [world.decor.cave_prop_count, world.decor.cave_props_in_sky,
 		"OK" if world.decor.cave_props_in_sky == 0 else "FAIL"])
 	world.zone_changed.connect(func(z): print("ZONE ", z, " ", world.get_zone_info(z).get("title")))

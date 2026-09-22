@@ -59,7 +59,7 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	_sky_top.resize(W)
 	for x in W:
 		var top := H
-		for y in H:
+		for y in range(1, H):   # row 0 is the level's border
 			if _open[y * W + x] == 0:
 				top = y
 				break
@@ -89,7 +89,7 @@ func _find_sites() -> void:
 			var h := FxInteractiveBlocks._tile_hash(Vector2i(x, y))
 			var z := WorldPalette.zone_at(x, y)
 			if _open[i] == 1 and _open[i - W] == 0 and y > _sky_top[x] and z != WorldPalette.Z_SURFACE \
-					and z != WorldPalette.Z_LAKE and h.x < 0.16 and not _water(x, y):
+					and z != WorldPalette.Z_LAKE and h.x < 0.2 and not _water(x, y) 					and lvl.fg[i] == 0 and open_at(x, y + 1) and open_at(x, y + 2):
 				_add_site(_roosts, _roost_bucket, Vector2i(x, y))
 			if _open[i] == 1 and y < _sky_top[x] and y < 30 and h.y < 0.35:
 				var ground := false
@@ -342,7 +342,7 @@ func _update_bats(delta: float) -> void:
 			basis = Basis(Vector3(0, 0, 1), PI + sin(t_now * 1.1 + b.ph) * 0.12)   # hang upside down, sway
 		else:
 			basis = Basis(Vector3(0, 0, 1), clampf(-b.vel.x * 0.05, -0.5, 0.5))
-		basis = basis.scaled(Vector3.ONE * 1.25)
+		basis = basis.scaled(Vector3.ONE * 1.8)
 		var z: float = -0.25 if b.state == 0 else -0.1 + sin(b.ph + t_now) * 0.15
 		mm.set_instance_transform(n, Transform3D(basis, Vector3(b.pos.x, -b.pos.y, z)))
 		mm.set_instance_custom_data(n, Color(b.flap, b.open, 0, 0))
@@ -387,9 +387,9 @@ func _update_fish(delta: float) -> void:
 		f.pos = np
 		if absf(f.vel.x) > 0.2:
 			f.face = signf(f.vel.x)
-		var basis := Basis.IDENTITY.scaled(Vector3(f.face * 1.3, 1.3, 1.3))
+		var basis := Basis.IDENTITY.scaled(Vector3(f.face * 2.1, 2.1, 2.1))
 		basis = Basis(Vector3(0, 0, 1), clampf(-f.vel.y * 0.25 * f.face, -0.5, 0.5)) * basis
-		mm.set_instance_transform(n, Transform3D(basis, Vector3(f.pos.x, -f.pos.y, 0.35)))
+		mm.set_instance_transform(n, Transform3D(basis, Vector3(f.pos.x, -f.pos.y, 0.92)))
 		mm.set_instance_custom_data(n, Color(f.ph, f.flee, 0, 0))
 		n += 1
 	mm.visible_instance_count = n
@@ -432,19 +432,16 @@ func _update_glows(delta: float) -> void:
 			_glows.append({"kind": 0, "pos": Vector2(t.x + randf(), t.y + randf()), "vel": Vector2.ZERO,
 				"life": 0.0, "max": randf_range(5.0, 10.0), "ph": randf() * TAU, "col": Color(0.75, 1.0, 0.35)})
 	# moths around fires
-	if _count(1) < 18 and maps.fire_chunks.size() > 0 and randf() < 0.3:
-		var best: Dictionary = {}
-		var bd := NEAR
+	if _count(1) < 18 and maps.fire_chunks.size() > 0 and randf() < 0.5:
+		var cands: Array = []
 		for ch in maps.fire_chunks:
-			var d: float = (ch.center as Vector2).distance_to(focus)
-			if d < bd and randf() < 0.5:
-				bd = d
-				best = ch
-		if not best.is_empty():
-			var c: Vector2 = best.center
-			var top: Vector2 = Vector2(c.x, float(best.min.y) - 1.2)
+			if (ch.center as Vector2).distance_to(focus) < NEAR:
+				cands.append(ch)
+		if not cands.is_empty():
+			var best: Dictionary = cands[randi() % cands.size()]
+			var top := Vector2(randf_range(best.min.x, best.max.x + 1.0), float(best.min.y) - 0.9)
 			_glows.append({"kind": 1, "pos": top, "vel": Vector2.ZERO, "life": 0.0, "max": randf_range(6.0, 12.0),
-				"ph": randf() * TAU, "col": Color(1.0, 0.9, 0.7), "home": top, "r": randf_range(0.6, 1.6)})
+				"ph": randf() * TAU, "col": Color(1.0, 0.92, 0.75), "home": top, "r": randf_range(0.5, 1.3)})
 	# corruption wisps orbit the ball for a moment
 	_wisp_cd -= delta
 	if _wisp_cd <= 0.0 and WorldPalette.zone_at(int(ball.x), int(ball.y)) == WorldPalette.Z_CORRUPT:
@@ -482,19 +479,19 @@ func _update_glows(delta: float) -> void:
 				if db.length() < 1.5:
 					target += db.normalized() * 2.0
 				g.vel = (target - g.pos) * 6.0
-				bright = 0.35 + 0.1 * sin(t_now * 30.0 + g.ph)
-				size = 0.28
+				bright = 0.9 + 0.3 * sin(t_now * 30.0 + g.ph)
+				size = 0.4
 			2:
 				var orbit: bool = g.life < g.max - 1.3
 				var ang: float = g.ph + g.life * 3.2
-				var r: float = 0.9 + 0.25 * sin(g.life * 2.0 + g.ph)
+				var r: float = 1.15 + 0.25 * sin(g.life * 2.0 + g.ph)
 				if orbit:
 					var target: Vector2 = ball + Vector2(cos(ang), sin(ang) * 0.8) * r
 					g.vel = (target - g.pos) * 7.0 + ball_vel * 0.5
 				else:
 					g.vel = g.vel.lerp((g.pos - ball).normalized() * 3.0 + Vector2(0, -1.2), delta * 2.0)
-				bright = 0.9 + 0.3 * sin(t_now * 7.0 + g.ph)
-				size = 0.5
+				bright = 1.3 + 0.4 * sin(t_now * 7.0 + g.ph)
+				size = 0.75
 		g.pos += g.vel * delta
 		if n >= MAX_GLOW:
 			continue

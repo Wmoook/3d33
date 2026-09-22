@@ -99,7 +99,7 @@ func _make_moon_occluder(W: int, H: int) -> void:
 	var zb := 70.0
 	for x in range(-10, W + 11):
 		var gx := clampi(x, 0, W - 1)
-		var top := -(ground_top[gx] + 3.0)
+		var top := -(ground_top[gx] + 8.0)   # deep enough that its shadow edge never lands on the surface soil band
 		var bottom := -(H + 20.0)
 		var base := verts.size()
 		verts.append(Vector3(x, top, zf))

@@ -11,6 +11,7 @@ var _mat_glow: ShaderMaterial
 ## Validation: cave props placed in total / inside the sky mask (must be 0).
 var cave_prop_count := 0
 var cave_props_in_sky := 0
+var near_silhouette_count := 0
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_rng.seed = 1337
@@ -193,13 +194,6 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 				var b := Basis.from_scale(Vector3(r * 2.0, len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
 				mid_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y - 1.2 + len * 0.5, _rng.randf_range(-8.0, -2.8))))
 				mid_c.append(_vary(c, 0.15))
-			var thick := ceil and y > 4 and terrain.solid[i - 2 * W] and terrain.solid[i - 3 * W] and terrain.solid[i - 4 * W]
-			if thick and _rng.randf() < 0.02:
-				var len := _rng.randf_range(1.5, 3.5)
-				var r := _rng.randf_range(0.35, 0.75)
-				var b := Basis.from_scale(Vector3(r * 2.0, -len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
-				fg_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y + 1.2 - len * 0.5, _rng.randf_range(3.5, 5.5))))
-				fg_c.append(c.darkened(0.8))
 	cave_props_in_sky = 0
 	for t in mid_x + fg_x:
 		var tx := clampi(int(floor(t.origin.x)), 0, W - 1)
@@ -234,8 +228,54 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 				moss_c.append(_vary(mc.darkened(0.2), 0.15))
 	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
-	var dark := _foliage_mat(0.0, 0.0, 0.0, 0.9)
-	_add_mm("NearSilhouettes", _cone(), dark, fg_x, fg_c)
+	_build_near_silhouettes(lvl, terrain)
+
+var _near_mat: ShaderMaterial
+
+## Sparse, edge-weighted foreground silhouettes very close to the camera (z +3..+6), per zone:
+## hanging roots in earth tunnels and caves, icicles in the frozen cavern, chains in the drowned forge,
+## big grass blades on the surface. Faded around the focus by near_silhouette.gdshader.
+func _build_near_silhouettes(lvl: EELevel, terrain: WorldTerrain) -> void:
+	var W := lvl.width
+	var H := lvl.height
+	var cone_x: Array[Transform3D] = []
+	var cone_c: Array[Color] = []
+	var chain_x: Array[Transform3D] = []
+	var chain_c: Array[Color] = []
+	var blade_x: Array[Transform3D] = []
+	var blade_c: Array[Color] = []
+	for y in range(2, H - 2):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			var z: int = terrain.zones[i]
+			var ceil := not terrain.solid[i] and terrain.solid[i - W] and terrain.solid[i - 2 * W]
+			var ground := terrain.solid[i] and not terrain.solid[i - W]
+			if not ceil or terrain.sky[i] or _rng.randf() > 0.05 or _near_sky(terrain, x, y, W, H):
+				continue
+			var p := Vector3(x + _rng.randf(), -y + 1.2, _rng.randf_range(3.2, 5.8))
+			var shape := 0.0
+			var col := Color(0.035, 0.025, 0.02)
+			var w := _rng.randf_range(2.0, 3.4)
+			var len := _rng.randf_range(3.5, 7.0)
+			if z == WorldPalette.Z_ICE:
+				shape = 1.0
+				col = Color(0.06, 0.09, 0.14)
+				w = _rng.randf_range(1.0, 1.8)
+				len = _rng.randf_range(2.5, 5.0)
+			elif z == WorldPalette.Z_DEEP:
+				shape = 2.0
+				col = Color(0.02, 0.018, 0.02)
+				w = 1.0
+				len = _rng.randf_range(4.0, 8.0)
+			# card: top edge at the anchor, hanging down
+			cone_x.append(Transform3D(Basis.from_scale(Vector3(w, len, 1.0)), p - Vector3(0, len * 0.5, 0)))
+			cone_c.append(Color(col.r, col.g, col.b, 1.0 + shape * 10.0 + _rng.randf() * 0.9))
+	_near_mat = ShaderMaterial.new()
+	_near_mat.shader = load("res://shaders/world/near_silhouette.gdshader")
+	var card := QuadMesh.new()
+	card.size = Vector2(1, 1)
+	_add_mm("NearSilhouettes", _vertex_white(card), _near_mat, cone_x, cone_c, false, false, true)
+	near_silhouette_count = cone_x.size()
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):
@@ -267,7 +307,8 @@ func _foliage_mat(wind: float, transl: float, emit: float, rough: float) -> Shad
 	return m
 
 ## col.a > 1 is used as emission strength for glow props (stored in custom data).
-func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color], glow := false, cast_shadows := false) -> void:
+## shape_custom: colour alpha encodes 1 + shape*10 + seed (near-silhouette cards).
+func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color], glow := false, cast_shadows := false, shape_custom := false) -> void:
 	if xs.is_empty():
 		return
 	var mm := MultiMesh.new()
@@ -284,7 +325,12 @@ func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: 
 			e = c.a
 		var lc := Color(c.r, c.g, c.b, 1.0).srgb_to_linear()
 		mm.set_instance_color(i, lc)
-		mm.set_instance_custom_data(i, Color(1, 1, 1, e))
+		if shape_custom:
+			var code := c.a - 1.0
+			var shp := floorf(code / 10.0 + 0.001)
+			mm.set_instance_custom_data(i, Color(shp, code - shp * 10.0, 0, 0))
+		else:
+			mm.set_instance_custom_data(i, Color(1, 1, 1, e))
 	var mi := MultiMeshInstance3D.new()
 	mi.name = nm
 	mi.multimesh = mm
@@ -411,5 +457,6 @@ func _vertex_white(prim: PrimitiveMesh) -> ArrayMesh:
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return m
 
-func update_focus(_world_pos: Vector3, _delta: float) -> void:
-	pass
+func update_focus(world_pos: Vector3, _delta: float) -> void:
+	if _near_mat:
+		_near_mat.set_shader_parameter("focus", world_pos)
