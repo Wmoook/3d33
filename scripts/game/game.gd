@@ -511,6 +511,7 @@ func _process(delta: float) -> void:
 	var paused := get_tree().paused
 	match state:
 		State.TITLE:
+			tutorial.visible = false
 			if _attract:
 				var fa := 1.0 if ("teleported" in sim and sim.teleported) else Engine.get_physics_interpolation_fraction()
 				_render_pos = _player_world_pos(fa)
@@ -654,12 +655,13 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			if data.has("tile"):
 				minimap.erase_tile(data.tile)
 		&"door_state", &"god_mode":
-			if kind == &"god_mode" and data.get("on", false):
+			if kind == &"god_mode" and data.get("on", false) and state == State.PLAYING:
 				tutorial.offer("god")
 			minimap.refresh_doors()
 			collision_overlay.mark_dirty()
 		&"key":
-			tutorial.offer("keys")
+			if state == State.PLAYING:
+				tutorial.offer("keys")
 			audio.play("key", -3.0, 0.0)
 			hud.flash(UITheme.KEY_COLORS.get(StringName(data.get("color", &"red")), Color.WHITE), 0.35)
 		&"key_expired":
@@ -680,8 +682,9 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				audio.play("respawn", -6.0, 0.0)
 			_snap_render = true
 		&"jump":
-			_tut_jumped = true
-			if _tut_moved:
+			if state == State.PLAYING:
+				_tut_jumped = true
+			if _tut_moved and _tut_jumped:
 				tutorial.complete("move")
 			audio.play("jump", -13.0, 0.08)
 		&"land":
@@ -691,7 +694,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			rig.add_trauma(clampf((imp - 7.0) / 10.0, 0.0, 1.0) * 0.45)
 		&"gravity_changed":
 			var gdir = data.get("dir", Vector2i(0, 1))
-			if gdir != Vector2i(0, 1) and not sim.in_god_mode:
+			if gdir != Vector2i(0, 1) and not sim.in_god_mode and state == State.PLAYING:
 				tutorial.offer("arrows")
 			audio.play("gravity", -14.0, 0.1)
 		&"checkpoint":

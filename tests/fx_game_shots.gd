@@ -16,8 +16,8 @@ const SPOTS := [
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
 	["keytouch", Vector2(89, 10)],
-	["cave_shadow_on", Vector2(111, 60)],
-	["cave_shadow_off", Vector2(111, 60)],
+	["cave_shadow_on", Vector2(216, 69)],
+	["cave_shadow_off", Vector2(216, 69)],
 	["hc_off", Vector2(262, 150)],
 	["hc_on", Vector2(262, 150)],
 ]

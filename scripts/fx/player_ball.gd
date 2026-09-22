@@ -8,7 +8,7 @@ const BALL_SHADER := preload("res://shaders/fx/player_ball.gdshader")
 const AURA_SHADER := preload("res://shaders/fx/god_aura.gdshader")
 const RADIUS := 0.5
 ## Visual layer used only by the ball, so its own key light can target it exclusively.
-const BALL_LAYER := 1 << 19
+const BALL_LAYER := 1 << 18   # layer 19 (layer 20 is the world's moon-occluder curtain)
 ## Render layer used by this ball's own lights (set before adding to the tree; tests give each ball its own).
 var ball_layer := BALL_LAYER
 
@@ -104,7 +104,8 @@ func _ready() -> void:
 	_env_light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
 	_env_light.shadow_caster_mask = 0xFFFFFFFF & ~(1 << 19)
 	_env_light.light_cull_mask = 0xFFFFF & ~ball_layer
-	_env_light.position = Vector3(0, 0.15, 1.1)
+	# near the gameplay plane so nearby rock masses throw shadows onto the recessed back walls
+	_env_light.position = Vector3(0, 0.1, 0.4)
 	add_child(_env_light)
 	# Soft character key light: only lights the ball (layer), from front-top-left.
 	_key_light = OmniLight3D.new()
