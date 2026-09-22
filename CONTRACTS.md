@@ -102,8 +102,9 @@ func get_player_node() -> Node3D
 ### Block ownership by id (level uses these)
 - **world**: solid FG 9–21, 29–31, 35, 37–49, 51–55, 87, and 44 (black "secret" solid); passive decoration
   22, 32, 33, 34, 36, 50, 62, 227–240, 244–254; **all background ids 500+**.
-- **actors**: gravity 1 (left), 2 (up), 3 (right), 4 (dot/zero-g); crown 5; keys 6/7/8; key doors 23/24/25;
-  key gates 26/28; coin door 43; coins 100/101; 121 (brick complete); portals 242/381; spawn 255.
+- **world** ALSO owns key doors 23/24/25 and key gates 26/28 (they're used as ART, e.g. the demon body is
+  door 23): sculpted terrain-style masses that dissolve/ghost when `sim.is_key_active(color)` (via set_sim).
+- **actors**: gravity 1 (left), 2 (up), 3 (right), 4 (dot/zero-g); crown 5; keys 6/7/8; coin door 43; coins 100/101; 121 (brick complete); portals 242/381; spawn 255.
 - **physics** decides behavior of every id exactly like EE (solidity, arrows, dots, keys, doors, portals…).
   Doors/gates/coin-doors are dynamic: renderers must ask `sim.is_tile_solid_now()` / listen to events.
 
@@ -112,3 +113,26 @@ This must look like a AAA game: think *Ori*, *Limbo/Inside*, *Trine*, *Hollow Kn
 Smooth sculpted shapes, no visible 16px grid, rich materials, emissive fire/lava that lights the scene,
 glowing crystals, wet reflective surfaces, volumetric light shafts, drifting particles (embers, dust, snow),
 parallax depth, color grading. Everything reads clearly for gameplay: solid vs. empty must be obvious.
+
+## Dense art usage (IMPORTANT)
+Many action ids are used as dense art texture, not sparse pickups: red key 6 = 4929 tiles, blue key 8 = 1094,
+arrows 1/2/3 = 1558/1961/2163, dot 4 = 541, crown 5 = 848. Keys dot the dark tunnels (porous-dirt dither),
+arrow fields paint the tornado wind and the fire cavern's sparks. Render them with MultiMesh, small and
+subtle: a faint glowing mote, spark or wind streak that reads as texture. They light up or react when the ball
+touches them. World treats those tiles as air and tints the backdrop behind them.
+
+## THE CANONICAL ART = the EE minimap (user directive, top priority)
+The user: "the minimap is ALL of the map art, and gameplay art IS PART OF THE MINIMAP ART." The EX crew painted
+this level to be seen as the EE minimap. **`assets/ee_ref/minimap_ee.png` (400x200, one pixel per tile)** is
+rendered with EE's exact rule (`World.getMinimapColor`: minimap color of fg/deco id, else of bg id; per-id colors
+from ItemManager's createBrick minimapColor, -1 = sprite average) and is THE color reference for every tile.
+Per-id colors: `assets/ee_ref/minimap_colors.json` (null = transparent, shows the bg color).
+Consequences:
+- Terrain, doors (demon body), keys (#2c1a1a dirt dither), crowns (#43391f), portals (#7ba7c7): every tile's
+  on-screen base color should match its minimap color, smoothed and lit but recognizably the same painting.
+  A viewer who zooms out must see the minimap image, reimagined in 3D.
+- Gameplay blocks must stay FUNCTIONAL and discoverable while being part of the art: keys look like part of the
+  earth's dither but carry a faint inner glow or sheen and flare up when touched; arrows (no minimap color)
+  are subtle currents over the backdrop; doors look like the painted mass but shimmer when their key is active.
+- Shell minimap (M) = this image, beautifully presented (smoothly upscaled, vignette, glow), plus the player
+  marker, collected coins removed, and opened doors shown.
