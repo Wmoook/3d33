@@ -15,6 +15,8 @@ const SPOTS := [
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
 	["keytouch", Vector2(89, 10)],
+	["hc_off", Vector2(262, 150)],
+	["hc_on", Vector2(262, 150)],
 ]
 var ghost: Node3D
 var game
@@ -40,6 +42,7 @@ func _ready() -> void:
 		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		game.actors.overlays.visible = s[0] != "inferno_nooverlay"
+		game.actors.set_high_contrast(s[0] == "hc_on")
 		if s[0] == "ghost" and ghost == null:
 			ghost = game.actors.create_ghost_ball()
 			game.actors.get_parent().add_child(ghost)

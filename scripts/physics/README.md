@@ -129,3 +129,18 @@ Added events: `complete` {tile, ticks} (121), `secret` {tile}, `god_mode` {on}.
 ## Note for renderers: EE solidity of "decoration-looking" ids
 Per `ItemId.isSolid`, **22, 32, 33, 34, 36 and 50 are solid** (9-97), and **62 is a one-way platform**
 (solid from above). 44 is solid. 227-255, 121, 100/101, 5-8 and 242/381 are not solid.
+
+## Replays, snapshots, determinism
+- `EESim.snapshot() -> Array` / `restore(s)`: the full mutable state. You can restore any snapshot any
+  number of times, in any order, and continue bit-identically. `state_hash()` hashes the whole
+  state. **Packed arrays are shared by reference in Godot 4**, so the sim never writes `tiles`,
+  `_lookup` or `_secrets` in place. It swaps in a modified copy instead (rare: coin pickups and
+  secret reveals), which makes the snapshots cheap. Renderers should therefore read `sim.tiles`
+  fresh and not cache the array.
+- `EEReplay` (`ee_replay.gd`): call `record(input)` before each `sim.tick(input)`. To play back, call
+  `start(sim)` (it resets the sim), then `step(sim)` once per physics tick, or `play_all(sim)`. Use
+  `save(path)` / `EEReplay.load_file(path)` for files, and `meta` for arbitrary metadata. The format
+  is one flag byte per tick, run-length encoded: 3000 random-input ticks come to 367 bytes. The sim
+  has no wall clock and a seeded portal RNG, so replays are bit-exact (tested).
+- `scripts/physics/route_descent.eerp`: a physics-verified run from spawn to the upper-earth cave
+  (see `LEVEL_ROUTE.md`).
