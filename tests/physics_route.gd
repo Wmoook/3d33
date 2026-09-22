@@ -56,6 +56,21 @@ func _init() -> void:
 		_cleanup()
 		quit()
 		return
+	# ROUTE_PIVOT="px,py,gx,gy,macro,mode": coarse search from spawn to the pivot tile, then a finer
+	# search from that exact physics state to the goal tile (tests a suspected choke point)
+	if OS.get_environment("ROUTE_PIVOT") != "":
+		var a := OS.get_environment("ROUTE_PIVOT").split(",")
+		var pv := Vector2i(int(a[0]), int(a[1]))
+		var g := Vector2i(int(a[2]), int(a[3]))
+		_build_open(false)
+		var r1 := _search(sim.snapshot(), ["pivot", pv, "tile", pv, 8, "coarse"], _distance_field([pv]), PackedInt32Array(), budget)
+		if r1.is_empty():
+			print("PIVOT: pivot unreachable"); _cleanup(); quit(); return
+		sim.restore(r1[1])
+		print("PIVOT reached at (%.2f,%.2f) v=(%.3f,%.3f); fine search to %s" % [sim.px, sim.py, sim.speed_x, sim.speed_y, g])
+		var r2 := _search(r1[1], ["goal", g, "tile", g, int(a[4]), a[5]], _distance_field([g]), PackedInt32Array(), budget)
+		print("PIVOT RESULT: ", "unreachable" if r2.is_empty() else "reached in %d macros" % r2[0].size())
+		_cleanup(); quit(); return
 	# ROUTE_EXPLORE=1: exhaustive coarse exploration from spawn (no goal); dumps reached cells
 	if OS.get_environment("ROUTE_EXPLORE") == "1":
 		_build_open(false)

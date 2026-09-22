@@ -16,6 +16,8 @@ var _terrain: WorldTerrain
 var _zones: WorldZones
 var _lights: WorldLights
 var _first := true
+var _sky_cave := -1.0
+var _sky_amb := Vector3(-1, -1, -1)
 
 ## Per-zone look. ambient: Color, amb_e, exposure, glow, sat, contrast, sky (bg energy), moon, fill,
 ## fill_col, particles: {name: amount}
@@ -79,7 +81,7 @@ func _make_environment() -> void:
 	sky_mat.shader = load("res://shaders/world/night_sky.gdshader")
 	sky_mat.set_shader_parameter("moon_dir", Vector3(0.24, 0.13, -1.0).normalized())
 	sky.sky_material = sky_mat
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL   # radiance refresh spread over frames (no per-frame cubemap)
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 	environment.sky = sky
 	environment.background_mode = Environment.BG_SKY
@@ -312,10 +314,16 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 			parts[pn] = parts.get(pn, 0.0) + pr["parts"][pn] * wk
 	environment.ambient_light_color = amb
 	environment.ambient_light_energy = amb_e * lerpf(1.35, 1.0, weights[WorldPalette.Z_SURFACE])
+	# sky radiance params only when they change noticeably (each change re-bakes the radiance cubemap)
 	var surf := weights[WorldPalette.Z_SURFACE]
-	sky_mat.set_shader_parameter("cave_amount", clampf(1.0 - surf, 0.0, 1.0))
-	sky_mat.set_shader_parameter("cave_top", Vector3(amb.r, amb.g, amb.b) * 0.9)
-	sky_mat.set_shader_parameter("cave_bottom", Vector3(amb.r, amb.g, amb.b) * 0.08)
+	var cave := clampf(1.0 - surf, 0.0, 1.0)
+	var amb_v := Vector3(amb.r, amb.g, amb.b)
+	if absf(cave - _sky_cave) > 0.03 or amb_v.distance_to(_sky_amb) > 0.03:
+		_sky_cave = cave
+		_sky_amb = amb_v
+		sky_mat.set_shader_parameter("cave_amount", cave)
+		sky_mat.set_shader_parameter("cave_top", amb_v * 0.9)
+		sky_mat.set_shader_parameter("cave_bottom", amb_v * 0.08)
 	environment.tonemap_exposure = expo
 	environment.glow_intensity = glow * 0.6
 	environment.adjustment_saturation = sat * 1.22

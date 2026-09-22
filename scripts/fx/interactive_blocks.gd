@@ -105,15 +105,17 @@ func _build_glyphs() -> void:
 		var gm := ShaderMaterial.new()
 		gm.shader = GLYPH_SHADER
 		if dot:
-			gm.set_shader_parameter("color", Color(1.0, 0.9, 0.62))
-			gm.set_shader_parameter("intensity", 1.1)
+			gm.set_shader_parameter("color", Color(1.0, 0.88, 0.6))
+			gm.set_shader_parameter("intensity", 0.6)
 		var om := ShaderMaterial.new()
-		om.shader = GLYPH_SHADER
-		om.set_shader_parameter("outline", 1.0)
+		om.shader = preload("res://shaders/fx/glyph_halo.gdshader") if dot else GLYPH_SHADER
+		if not dot:
+			om.set_shader_parameter("outline", 1.0)
 		mesh.surface_set_material(0, gm)
 		mesh.surface_set_material(1, om)
 		_glyph_mats.append(gm)
-		_glyph_mats.append(om)
+		if not dot:
+			_glyph_mats.append(om)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true

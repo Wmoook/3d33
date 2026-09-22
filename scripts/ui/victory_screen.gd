@@ -61,10 +61,10 @@ func _draw() -> void:
 	draw_string(f, Vector2(0, c.y), "ODYSSEY COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, W, 96, Color(1.0, 0.88, 0.6, a))
 	if stats.get("new_best", false):
 		var pb := 0.75 + 0.25 * sin(_t * 3.0)
-		draw_string(UITheme.hud(8), Vector2(0, c.y + 74), "NEW  BEST  TIME", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(UITheme.GOLD, pb * _k(1.2, 0.6) * o))
+		draw_string(UITheme.hud(8), Vector2(0, c.y + 84), "NEW  BEST  TIME", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(UITheme.GOLD, pb * _k(1.2, 0.6) * o))
 	elif float(stats.get("best", -1.0)) > 0.0:
 		var b: float = stats.best
-		draw_string(UITheme.hud_medium(4), Vector2(0, c.y + 74), "BEST  %02d:%05.2f" % [int(b / 60.0), fmod(b, 60.0)], HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.5 * _k(1.2, 0.6) * o))
+		draw_string(UITheme.hud_medium(4), Vector2(0, c.y + 84), "BEST  %02d:%05.2f" % [int(b / 60.0), fmod(b, 60.0)], HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.5 * _k(1.2, 0.6) * o))
 	var rk := _k(1.0, 1.0) * o
 	draw_line(Vector2(c.x - 300 * rk, c.y + 36), Vector2(c.x + 300 * rk, c.y + 36), Color(UITheme.GOLD, 0.7 * rk), 1.5, true)
 	var t: float = stats.time
@@ -77,8 +77,8 @@ func _draw() -> void:
 	for i in cols.size():
 		var ka := _k(1.3 + i * 0.15, 0.8) * o
 		var x := x0 + i * cw
-		draw_string(UITheme.hud_medium(6), Vector2(x, c.y + 110), cols[i][0], HORIZONTAL_ALIGNMENT_CENTER, cw, 18, Color(1, 1, 1, 0.5 * ka))
-		draw_string(UITheme.hud(), Vector2(x, c.y + 160), cols[i][1], HORIZONTAL_ALIGNMENT_CENTER, cw, 44, Color(1, 0.95, 0.85, ka))
+		draw_string(UITheme.hud_medium(6), Vector2(x, c.y + 142), cols[i][0], HORIZONTAL_ALIGNMENT_CENTER, cw, 18, Color(1, 1, 1, 0.5 * ka))
+		draw_string(UITheme.hud(), Vector2(x, c.y + 192), cols[i][1], HORIZONTAL_ALIGNMENT_CENTER, cw, 44, Color(1, 0.95, 0.85, ka))
 	if _t > 2.5:
 		var pk := (0.55 + 0.45 * sin(_t * 2.6)) * o
 		draw_string(UITheme.hud(8), Vector2(0, H * 0.82), "ANY KEY   continue exploring          R   new run", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, pk))

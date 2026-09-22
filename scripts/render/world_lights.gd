@@ -31,8 +31,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	moon.light_color = Color(0.62, 0.72, 1.0)
 	moon.light_energy = 0.9
 	moon.shadow_enabled = true
-	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	moon.directional_shadow_max_distance = 140.0
+	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	moon.directional_shadow_max_distance = 90.0
 	moon.shadow_blur = 1.5
 	moon.light_angular_distance = 1.0
 	moon.rotation_degrees = Vector3(-38.0, 28.0, 0.0)
@@ -183,7 +183,7 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	moon.visible = moon_energy > 0.01
 	_shadow_timer -= delta
 	if _shadow_timer <= 0.0:
-		_shadow_timer = 0.25
+		_shadow_timer = 0.5
 		_assign_shadows()
 
 func _assign_shadows() -> void:
@@ -194,7 +194,13 @@ func _assign_shadows() -> void:
 	order.sort_custom(func(a, b): return a[0] < b[0])
 	for k in order.size():
 		var li: OmniLight3D = cluster_lights[order[k][1]]
-		li.shadow_enabled = k < SHADOW_BUDGET and order[k][0] < 400.0
+		var want: bool = k < SHADOW_BUDGET and order[k][0] < 400.0
+		# hysteresis: keep an already-shadowed light while it stays reasonably close (avoids flip-flopping
+		# cube-shadow re-renders while moving)
+		if li.shadow_enabled and not want and order[k][0] < 520.0 and k < SHADOW_BUDGET + 1:
+			want = true
+		if li.shadow_enabled != want:
+			li.shadow_enabled = want
 
 func _process(delta: float) -> void:
 	_time += delta

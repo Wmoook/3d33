@@ -226,6 +226,31 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 				moss_x.append(Transform3D(Basis(Vector3.RIGHT, PI).scaled(Vector3(s, s * 1.1, s)),
 					Vector3(x + _rng.randf(), -y - 1.0 + 0.02, _rng.randf_range(-1.8, 0.1))))
 				moss_c.append(_vary(mc.darkened(0.2), 0.15))
+	# pocket rims: tiny hanging root strands from the pore ceilings, crumbs on their floors
+	var root_x: Array[Transform3D] = []
+	var root_c: Array[Color] = []
+	var crumb_x: Array[Transform3D] = []
+	var crumb_c: Array[Color] = []
+	for i in W * H:
+		if not terrain.pocket[i]:
+			continue
+		var x := i % W
+		var y := i / W
+		if y < 1 or y >= H - 1:
+			continue
+		var rc := cols.get_pixel(x, y).darkened(0.45)
+		if terrain.solid[i - W] and _rng.randf() < 0.45:
+			var l := _rng.randf_range(0.25, 0.6)
+			root_x.append(Transform3D(Basis(Vector3.FORWARD, _rng.randf_range(-0.3, 0.3)).scaled(Vector3(0.05, -l, 0.05)),
+				Vector3(x + _rng.randf_range(0.2, 0.8), -y - l * 0.5, _rng.randf_range(-1.1, -0.85))))
+			root_c.append(rc.darkened(0.3))
+		if terrain.solid[i + W] and _rng.randf() < 0.6:
+			var s := _rng.randf_range(0.08, 0.16)
+			crumb_x.append(Transform3D(Basis.from_euler(Vector3(_rng.randf(), _rng.randf(), _rng.randf()) * TAU).scaled(Vector3(s, s * 0.7, s)),
+				Vector3(x + _rng.randf_range(0.2, 0.8), -y - 1.0 + s * 0.4, _rng.randf_range(-1.2, -0.85))))
+			crumb_c.append(rc.lightened(0.15))
+	_add_mm("PocketRoots", _box(), _mat_prop, root_x, root_c)
+	_add_mm("PocketCrumbs", _pebble_mesh(), _mat_prop, crumb_x, crumb_c)
 	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
 	_build_near_silhouettes(lvl, terrain)

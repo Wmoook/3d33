@@ -140,6 +140,7 @@ func _build_ui() -> void:
 	pause_menu.resume_requested.connect(_resume)
 	victory.closed.connect(func():
 		audio.set_bed(_zone_info.bed)
+		hud.set_state({"visible": state == State.PLAYING})
 		if _victory_zoom > 0.0:
 			rig.target_zoom = _victory_zoom
 			_victory_zoom = -1.0)
@@ -468,6 +469,7 @@ func _process(delta: float) -> void:
 					_go_live()
 			if state == State.PLAYING:
 				_update_zone(delta)
+			tutorial.visible = state == State.PLAYING and not victory.visible and not paused
 			_update_hud()
 
 ## Run timer: the sim's EE run timer (Me.ticks) when available, else shell ticks.
@@ -626,6 +628,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			audio.play("crown", 0.0, 0.0)
 			hud.flash(UITheme.GOLD, 0.8)
 			audio.set_bed(&"title")
+			hud.set_state({"visible": false})
 			_victory_zoom = rig.target_zoom
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))

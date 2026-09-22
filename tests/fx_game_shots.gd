@@ -9,7 +9,13 @@ const SPOTS := [
 	["arrowline", Vector2(388, 18)],
 	["dots", Vector2(262, 152)],
 	["spawn", Vector2(65, 11)],
+	["dot92", Vector2(90, 13)],
+	["lake", Vector2(330, 186)],
+	["inferno", Vector2(150, 110)],
+	["inferno_nooverlay", Vector2(150, 110)],
+	["ghost", Vector2(66, 11)],
 ]
+var ghost: Node3D
 var game
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
@@ -32,10 +38,18 @@ func _ready() -> void:
 		var t: Vector2 = s[1]
 		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
+		game.actors.overlays.visible = s[0] != "inferno_nooverlay"
+		if s[0] == "ghost" and ghost == null:
+			ghost = game.actors.create_ghost_ball()
+			game.actors.get_parent().add_child(ghost)
 		await _wait(2.0)
 		get_viewport().get_texture().get_image().save_png("user://fx_game_%s.png" % s[0])
 		print("saved fx_game_", s[0])
 	get_tree().quit()
+func _process(delta: float) -> void:
+	if ghost:
+		ghost.update_ghost(EECoords.player_center(game.sim.px - 40.0, game.sim.py), game.sim, delta)
+
 func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true, false, true).timeout
 	for i in int(s * 40.0):

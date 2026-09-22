@@ -257,7 +257,7 @@ static func dot_glyph() -> Mesh:
 		var mesh := ArrayMesh.new()
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		_sphere(st, Vector3.ZERO, 0.1, 10, 6)
+		_sphere(st, Vector3.ZERO, 0.085, 10, 6)
 		var seg := 28
 		for i in seg:
 			var a0 := TAU * i / seg
@@ -266,7 +266,7 @@ static func dot_glyph() -> Mesh:
 				var b0 := TAU * j / 4
 				var b1 := TAU * (j + 1) / 4
 				var R := 0.2
-				var r := 0.016
+				var r := 0.011
 				var f := func(a: float, b: float) -> Vector3:
 					var rr := R + cos(b) * r
 					return Vector3(cos(a) * rr, sin(a) * rr, sin(b) * r)
@@ -278,7 +278,7 @@ static func dot_glyph() -> Mesh:
 		for i in seg:
 			var a0 := TAU * i / seg
 			var a1 := TAU * (i + 1) / seg
-			_tri(st2, Vector3(0, 0, -0.03), Vector3(cos(a0) * 0.25, sin(a0) * 0.25, -0.03), Vector3(cos(a1) * 0.25, sin(a1) * 0.25, -0.03))
+			_tri(st2, Vector3(0, 0, -0.03), Vector3(cos(a0) * 0.36, sin(a0) * 0.36, -0.03), Vector3(cos(a1) * 0.36, sin(a1) * 0.36, -0.03))
 		st2.generate_normals()
 		st2.commit(mesh)
 		return mesh)

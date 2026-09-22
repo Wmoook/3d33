@@ -202,6 +202,17 @@ void fragment() {
 		if (vzb == 2) { albedo *= 0.3; }   // inferno back walls stay the painting's near-black red
 		// contact darkening where the foreground meets the back wall
 		ao = mix(0.55, 1.0, smoothstep(-0.05, -0.8, s.x)) * mix(0.6, 1.0, smoothstep(-3.2, -1.7, wp.z));
+		if (fld.g > 0.5) {
+			// pores / burrows in one rock body: soft radial darkness, deepest at the pocket centre,
+			// tinted by the surrounding rock and speckled with crumbs
+			vec3 rock; int rm; float rb;
+			region_sample(fgcol_tex, p, 8.0, rock, rm, rb);
+			float depth_in = smoothstep(0.0, 0.5, -s.x);
+			albedo = mix(rock * 0.55, c * 0.5, 0.4);
+			ao = mix(0.75, 0.12, depth_in);
+			float crumb = step(0.93, hash12(floor(p * 9.0))) * (1.0 - depth_in * 0.6);
+			albedo = mix(albedo, rock * 0.9, crumb);
+		}
 		rough = 0.85;
 		detail_scale = 0.5;
 	} else {
@@ -234,8 +245,15 @@ void fragment() {
 
 	if (mat == M_EARTH || mat == M_SAND) {
 		// clay/soil: strata + pebbles, slightly wet in cavities
+		// continuous world-space strata + large tonal patches flowing across tile boundaries, so
+		// neighbouring tiles read as one rock mass rather than individual blocks
 		float st = gnoise(vec2(p.x * 0.18, p.y * 1.6)) * 0.5 + 0.5;
-		albedo *= mix(0.78, 1.12, st) * mix(0.8, 1.1, dh);
+		float band = sin(p.y * 0.9 + fbm2(p * vec2(0.08, 0.25)) * 3.0) * 0.5 + 0.5;
+		float patch = fbm3(p * 0.12) * 0.5 + 0.5;
+		albedo *= mix(0.78, 1.12, st) * mix(0.8, 1.1, dh) * mix(0.85, 1.12, band) * mix(0.82, 1.15, patch);
+		// worn rims: the edge of every bevel is lighter / crumbly (dissolves the blocky outline)
+		float rim = 1.0 - smoothstep(0.0, 0.2, max(s.x, 0.0));
+		albedo *= 1.0 + rim * (hash12(floor(p * 12.0)) * 0.35 - 0.05);
 		rough = mix(0.62, 0.92, dh);
 		n = normalize(mix(gn, dn, 0.85));
 	} else if (mat == M_STONE || mat == M_METAL) {

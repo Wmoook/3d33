@@ -6,8 +6,8 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 uniform sampler2D mask_lin : filter_linear, repeat_disable;
 uniform sampler2D mask_near : filter_nearest, repeat_disable;
 uniform vec2 level_size = vec2(400.0, 200.0);
-uniform float fire_gain = 1.0;
-uniform float caustic_gain = 1.0;
+uniform float fire_gain = 0.7;
+uniform float caustic_gain = 0.7;
 uniform float glint_gain = 1.0;
 uniform float stream_gain = 1.0;
 

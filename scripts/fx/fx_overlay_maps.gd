@@ -119,7 +119,7 @@ func _make_mask(lvl: EELevel) -> void:
 	# caustic weight: water tiles + solid walls within 6 tiles (Chebyshev) of water, falling off
 	var caus := PackedFloat32Array()
 	caus.resize(W * H)
-	var R := 6
+	var R := 4
 	for y in H:
 		for x in W:
 			if water[y * W + x] == 0:

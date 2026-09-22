@@ -246,7 +246,7 @@ func _build_water() -> void:
 		var bot := -float(t.y) - 0.9
 		var a := float(t.x) - 0.05
 		var b := float(x1) + 1.05
-		var z := Z_FIELD + 0.02
+		var z := Z_FIELD + 0.03
 		for v in [[a, top, 0.0], [a, bot, 1.0], [b, bot, 1.0], [a, top, 0.0], [b, bot, 1.0], [b, top, 0.0]]:
 			st.set_uv(Vector2(v[0], v[2]))
 			st.add_vertex(Vector3(v[0], v[1], z))
@@ -269,6 +269,7 @@ func _build_water() -> void:
 		mi.material_override = sm
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
+	_build_refraction()
 	# streams: splash sites at the base of each stream column
 	for t in maps.stream_tiles:
 		if (t.x + t.y) % 5 == 0 and maps.stream[(t.y + 1) * maps.W + t.x] == 0:
@@ -277,6 +278,44 @@ func _build_water() -> void:
 		var s := _splash()
 		add_child(s)
 		_splash_pool.append(s)
+
+## One refraction mesh over all lake water tiles (horizontal runs per row), depth in vertex colour.
+func _build_refraction() -> void:
+	var W := maps.W
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 0
+	for y in maps.H:
+		var x := 0
+		while x < W:
+			if maps.water[y * W + x] == 0:
+				x += 1
+				continue
+			var x0 := x
+			while x < W and maps.water[y * W + x] == 1:
+				x += 1
+			# depth below the surface, sampled at the run start
+			var d := 0
+			while y - d - 1 >= 0 and maps.water[(y - d - 1) * W + x0] == 1:
+				d += 1
+			var z := Z_FIELD + 0.01
+			var top := -float(y)
+			var bot := -float(y) - 1.0
+			var quad := [[x0, top, d], [x, top, d], [x, bot, d + 1], [x0, top, d], [x, bot, d + 1], [x0, bot, d + 1]]
+			for v in quad:
+				st.set_color(Color(float(v[2]), 0, 0))
+				st.add_vertex(Vector3(float(v[0]), v[1], z))
+			n += 1
+	if n == 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.name = "WaterRefraction"
+	mi.mesh = st.commit()
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/water_refract.gdshader")
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 func _mist(width: float) -> GPUParticles3D:
 	var p := GPUParticles3D.new()

@@ -59,6 +59,9 @@ var _dying := false
 var _death_t := 0.0
 var _materialize := 1.0
 var _glow_flash := 0.0
+## Ghost replay ball: translucent + desaturated, no lights/trail/bursts/aura. Set before adding to the tree.
+var ghost := false
+var ghost_alpha := 0.35
 ## Test hook: when non-empty, these uniform values override the automatic expression.
 var face_override := {}
 
@@ -73,7 +76,7 @@ func _ready() -> void:
 	sph.rings = 48
 	_body.mesh = sph
 	_mat = ShaderMaterial.new()
-	_mat.shader = BALL_SHADER
+	_mat.shader = _ghost_shader() if ghost else BALL_SHADER
 	_body.material_override = _mat
 	_body.layers = ball_layer
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -83,9 +86,11 @@ func _ready() -> void:
 	_env_light = OmniLight3D.new()
 	_env_light.light_color = Color(1.0, 0.8, 0.5)
 	_env_light.light_energy = 1.0
-	_env_light.omni_range = 7.5
+	_env_light.omni_range = 6.0
 	_env_light.omni_attenuation = 2.0
-	_env_light.shadow_enabled = true
+	# No shadows: an omni shadow re-renders the dense terrain around the ball every frame (measured by shell as
+	# the bulk of the actors' cost in the inferno). The light is kept short-ranged so it doesn't leak far.
+	_env_light.shadow_enabled = false
 	_env_light.shadow_bias = 0.06
 	# dual-paraboloid = 2 shadow passes instead of 6; the world's moon-occluder curtain (layer 20) never casts
 	_env_light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
@@ -147,6 +152,33 @@ func _ready() -> void:
 	_trail = FxTrail.new()
 	add_child(_trail)
 
+	if ghost:
+		for n in [_env_light, _key_light, _rim_light, _halo, _aura, _trail]:
+			n.queue_free()
+		_env_light = null
+		_trail = null
+		bursts = null
+
+static var _ghost_sh: Shader
+## The hero shader, but alpha-blended and desaturated (built once from the hero code).
+static func _ghost_shader() -> Shader:
+	if _ghost_sh == null:
+		var code := BALL_SHADER.code
+		code = code.replace("render_mode blend_mix, depth_draw_opaque,", "render_mode blend_mix, depth_draw_always,")
+		code = code.replace("uniform float dissolve = 0.0;", "uniform float dissolve = 0.0;
+uniform float ghost_alpha = 0.35;")
+		code = code.replace("	ALBEDO = col;", "	col = mix(col, vec3(dot(col, vec3(0.3, 0.55, 0.15))), 0.7);
+	ALBEDO = col;")
+		code = code.replace("	EMISSION = emis;", "	EMISSION = emis * 0.4;
+	ALPHA = ghost_alpha;")
+		_ghost_sh = Shader.new()
+		_ghost_sh.code = code
+	return _ghost_sh
+
+## Drive a ghost ball from a second EESim (called by the shell every frame).
+func update_ghost(world_pos: Vector3, ghost_sim, delta: float) -> void:
+	update_from_sim(world_pos, ghost_sim, delta)
+
 func _make_crown(silver: bool) -> MeshInstance3D:
 	var c := MeshInstance3D.new()
 	c.mesh = FxMeshes.crown()
@@ -182,7 +214,8 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	var teleported := raw_step.length() > 3.0
 	if teleported:
 		raw_step = Vector3.ZERO
-		_trail.clear()
+		if _trail:
+			_trail.clear()
 	global_position = world_pos
 	_prev_pos = world_pos
 	_has_prev = true
@@ -293,10 +326,11 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 
 	# --- god aura, crowns ---
 	_god = move_toward(_god, 1.0 if god else 0.0, delta * 4.0)
-	_aura.visible = _god > 0.01
-	_halo.visible = not _dying
-	_aura_mat.set_shader_parameter("intensity", _god * 0.6)
-	_aura.scale = Vector3.ONE * (0.8 + 0.2 * _god)
+	if not ghost:
+		_aura.visible = _god > 0.01
+		_halo.visible = not _dying
+		_aura_mat.set_shader_parameter("intensity", _god * 0.6)
+		_aura.scale = Vector3.ONE * (0.8 + 0.2 * _god)
 	var has_crown := bool(_sget(sim, "has_crown", false))
 	var has_silver := bool(_sget(sim, "has_silver_crown", false))
 	_crown_k = move_toward(_crown_k, 1.0 if has_crown else 0.0, delta * 5.0)
@@ -306,7 +340,8 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 
 	# --- trail ---
 	var spd := ee_vel.length()
-	_trail.push(world_pos, clampf((spd - 3.5) / 5.0, 0.0, 1.0) * 0.8 * (0.0 if god or _dying else 1.0), delta)
+	if _trail:
+		_trail.push(world_pos, clampf((spd - 3.5) / 5.0, 0.0, 1.0) * 0.8 * (0.0 if god or _dying else 1.0), delta)
 
 	# --- death / materialize ---
 	if _dying:
@@ -325,7 +360,8 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 		_frame.scale = Vector3.ONE
 	_glow_flash = maxf(_glow_flash - delta * 3.5, 0.0)
 	_mat.set_shader_parameter("glow", _glow_flash + (1.0 - _materialize) * 1.5)
-	_env_light.light_energy = (1.0 + _glow_flash * 2.0) * (0.25 if _dying else 1.0)
+	if _env_light:
+		_env_light.light_energy = (1.0 + _glow_flash * 2.0) * (0.25 if _dying else 1.0)
 
 var _last_fall := 0.0
 var _pending_respawn_fx := false
@@ -370,7 +406,8 @@ func on_death() -> void:
 		bursts.play(&"shards", global_position, Vector3.UP)
 		bursts.play(&"death_sparks", global_position, Vector3.UP)
 		bursts.flash(global_position, Color(1.0, 0.55, 0.2), 4.0, 0.5, 8.0)
-	_trail.clear()
+	if _trail:
+		_trail.clear()
 
 func on_respawn() -> void:
 	_dying = false
@@ -380,7 +417,8 @@ func on_respawn() -> void:
 	_sq_v = 0.0
 	_roll_vel = 0.0
 	_has_prev = false
-	_trail.clear()
+	if _trail:
+		_trail.clear()
 	# The new position arrives with the next update_from_sim(); fire the FX there.
 	_pending_respawn_fx = true
 

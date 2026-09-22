@@ -37,11 +37,19 @@ func build(lvl: EELevel, s) -> void:
 	player.name = "PlayerBall"
 	player.bursts = bursts
 	add_child(player)
+	_no_shadows(self)
 	if s != null:
 		if "px" in s:
 			player.position = EECoords.player_center(s.px, s.py)
 		if s.has_signal("sim_event"):
 			s.sim_event.connect(_on_sim_event)
+
+## FX never cast shadows (each shadow-casting light would re-render them; the world's lights do cast).
+func _no_shadows(n: Node) -> void:
+	if n is GeometryInstance3D:
+		(n as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_no_shadows(c)
 
 ## world_pos = interpolated ball CENTER in world space (EECoords.player_center(px, py)).
 func update_player(world_pos: Vector3, s, delta: float) -> void:
@@ -59,6 +67,15 @@ func update_camera(cam_pos: Vector3) -> void:
 		overlays.focus_override = cam_pos
 	if life:
 		life.set_focus(cam_pos)
+
+## Ghost replay ball for the shell: hero look, desaturated, ~35% alpha, no lights/trail/bursts/events.
+## Shell adds it to the tree and drives it with ghost.update_ghost(world_pos, ghost_sim, delta).
+func create_ghost_ball() -> Node3D:
+	var g := FxPlayerBall.new()
+	g.name = "GhostBall"
+	g.ghost = true
+	g.ball_layer = 1
+	return g
 
 func get_player_node() -> Node3D:
 	return player
