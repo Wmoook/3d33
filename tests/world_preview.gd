@@ -103,6 +103,10 @@ func _run_perf() -> void:
 	var focus := _place(SPOTS[_names[0]])
 	var env := world.get_environment()
 	print("PERF base %.2f ms" % await _measure(focus, 120))
+	world.doors.visible = false
+	print("PERF -doors %.2f ms" % await _measure(focus, 120))
+	world.decor.visible = false
+	print("PERF -decor %.2f ms" % await _measure(focus, 120))
 	env.volumetric_fog_enabled = false
 	print("PERF -fog %.2f ms" % await _measure(focus, 120))
 	env.ssr_enabled = false

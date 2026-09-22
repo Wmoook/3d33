@@ -5,7 +5,7 @@ const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS := [
 	["canopy", Vector2(29, 9)],
 	["redkeys", Vector2(110, 62)],
-	["tornado", Vector2(24, 106)],
+	["tornado", Vector2(36, 124)],
 	["arrowline", Vector2(388, 18)],
 	["dots", Vector2(262, 152)],
 	["spawn", Vector2(65, 11)],
