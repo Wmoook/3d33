@@ -59,7 +59,9 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 	if overlays:
 		var t := EECoords.world_to_tile(world_pos)
 		var m := overlays.maps
-		player.underwater = t.x >= 0 and t.y >= 0 and t.x < m.W and t.y < m.H and m.water[t.y * m.W + t.x] == 1
+		# x-ray the ball whenever art can occlude it: lake water, or inside terrain (god mode / open doors)
+		var inb := t.x >= 0 and t.y >= 0 and t.x < m.W and t.y < m.H
+		player.underwater = inb and (m.water[t.y * m.W + t.x] == 1 or not FxOverlayMaps.is_open(level, t.x, t.y))
 	player.update_from_sim(world_pos, s, delta)
 	blocks.set_ball_pos(world_pos)
 	if life:

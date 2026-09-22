@@ -43,7 +43,11 @@ func build(lvl: EELevel) -> void:
 			elif _same(c, FIRE_O):
 				fire[i] = 1
 			elif _is_water(c):
-				_classify_water(x, y, i)
+				var id := lvl.get_fg(x, y)
+				# key doors/gates are painted blue too (the upper "lake" is door 25): water FX there would hide
+				# whether the door is open, so doors never count as water
+				if not ((id >= 23 and id <= 28) or id == 43):
+					_classify_water(x, y, i)
 	_find_fire(lvl)
 	_find_water(lvl)
 	_make_mask(lvl)

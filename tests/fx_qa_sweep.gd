@@ -79,6 +79,9 @@ func _ready() -> void:
 		await _wait(1.6)
 		game.collision_overlay.visible = false
 		await _frames(3)
+		var cam := get_viewport().get_camera_3d()
+		var bp: Vector3 = game.actors.player.global_position
+		print("  ball world ", bp, " screen ", cam.unproject_position(bp), " vp ", get_viewport().get_visible_rect().size, " dead=", game.sim.is_dead)
 		var a := _grab()
 		game.collision_overlay.visible = true
 		game.collision_overlay.mark_dirty()

@@ -50,7 +50,8 @@ void fragment() {
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
 	float pulse = 0.8 + 0.2 * sin(TIME * 2.2 + v_ph);
 	float spark = pow(max(sin(TIME * 0.7 + v_ph * 13.0), 0.0), 30.0);
-	float k = mix(pulse, 0.7 + spark * 1.2, twinkle) * (1.0 - active * 0.35);
+	// crowns twinkle gently: a strong spike bloomed into a white flare around the small dark gem
+	float k = mix(pulse, 0.75 + spark * 0.45, twinkle) * (1.0 - active * 0.35);
 	ALBEDO = gem_color * (0.35 + v_flare * 0.4);
 	ROUGHNESS = 0.1;
 	SPECULAR = 0.8;
