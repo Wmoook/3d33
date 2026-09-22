@@ -152,3 +152,15 @@ Consequences:
   snowfall, cold blue light; lake = underwater light caustics and reflections. Backdrops and environment
   (fog, ambient light, exposure, grading, particles) crossfade smoothly between zones.
 - Shell uses get_zone_at/zone_changed for title cards, music and ambience (no separate zone rectangles).
+
+## GAMEPLAY READABILITY: OVERRIDES ALL ART RULES ABOVE (user, after playing)
+"I just hit a wall", "I need to SEE I can go through the keys", "can't see arrows or dots".
+1. SOLID LOOKS SOLID, PASSABLE LOOKS PASSABLE, tile-exact. No solid tile may look like open air (incl. black 44
+   against dark backdrops, which needs rim/edge highlight), and no non-solid tile may be covered by terrain.
+2. Every gameplay block is clearly visible per tile, in any lighting:
+   - keys 6/7/8: glowing red/green/blue gems (~0.4 tile) in open air; flare on touch.
+   - arrows 1/2/3: crisp glowing amber chevrons (~0.5 tile) pointing in the gravity direction, with a flow pulse.
+   - dots 4: clear small glowing pale-gold orb with a floating ring (zero-g).
+   - crowns 5: visible small gold glints; coins/portals/spawn/coin door stay hero objects.
+   The painting (minimap colors) is still the palette, but visibility wins every conflict.
+3. F3 = collision overlay (shell). World keeps tests/world_solidity_check at ~0 mismatches.
