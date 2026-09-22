@@ -239,20 +239,36 @@ func _make_demon() -> void:
 ## FV finale: warm golden rim light wrapping the summit shrine peak and the trophy.
 func _make_shrine() -> void:
 	var t := WorldPalette.FV_SHRINE
-	for off in [Vector3(-2.5, 1.5, 2.2), Vector3(3.0, 0.5, 1.2)]:
+	var c := Vector3(t.x + 0.5, -t.y - 0.5, 0.0)
+	# golden rim: two grazing lights behind-above the peak + a soft key in front of the trophy
+	for d in [[Vector3(-2.0, 0.5, -2.6), 6.5, 8.0], [Vector3(2.2, 0.0, -2.4), 6.0, 8.0], [Vector3(0.0, 0.8, 2.2), 1.4, 6.0]]:
 		var l := OmniLight3D.new()
 		l.name = "ShrineRim"
-		l.position = Vector3(t.x + 0.5, -t.y - 0.5, 0.0) + off
-		l.light_color = Color(1.0, 0.78, 0.42)
-		l.light_energy = 2.2
-		l.omni_range = 9.0
-		l.omni_attenuation = 1.4
-		l.light_volumetric_fog_energy = 1.5
+		l.position = c + d[0]
+		l.light_color = Color(1.0, 0.76, 0.38)
+		l.light_energy = d[1]
+		l.omni_range = d[2]
+		l.omni_attenuation = 1.2
+		l.light_specular = 1.0
+		l.light_volumetric_fog_energy = 3.0
 		l.distance_fade_enabled = true
-		l.distance_fade_begin = 80.0
+		l.distance_fade_begin = 90.0
 		l.distance_fade_length = 15.0
 		l.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 		add_child(l)
+	# a warm, softly glowing haze held in the air around the trophy
+	var fv := FogVolume.new()
+	fv.name = "ShrineGlow"
+	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+	fv.size = Vector3(8.0, 8.0, 5.0)
+	fv.position = c + Vector3(0.0, 1.0, 0.5)
+	var fm := FogMaterial.new()
+	fm.density = 0.07
+	fm.albedo = Color(1.0, 0.85, 0.6)
+	fm.emission = Color(1.0, 0.7, 0.35) * 0.22
+	fm.edge_fade = 1.0
+	fv.material = fm
+	add_child(fv)
 
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	_focus = world_pos

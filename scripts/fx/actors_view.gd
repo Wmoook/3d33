@@ -17,6 +17,7 @@ var mech: FxMechBlocks
 var veil: FxVeil          # daylight scenery FX (non-Odyssey levels)
 var day_life: FxDayLife
 var vines: FxVines
+var shrine: FxShrine
 var cfg := {}
 var level_id := "odyssey"
 ## WorldView (zones). Found as a sibling named "WorldView" when the shell doesn't call set_world().
@@ -87,6 +88,11 @@ func build(lvl: EELevel, s) -> void:
 	player.name = "PlayerBall"
 	player.bursts = bursts
 	add_child(player)
+	if not is_odyssey():
+		shrine = FxShrine.new()
+		shrine.name = "Shrine"
+		add_child(shrine)
+		shrine.build(lvl, s, player, bursts)
 	_no_shadows(self)
 	if s != null:
 		if "px" in s:
@@ -203,6 +209,10 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				bursts.flash(p, Color(1.0, 0.8, 0.35), 3.0, 0.5, 5.0)
 				player.on_happy(1.2)
 		&"complete":
+			if shrine:
+				shrine.on_complete(data)
+				player.on_happy(2.0)
+				return
 			var at: Vector3 = p
 			if data.has("tile"):
 				at = EECoords.tile_center(data.tile.x, data.tile.y)
@@ -222,6 +232,8 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			player.on_death()
 		&"respawn":
 			player.on_respawn()
+			if shrine:
+				shrine.reset_if_needed()
 			_had_crown = false
 		&"jump":
 			player.on_jump()

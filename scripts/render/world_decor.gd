@@ -313,21 +313,50 @@ func _leafy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 ## FV finale: dense wind-swept grass on every exposed top of the summit shrine peak (all leaning east).
 func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
 	var W := lvl.width
+	var H := lvl.height
 	var xs: Array[Transform3D] = []
 	var cs: Array[Color] = []
+	var fx: Array[Transform3D] = []
+	var fc: Array[Color] = []
+	var stem_x: Array[Transform3D] = []
+	var stem_c: Array[Color] = []
 	var r := WorldPalette.FV_RECT_SHRINE
-	for y in range(r.position.y, r.end.y):
+	var flower_cols := [Color(1.0, 0.85, 0.25), Color(1.0, 0.5, 0.7), Color(0.95, 0.95, 1.0), Color(0.6, 0.55, 1.0), Color(1.0, 0.6, 0.25)]
+	for y in range(r.position.y, mini(r.end.y, H - 1)):
 		for x in range(r.position.x, mini(r.end.x, W - 1)):
 			var i := y * W + x
-			if not terrain.solid[i] or terrain.solid[i - W]:
+			if not terrain.solid[i]:
 				continue
-			for k in 7:
-				var sc := _rng.randf_range(0.9, 1.5)
-				var b := Basis(Vector3.FORWARD, -0.45).scaled(Vector3(sc, sc * 1.2, sc))
-				xs.append(Transform3D(b, Vector3(x + (k + _rng.randf()) / 7.0, -y + 0.02, _rng.randf_range(-1.6, 0.25))))
-				cs.append(_vary(Color(0.46, 0.62, 0.22), 0.12))
-	var m := _foliage_mat(2.2, 0.55, 0.0, 0.7)
+			# every tile of the peak that touches open air gets lush grass on that face (tops dense, sides lighter)
+			var top := not terrain.solid[i - W]
+			var left := not terrain.solid[i - 1]
+			var right := not terrain.solid[i + 1]
+			if not (top or left or right):
+				continue
+			var n := 14 if top else 6
+			for k in n:
+				var sc := _rng.randf_range(0.9, 1.7)
+				var px := x + _rng.randf()
+				var py := -y + 0.02 if top else -y - _rng.randf_range(0.05, 0.6)
+				if not top:
+					px = x + (0.02 if left else 0.98)
+				var lean := -0.4 + _rng.randf_range(-0.12, 0.12)
+				var b := Basis(Vector3.FORWARD, lean).scaled(Vector3(sc, sc * 1.25, sc))
+				xs.append(Transform3D(b, Vector3(px, py, _rng.randf_range(-1.8, 0.3))))
+				cs.append(_vary(Color(0.42, 0.66, 0.2).lerp(Color(0.62, 0.72, 0.25), _rng.randf() * 0.4), 0.1))
+			if top:
+				for k in 3:
+					var fcol: Color = flower_cols[_rng.randi() % flower_cols.size()]
+					var h := _rng.randf_range(0.25, 0.55)
+					var p := Vector3(x + _rng.randf(), -y + h, _rng.randf_range(-1.2, 0.3))
+					fx.append(Transform3D(Basis().scaled(Vector3(1.0, 0.6, 1.0) * _rng.randf_range(0.15, 0.22)), p))
+					fc.append(Color(fcol.r, fcol.g, fcol.b, 0.6))
+					stem_x.append(Transform3D(Basis().scaled(Vector3(0.025, h, 0.025)), p - Vector3(0, h * 0.5, 0)))
+					stem_c.append(Color(0.25, 0.45, 0.15))
+	var m := _foliage_mat(2.2, 0.6, 0.0, 0.7)
 	_add_mm("ShrineGrass", _grass_mesh(), m, xs, cs)
+	_add_mm("ShrineFlowers", _sphere(), _mat_glow, fx, fc, true)
+	_add_mm("ShrineStems", _box(), _mat_prop, stem_x, stem_c)
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):

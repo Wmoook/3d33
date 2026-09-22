@@ -150,9 +150,14 @@ func _build_glyphs() -> void:
 # ============================================================================ keys
 
 func _build_keys() -> void:
+	var ink := {}   # region index -> Array of [tile, id]
 	for id in [6, 7, 8, 5, 409]:
 		var tiles := lvl.find_all(id)
+		if not odyssey:
+			tiles = _split_ink(id, tiles, ink)
 		if tiles.is_empty():
+			if not odyssey and (id == 5 or id == 6):
+				_flares[id] = []   # ink letters still flare on touch
 			continue
 		var crown: bool = id == 5
 		var col: Color = CROWN_GLOW if crown else KEY_COLORS[KEY_IDS[id]]
@@ -180,6 +185,65 @@ func _build_keys() -> void:
 		_hc_mats.append(m)
 	for c in KEY_COLORS:
 		_key_active[c] = 0.0
+	for ri in ink:
+		_build_ink(INK_REGIONS[ri][0], ink[ri])
+
+## Non-Odyssey art regions where crowns (5) / red keys (6) are the INK of painted lettering
+## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z]
+const INK_REGIONS := [
+	[Rect2i(350, 0, 48, 72), [5, 6], -1.2],
+	[Rect2i(300, 14, 46, 29), [5], -1.2],
+]
+var _ink_mats: Array[ShaderMaterial] = []
+
+func _split_ink(id: int, tiles: Array[Vector2i], ink: Dictionary) -> Array[Vector2i]:
+	var keep: Array[Vector2i] = []
+	for t in tiles:
+		var hit := -1
+		for ri in INK_REGIONS.size():
+			var r: Array = INK_REGIONS[ri]
+			if (r[0] as Rect2i).has_point(t) and (r[1] as Array).has(id):
+				hit = ri
+				break
+		if hit < 0:
+			keep.append(t)
+		else:
+			if not ink.has(hit):
+				ink[hit] = []
+			ink[hit].append([t, id])
+	return keep
+
+## One flat quad per ink region; the letters come from a 1-texel-per-tile mask (R gold, G vermilion).
+func _build_ink(rect: Rect2i, cells: Array) -> void:
+	var r := rect.grow(1)
+	var img := Image.create(r.size.x, r.size.y, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 1))
+	for c in cells:
+		var t: Vector2i = c[0]
+		var col := img.get_pixel(t.x - r.position.x, t.y - r.position.y)
+		if c[1] == 5:
+			col.r = 1.0
+		else:
+			col.g = 1.0
+		img.set_pixel(t.x - r.position.x, t.y - r.position.y, col)
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/ink_letters.gdshader")
+	m.set_shader_parameter("mask", ImageTexture.create_from_image(img))
+	m.set_shader_parameter("rect", Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
+	var mi := MeshInstance3D.new()
+	mi.name = "InkLetters"
+	var q := QuadMesh.new()
+	q.size = Vector2(r.size)
+	mi.mesh = q
+	mi.material_override = m
+	var z: float = -1.2
+	for reg in INK_REGIONS:
+		if reg[0] == rect:
+			z = reg[2]
+	mi.position = Vector3(r.position.x + r.size.x * 0.5, -(r.position.y + r.size.y * 0.5), z)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	_ink_mats.append(m)
 
 ## Flare the art pebbles of `id` around a tile (key/crown touched).
 func flare(id: int, tile: Vector2i, strength := 1.0) -> void:
@@ -196,6 +260,8 @@ func set_ball_pos(p: Vector3) -> void:
 	if _field_mat:
 		_field_mat.set_shader_parameter("ball_pos", p)
 	for m in _glyph_mats:
+		m.set_shader_parameter("ball_pos", p)
+	for m in _veil_mats:
 		m.set_shader_parameter("ball_pos", p)
 
 func _multimesh(mesh: Mesh, tiles: Array[Vector2i], offset: Vector3, scale: float, tilt: bool, custom_y := [], jitter := 0.0) -> MultiMeshInstance3D:
@@ -630,6 +696,11 @@ func _build_portals() -> void:
 		q.size = Vector2(1.45, 1.45) if id == 242 else Vector2(1.2, 1.2)
 		var m := ShaderMaterial.new()
 		m.shader = PORTAL_SHADER
+		if not odyssey:
+			# "the Veil": shimmering membranes in stone rings instead of Odyssey's vortices
+			m.shader = preload("res://shaders/fx/veil_portal.gdshader")
+			q.size = Vector2(1.2, 1.3) if id == 242 else Vector2(1.0, 1.1)
+			_veil_mats.append(m)
 		if id == 381:
 			m.set_shader_parameter("invisible", 1.0)
 		else:
@@ -639,14 +710,23 @@ func _build_portals() -> void:
 		if id == 242:
 			var gm := ShaderMaterial.new()
 			gm.shader = GLOW_SHADER
-			gm.set_shader_parameter("color", Color(0.3, 0.7, 1.0))
-			gm.set_shader_parameter("intensity", 0.35)
+			gm.set_shader_parameter("color", Color(0.3, 0.7, 1.0) if odyssey else Color(0.6, 0.85, 1.0))
+			gm.set_shader_parameter("intensity", 0.35 if odyssey else 0.16)
 			var gq := QuadMesh.new()
 			gq.size = Vector2(2.4, 2.4)
 			gq.material = gm
 			_multimesh(gq, tiles, Vector3(0, 0, Z_PORTAL - 0.1), 1.0, false).name = "PortalGlow"
 
+var _veil_mats: Array[ShaderMaterial] = []
+var _veil_flares: Array = []   # Vector4(x, y, age, strength)
+
 func portal_fx(from_tile, to_tile) -> void:
+	for t in [from_tile, to_tile]:
+		if t is Vector2i and not _veil_mats.is_empty():
+			var c := EECoords.tile_center(t.x, t.y)
+			_veil_flares.push_front(Vector4(c.x, c.y, 0.0, 1.0))
+			if _veil_flares.size() > 4:
+				_veil_flares.pop_back()
 	if bursts == null:
 		return
 	for t in [from_tile, to_tile]:
@@ -716,6 +796,8 @@ var _spawn_nodes: Array = []
 var _trophies: Array = []
 
 func _build_trophy() -> void:
+	if not odyssey:
+		return   # other levels: FxShrine turns 121 into the winner's crown relic on its summit
 	for t in lvl.find_all(121):
 		var root := Node3D.new()
 		root.name = "Trophy"
@@ -818,6 +900,12 @@ func _process(delta: float) -> void:
 			_key_active[color] = move_toward(_key_active[color], active, delta * 4.0)
 			m.set_shader_parameter("active", _key_active[color])
 			_halo_mats[id].set_shader_parameter("active", 0.0)
+	if not _ink_mats.is_empty():
+		var fa := _age_flares(5, delta)
+		var fb := _age_flares(6, delta)
+		for m in _ink_mats:
+			m.set_shader_parameter("flares", fa)
+			m.set_shader_parameter("flares_b", fb)
 	# barriers
 	for b in _barriers:
 		var solid := _query_solid(b.reps[0], b.style)
@@ -852,10 +940,44 @@ func _process(delta: float) -> void:
 	_portal_pulse = maxf(_portal_pulse - delta * 2.0, 0.0)
 	if _portal_mat:
 		_portal_mat.set_shader_parameter("pulse", _portal_pulse)
+	if not _veil_mats.is_empty():
+		var packed := PackedVector4Array()
+		for i in range(_veil_flares.size() - 1, -1, -1):
+			var f: Vector4 = _veil_flares[i]
+			f.z += delta
+			if f.z > 3.0:
+				_veil_flares.remove_at(i)
+			else:
+				_veil_flares[i] = f
+		for f in _veil_flares:
+			packed.append(f)
+		while packed.size() < 4:
+			packed.append(Vector4.ZERO)
+		for m in _veil_mats:
+			m.set_shader_parameter("flares", packed)
 	for n in _spawn_nodes:
 		n.get_node("Inner").rotation.y = t * 1.5
 	for c in _trophies:
 		c.rotation.y = t * 0.8
+
+## Flares of an id that has no gem material (all its tiles are ink): age them here.
+func _age_flares(id: int, delta: float) -> PackedVector4Array:
+	var packed := PackedVector4Array()
+	if _flares.has(id):
+		var arr: Array = _flares[id]
+		if not _art_mats.has(id):
+			for i in range(arr.size() - 1, -1, -1):
+				var f: Vector4 = arr[i]
+				f.z += delta
+				if f.z > 2.5:
+					arr.remove_at(i)
+				else:
+					arr[i] = f
+		for f in arr:
+			packed.append(f)
+	while packed.size() < 4:
+		packed.append(Vector4.ZERO)
+	return packed
 
 ## Collected coins spin up, rise and zip toward the top-left of the screen (where the HUD counter lives).
 func _update_coin_fly(delta: float) -> void:
