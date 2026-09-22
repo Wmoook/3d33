@@ -428,7 +428,7 @@ func _build_dapples() -> void:
 			d.rotation.x = PI * 0.5            # project along -z (onto the terrain face and back walls)
 			d.texture_albedo = shade_tex
 			d.texture_emission = fleck_tex
-			d.emission_energy = 0.9 if layer == 0 else 0.6
+			d.emission_energy = 0.35 if layer == 0 else 0.22
 			d.albedo_mix = 0.55 if layer == 0 else 0.35
 			d.modulate = Color(1.0, 0.95, 0.82)
 			d.upper_fade = 0.2
@@ -466,7 +466,8 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 			var m := n2.get_noise_2d(x, y) * 0.5 + 0.5
 			var hole := 1.0 - smoothstep(0.18, 0.34, c + (m - 0.5) * 0.25)
 			if flecks:
-				img.set_pixel(x, y, Color(1.0, 0.85, 0.55, hole * edge))
+				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
+				img.set_pixel(x, y, Color(1.0 * a, 0.85 * a, 0.55 * a, a))
 			else:
 				img.set_pixel(x, y, Color(0.05, 0.07, 0.02, (1.0 - hole) * edge * 0.6))
 	img.generate_mipmaps()

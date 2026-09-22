@@ -380,7 +380,7 @@ func _setup_cinematic() -> void:
 	if not intro.is_empty() and route.size() >= 4:
 		var pre := []
 		for k in intro:
-			pre.append({"pos": Vector2(k[0], k[1]), "zoom": float(k[2])})
+			pre.append({"pos": Vector2(k[0], k[1]), "zoom": float(k[2]), "showcase": true, "cut": pre.size() > 0})
 		route[0]["cut"] = true    # cut from the showcase into the route
 		route = pre + route
 	if route.size() >= 4:

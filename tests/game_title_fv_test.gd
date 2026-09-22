@@ -10,7 +10,7 @@ func _ready() -> void:
 	while game.state != 1:
 		await get_tree().process_frame
 	for i in 4:
-		game.rig._cine_s = float(i) + 0.05
+		game.rig._cine_s = float(i) + 0.3
 		await _secs(5.5 if i == 0 else 1.5)
 		_shot("tfv_%d" % i)
 	get_tree().quit()

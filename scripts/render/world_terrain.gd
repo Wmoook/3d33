@@ -268,7 +268,8 @@ func sky_paint_image() -> Image:
 	var filled := PackedByteArray()
 	filled.resize(W * H)
 	for i in W * H:
-		if sky[i] and not _is_border(i % W, i / W):   # the black world border is not part of the sky art
+		# the black world border and minimap-coloured gameplay tiles in the sky (portal paths...) are not sky art
+		if sky[i] and not _is_border(i % W, i / W) and not _fg_has_minimap_colour(level.fg[i]):
 			buf[i * 4] = src[i * 3]; buf[i * 4 + 1] = src[i * 3 + 1]; buf[i * 4 + 2] = src[i * 3 + 2]; buf[i * 4 + 3] = 255
 			filled[i] = 1
 	_dilate(buf, filled)
@@ -285,6 +286,67 @@ func sky_paint_image() -> Image:
 	for i in W * H:
 		buf[i * 4 + 3] = 255 if filled[i] else 0
 	return Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
+
+## Day levels: soft density masks of the painted sky features, R = clouds (flat pale components),
+## G = distant mountain ranges (tall pale components). Upsampled 4x and blurred so no pixel steps remain.
+func sky_mask_image() -> Image:
+	var mm := _load_minimap()
+	if mm == null or mm.get_width() != W:
+		return null
+	var src := mm.get_data()
+	var pale := PackedByteArray()
+	pale.resize(W * H)
+	for i in W * H:
+		if not sky[i] or _is_border(i % W, i / W):
+			continue
+		var r: int = src[i * 3]; var g: int = src[i * 3 + 1]; var b: int = src[i * 3 + 2]
+		if absi(r - 199) + absi(g - 217) + absi(b - 255) < 12:
+			pale[i] = 1
+	var clouds := PackedByteArray(); clouds.resize(W * H)
+	var mounts := PackedByteArray(); mounts.resize(W * H)
+	var seen := PackedByteArray(); seen.resize(W * H)
+	for start in W * H:
+		if not pale[start] or seen[start]:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		var y0 := start / W
+		var y1 := y0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			y0 = mini(y0, y); y1 = maxi(y1, y)
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if pale[j] and not seen[j]:
+					seen[j] = 1
+					comp.append(j)
+		var tall := y1 - y0 >= 12
+		for i in comp:
+			if tall:
+				mounts[i] = 255
+			else:
+				clouds[i] = 255
+	var ci := Image.create_from_data(W, H, false, Image.FORMAT_L8, clouds)
+	var mi := Image.create_from_data(W, H, false, Image.FORMAT_L8, mounts)
+	ci.resize(W / 2, H / 2, Image.INTERPOLATE_BILINEAR)
+	ci.resize(W * 4, H * 4, Image.INTERPOLATE_CUBIC)
+	mi.resize(W * 4, H * 4, Image.INTERPOLATE_CUBIC)
+	var out := Image.create(W * 4, H * 4, false, Image.FORMAT_RG8)
+	var cd := ci.get_data()
+	var md := mi.get_data()
+	var od := PackedByteArray(); od.resize(W * H * 32)
+	for i in W * H * 16:
+		od[i * 2] = cd[i]
+		od[i * 2 + 1] = md[i]
+	out.set_data(W * 4, H * 4, false, Image.FORMAT_RG8, od)
+	return out
 
 ## Day levels: bare earth near open sky with no grass or foliage on top (the painted mountain peaks)
 ## becomes layered rocky crag instead of soil.

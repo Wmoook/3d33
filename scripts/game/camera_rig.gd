@@ -44,6 +44,7 @@ var _noise := FastNoiseLite.new()
 var _t := 0.0
 var _cine_keys: Array = []           # [{pos: Vector2 (tile space, y down), zoom: float}]
 var _cine_s := 0.0
+var _cine_last_i := -1
 
 func _ready() -> void:
 	cam = Camera3D.new()
@@ -143,7 +144,12 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 	var p3: Dictionary = _cine_keys[(i + 2) % n]
 	# Camera cuts (portal jumps / loop wrap): never fly across the map; jump to the next key instead.
 	var wrap_cut: bool = (i + 1) % n == 0 and (p1.pos as Vector2).distance_to(p2.pos) > 30.0
-	if p2.get("cut", false) or wrap_cut:
+	if (p2.get("cut", false) or wrap_cut) and p1.get("showcase", false):
+		# showcase keys (hand-picked title shots) DWELL with a slow drift before the cut instead of skipping
+		p0 = p1
+		p2 = {"pos": (p1.pos as Vector2) + Vector2(4.0, -0.5), "zoom": float(p1.zoom) * 0.97}
+		p3 = p2
+	elif p2.get("cut", false) or wrap_cut:
 		_cine_s = floorf(_cine_s) + 1.0
 		cinematic_cut.emit()
 		i = int(_cine_s) % n
@@ -157,6 +163,10 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 		p0 = p1
 	if p3.get("cut", false):
 		p3 = p2
+	if i != _cine_last_i and _cine_last_i >= 0 and _cine_keys[i].get("cut", false) and _cine_keys[(i - 1 + n) % n].get("showcase", false):
+		cinematic_cut.emit()   # entering the route after the showcase
+		_tilt = Vector2.ZERO
+	_cine_last_i = i
 	var pos := _catmull(p0.pos, p1.pos, p2.pos, p3.pos, f)
 	zoom = lerpf(p1.zoom, p2.zoom, f * f * (3.0 - 2.0 * f))
 	target_zoom = zoom

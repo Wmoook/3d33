@@ -9,6 +9,7 @@ shader_type sky;
 uniform sampler2D paint : source_color, filter_nearest, repeat_disable;  // W x H, a = real sky
 uniform vec2 level_size = vec2(400.0, 200.0);
 uniform vec3 sun_dir = vec3(-0.3, 0.55, 0.78);
+uniform sampler2D masks : filter_linear, repeat_disable;   // R clouds, G mountain ranges (soft)
 uniform float parallax = 0.6;
 uniform float spread = 1.3;
 uniform float brightness = 1.0;
@@ -29,6 +30,13 @@ float n2(vec2 p) {
 	vec2 f = fract(p);
 	f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+}
+
+float fbm(vec2 p) {
+	float a = 0.5;
+	float v = 0.0;
+	for (int i = 0; i < 5; i++) { v += a * n2(p); p = p * 2.03 + 11.7; a *= 0.5; }
+	return v;
 }
 
 vec4 fetch(ivec2 t) {
@@ -94,16 +102,40 @@ void sky() {
 		vec2 p = vec2(w.x, -w.y);
 		vec2 uv = p / level_size;
 		vec3 g = gradient(uv.y);
-		vec3 painted = paint_at(p);
-		// the painting's flat sky blue becomes the gradient; clouds / mountains keep their paint
-		float skyness = 1.0 - smoothstep(0.03, 0.12, distance(painted, pastel));
-		vec3 c = mix(painted, g, skyness);
-		c = mix(c, horizon_haze, 0.18 * (1.0 - skyness));   // aerial perspective on ranges / clouds
+		vec3 c = g;
+		vec2 muv = p / level_size;
+		// distant mountain ranges: soft mask + ridged fbm edge, lit ridges / shaded gullies, snow caps,
+		// strong aerial perspective (they are far away)
+		float mn = texture(masks, muv).g + (fbm(p * 0.18) - 0.5) * 0.35;
+		float mm = smoothstep(0.42, 0.5, mn);
+		if (mm > 0.0) {
+			float above = texture(masks, muv - vec2(0.0, 2.2 / level_size.y)).g + (fbm((p - vec2(0.0, 2.2)) * 0.18) - 0.5) * 0.35;
+			float snow = smoothstep(0.55, 0.3, above) * smoothstep(0.35, 0.6, fbm(p * 0.5));
+			float ridge = abs(fbm(vec2(p.x * 0.25, p.y * 0.12)) - 0.5) * 2.0;
+			vec3 rock = mix(vec3(0.36, 0.42, 0.62), vec3(0.55, 0.62, 0.85), ridge);
+			vec3 mc = mix(rock, vec3(0.92, 0.95, 1.0), max(snow, 0.25 * ridge));
+			mc = mix(mc, horizon_haze, 0.35);
+			c = mix(c, mc, mm);
+		}
+		// soft cumulus: blurred painted cloud mask as density hint + billowing fbm, sun-lit tops,
+		// shaded bellies, slow drift
+		vec2 drift = vec2(TIME * 0.25, 0.0);
+		vec2 cq = p + drift;
+		float cd = texture(masks, (p + drift * 0.15) / level_size).r;
+		float bill = fbm(cq * 0.22) * 0.7 + fbm(cq * 0.6) * 0.3;
+		float dens = smoothstep(0.08, 0.5, cd * 1.3 + (bill - 0.5) * 0.55);
+		if (dens > 0.0) {
+			float up = texture(masks, (p + drift * 0.15 - vec2(0.0, 1.5)) / level_size).r;
+			float lit = clamp(0.55 + (cd - up) * 1.6 + (bill - 0.5) * 0.5, 0.0, 1.0);
+			vec3 cc = mix(vec3(0.62, 0.68, 0.84), vec3(1.0, 0.98, 0.94), lit);
+			c = mix(c, cc, dens * 0.95);
+		}
+		// outside the painting: only the gradient
 		float inside = smoothstep(0.0, 0.03, uv.x) * smoothstep(1.0, 0.97, uv.x)
 			* smoothstep(0.0, 0.03, uv.y) * smoothstep(1.0, 0.97, uv.y);
 		c = mix(g, c, inside);
 		float wisp = n2(vec2(w.x * 0.04 + TIME * 0.01, w.y * 0.1)) * n2(vec2(w.x * 0.09 - TIME * 0.006, w.y * 0.18 + 3.0));
-		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.25, 0.8, wisp) * 0.14 * mix(1.0, skyness, inside));
+		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.25, 0.8, wisp) * 0.1);
 		float s = max(dot(d, sd), 0.0);
 		c += vec3(1.0, 0.85, 0.6) * (pow(s, 6.0) * 0.1 + pow(s, 60.0) * 0.25);
 		COLOR = c * brightness;

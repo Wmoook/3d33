@@ -5,7 +5,7 @@ shader_type spatial;
 // silhouette against the bright sky and pale stone.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx, shadows_disabled;
 
-uniform vec3 stem : source_color = vec3(0.22, 0.38, 0.1);
+uniform vec3 stem : source_color = vec3(0.16, 0.3, 0.07);
 uniform vec3 stem_dark : source_color = vec3(0.06, 0.12, 0.03);
 
 varying float v_shade;

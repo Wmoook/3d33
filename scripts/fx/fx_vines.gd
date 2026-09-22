@@ -9,9 +9,9 @@ const STRAND_SHADER := preload("res://shaders/fx/vine_strand.gdshader")
 const LEAF_SHADER := preload("res://shaders/fx/vine_leaf.gdshader")
 const Z := -0.32
 const NEAR := 30.0
-const MAX_STRANDS := 90
+const MAX_STRANDS := 120
 const NODES := 8
-const MAX_LEAVES_PER := 5
+const MAX_LEAVES_PER := 8
 const BUCKET := 16
 const BALL_R := 0.62
 
@@ -77,7 +77,7 @@ func _find_sites() -> void:
 			if not veil.is_foliage(x, y) or veil.is_foliage(x, y + 1) or not _free(x, y + 1):
 				continue
 			var h := FxInteractiveBlocks._tile_hash(Vector2i(x, y) + Vector2i(911, 37))
-			if h.x > 0.22:
+			if h.x > 0.4:
 				continue
 			# length: 1.2 .. 4 tiles, never reaching into anything below
 			var room := 0
@@ -134,13 +134,13 @@ func _new_strand(s: Vector3, idx: int) -> Dictionary:
 	prev = pts.duplicate()
 	var h := FxInteractiveBlocks._tile_hash(Vector2i(idx, 7))
 	var leaves: Array = []
-	var n := 2 + int(h.x * (MAX_LEAVES_PER - 1))
+	var n := 4 + int(h.x * (MAX_LEAVES_PER - 3))
 	for k in n:
 		var hk := FxInteractiveBlocks._tile_hash(Vector2i(idx, 100 + k))
 		leaves.append({"node": 1 + int(hk.x * (NODES - 2)), "side": 1.0 if hk.y < 0.5 else -1.0,
-			"size": 0.18 + hk.z * 0.14, "col": Color(0.28 + hk.x * 0.18, 0.5 + hk.y * 0.2, 0.12 + hk.z * 0.08)})
+			"size": 0.32 + hk.z * 0.18, "col": Color(0.16 + hk.x * 0.12, 0.36 + hk.y * 0.16, 0.07 + hk.z * 0.05)})
 	return {"pts": pts, "prev": prev, "seg": seg, "anchor": Vector2(s.x, s.y), "ph": h.y * TAU,
-		"w": 0.07 + h.z * 0.04, "leaves": leaves, "shade": h.z}
+		"w": 0.11 + h.z * 0.05, "leaves": leaves, "shade": h.z}
 
 func _process(delta: float) -> void:
 	if lvl == null:
@@ -226,7 +226,7 @@ func _process(delta: float) -> void:
 			var i: int = lf.node
 			var a := pts[i]
 			var dir := (pts[i] - pts[i - 1]).normalized()
-			var ang := atan2(dir.y, dir.x) + PI * 0.5 + lf.side * (0.9 + 0.25 * sin(t * 2.3 + i + st.ph))
+			var ang: float = atan2(dir.y, dir.x) + PI * 0.5 + lf.side * (0.9 + 0.25 * sin(t * 2.3 + i + st.ph))
 			var sz: float = lf.size
 			var basis := Basis(Vector3(0, 0, 1), ang).scaled(Vector3(sz * 0.6, sz, 1.0))
 			_leaf_mm.set_instance_transform(nl, Transform3D(basis, Vector3(a.x, a.y, Z + 0.02 + 0.01 * lf.side)))
