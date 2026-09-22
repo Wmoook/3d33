@@ -28,6 +28,17 @@ const SPOTS := [
 	["grove_dapple", Vector2(30, 40)],
 	["grove_nodapple", Vector2(30, 40)],
 	["falls_glint", Vector2(140, 160)],
+	["shrine", Vector2(388, 73)],
+	["crowning_a", Vector2(391, 73)],
+	["crowning_b", Vector2(391, 73)],
+	["crowning_c", Vector2(391, 73)],
+	["scroll", Vector2(372, 30)],
+	["logo", Vector2(322, 28)],
+	["veils", Vector2(245, 84)],
+	["rainbow", Vector2(145, 160)],
+	["updraft", Vector2(200, 64)],
+	["aqueduct", Vector2(360, 180)],
+	["sky_birds", Vector2(20, 12)],
 ]
 var game
 func _ready() -> void:
@@ -73,6 +84,13 @@ func _ready() -> void:
 			for dp in game.actors.veil._dapples:
 				dp.node.visible = false
 			for i in 3:
+				await get_tree().process_frame
+		if s[0].begins_with("crowning"):
+			game.sim.set("has_silver_crown", true)
+			game.actors._on_sim_event(&"complete", {"tile": Vector2i(394, 74)})
+			var wait: float = {"crowning_a": 0.9, "crowning_b": 2.3, "crowning_c": 3.4}[s[0]]
+			var t0 := Time.get_ticks_msec()
+			while Time.get_ticks_msec() - t0 < int(wait * 1000.0):
 				await get_tree().process_frame
 		if s[0] == "piano_hit":
 			for k in 4:

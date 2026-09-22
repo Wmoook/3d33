@@ -9,6 +9,7 @@ const SHADER := preload("res://shaders/fx/wing_creature.gdshader")
 const MAX_BUTTERFLIES := 14
 const MAX_BIRDS := 12
 const MAX_FLOCK := 18
+const MAX_GLIDERS := 6
 const NEAR := 26.0
 const BUCKET := 16
 ## wing hues (negative = white)
@@ -33,6 +34,9 @@ var _flock_t := 4.0
 var _bfly_mm: MultiMesh
 var _bird_mm: MultiMesh
 var _flock_mm: MultiMesh
+var _glide_mm: MultiMesh
+var _glide_sites: Array[Vector2] = []   # sky centres near the painted marble "V" birds (fg 87)
+var _gliders: Array = []
 var _assign_t := 0.0
 var _focus_fed := false
 
@@ -45,6 +49,8 @@ func build(level: EELevel, fx_veil: FxVeil) -> void:
 	_bfly_mm = _make_mm(_butterfly_mesh(), MAX_BUTTERFLIES, "Butterflies")
 	_bird_mm = _make_mm(_bird_mesh(), MAX_BIRDS, "Birds")
 	_flock_mm = _make_mm(_bird_mesh(), MAX_FLOCK, "Flock")
+	_glide_mm = _make_mm(_bird_mesh(), MAX_GLIDERS, "Gliders")
+	_find_glide_sites()
 	print("FxDayLife: butterfly sites %d, perches %d" % [_bfly_sites.size(), _perch_sites.size()])
 
 func _open(x: int, y: int) -> bool:
@@ -190,6 +196,7 @@ func _process(delta: float) -> void:
 	_update_butterflies(delta, t)
 	_update_birds(delta, t)
 	_update_flock(delta, t)
+	_update_gliders(delta, t)
 
 func _spawn_butterflies() -> void:
 	for i in range(_bflies.size() - 1, -1, -1):
@@ -320,3 +327,52 @@ func _update_flock(delta: float, t: float) -> void:
 		_flock_mm.set_instance_custom_data(n, Color(b.ph, 0.0, 1.0, 1.0))
 		n += 1
 	_flock_mm.visible_instance_count = n
+
+# ------------------------------------------------------------------------------------------ gliders
+
+## Soaring birds circle slowly in open sky around the painted "V" bird sculptures (fg 87, which stay solid
+## world art). They glide far behind the playfield (z -3.5) so they never overlap a solid tile in front.
+func _find_glide_sites() -> void:
+	var seen := {}
+	for t in lvl.find_all(87):
+		var k := Vector2i(t.x / 12, t.y / 12)
+		if seen.has(k):
+			continue
+		seen[k] = true
+		if veil.sunny(t.x, t.y - 3):
+			_glide_sites.append(Vector2(t.x + 0.5, t.y - 2.0))
+
+func _update_gliders(delta: float, t: float) -> void:
+	for i in range(_gliders.size() - 1, -1, -1):
+		if (_gliders[i].c as Vector2).distance_to(focus) > NEAR + 14.0:
+			_gliders.remove_at(i)
+	if _gliders.size() < MAX_GLIDERS:
+		for s in _glide_sites:
+			if _gliders.size() >= MAX_GLIDERS:
+				break
+			if s.distance_to(focus) > NEAR + 8.0:
+				continue
+			var taken := false
+			for g in _gliders:
+				if g.site == s:
+					taken = true
+			if taken:
+				continue
+			for k in mini(2, MAX_GLIDERS - _gliders.size()):
+				_gliders.append({"site": s, "c": s + Vector2(randf_range(-3, 3), randf_range(-3, 0)),
+					"r": randf_range(4.0, 8.0), "a": randf() * TAU, "w": randf_range(0.25, 0.4) * (1.0 if randf() < 0.5 else -1.0),
+					"ph": randf() * TAU, "flap": 0.0})
+	var n := 0
+	for g in _gliders:
+		g.a += g.w * delta
+		var pos: Vector2 = g.c + Vector2(cos(g.a) * g.r, sin(g.a) * g.r * 0.35)
+		var vel: Vector2 = Vector2(-sin(g.a), cos(g.a) * 0.35) * g.w
+		# mostly gliding, an occasional few wingbeats
+		var beat := 1.0 if fmod(t * 0.23 + g.ph, 1.0) < 0.12 else 0.12
+		g.flap += delta * (10.0 if beat > 0.5 else 1.5)
+		var face := 1.0 if vel.x >= 0.0 else -1.0
+		var basis := Basis(Vector3(0, 0, 1), clampf(vel.y * 1.5, -0.35, 0.35) * face) * Basis.IDENTITY.scaled(Vector3(face, 1, 1) * 2.0)
+		_glide_mm.set_instance_transform(n, Transform3D(basis, Vector3(pos.x, -pos.y, -3.5)))
+		_glide_mm.set_instance_custom_data(n, Color(g.flap, 0.0, 1.0, beat))
+		n += 1
+	_glide_mm.visible_instance_count = n

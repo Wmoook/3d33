@@ -671,6 +671,9 @@ func _make_material() -> void:
 		material.set_shader_parameter("mottle", 0.12)
 		var r := WorldPalette.FV_RECT_SCROLL
 		material.set_shader_parameter("scroll_rect", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
+		var sr := WorldPalette.FV_RECT_SHRINE
+		material.set_shader_parameter("shrine_rect", Vector4(sr.position.x, sr.position.y + 2, sr.end.x, sr.end.y))
+		material.set_shader_parameter("shrine_trophy", Vector2(WorldPalette.FV_SHRINE))
 	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))

@@ -18,6 +18,7 @@ var veil: FxVeil          # daylight scenery FX (non-Odyssey levels)
 var day_life: FxDayLife
 var vines: FxVines
 var shrine: FxShrine
+var wind: FxWind
 var cfg := {}
 var level_id := "odyssey"
 ## WorldView (zones). Found as a sibling named "WorldView" when the shell doesn't call set_world().
@@ -84,6 +85,10 @@ func build(lvl: EELevel, s) -> void:
 		vines.name = "Vines"
 		add_child(vines)
 		vines.build(lvl, veil)
+		wind = FxWind.new()
+		wind.name = "Wind"
+		add_child(wind)
+		wind.build(lvl)
 	player = FxPlayerBall.new()
 	player.name = "PlayerBall"
 	player.bursts = bursts
@@ -146,6 +151,8 @@ func update_camera(cam_pos: Vector3) -> void:
 		day_life.set_focus(cam_pos)
 	if vines:
 		vines.set_focus(cam_pos)
+	if wind:
+		wind.focus_override = cam_pos
 
 ## Ghost replay ball for the shell: hero look, desaturated, ~35% alpha, no lights/trail/bursts/events.
 ## Shell adds it to the tree and drives it with ghost.update_ghost(world_pos, ghost_sim, delta).

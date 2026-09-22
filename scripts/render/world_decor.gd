@@ -333,7 +333,7 @@ func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var right := not terrain.solid[i + 1]
 			if not (top or left or right):
 				continue
-			var n := 14 if top else 6
+			var n := 18 if top else 7
 			for k in n:
 				var sc := _rng.randf_range(0.9, 1.7)
 				var px := x + _rng.randf()
@@ -345,7 +345,7 @@ func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
 				xs.append(Transform3D(b, Vector3(px, py, _rng.randf_range(-1.8, 0.3))))
 				cs.append(_vary(Color(0.42, 0.66, 0.2).lerp(Color(0.62, 0.72, 0.25), _rng.randf() * 0.4), 0.1))
 			if top:
-				for k in 3:
+				for k in 5:
 					var fcol: Color = flower_cols[_rng.randi() % flower_cols.size()]
 					var h := _rng.randf_range(0.25, 0.55)
 					var p := Vector3(x + _rng.randf(), -y + h, _rng.randf_range(-1.2, 0.3))

@@ -171,7 +171,7 @@ func _rising_sparks() -> GPUParticles3D:
 	p.amount = 60
 	p.lifetime = 4.0
 	p.preprocess = 4.0
-	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
+	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
 	p.visibility_aabb = AABB(Vector3(-4, -2, -3), Vector3(8, 60, 6))
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX

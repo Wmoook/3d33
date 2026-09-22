@@ -24,7 +24,9 @@ uniform vec4 rune_pos[16];
 uniform vec4 rune_col[16];
 uniform float rune_state[16];
 uniform float rune_size = 4.6;
-uniform vec4 scroll_rect = vec4(-1.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
+uniform vec4 scroll_rect = vec4(-1.0);
+uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
+uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -215,13 +217,45 @@ void fragment() {
 		region_sample(bgcol_tex, p + bwarp, 20.0, c, bm, bb);
 		albedo = c * 0.85;
 		if (scroll_rect.x >= 0.0) {
-			// day ruins: the back walls are old dressed stone - large coursed blocks with dark joints
-			vec2 bq = vec2(p.x * 0.5 + hash12(vec2(floor(p.y * 0.5), 3.1)) * 3.0, p.y * 0.5);
-			vec2 bf = fract(bq);
-			float jn = 1.0 - smoothstep(0.02, 0.07, min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y)));
-			albedo *= mix(0.88, 1.08, hash12(floor(bq) + 2.0)) * (1.0 - jn * 0.45);
-		}
-		mat = -1;
+			float lum_b = dot(c, vec3(0.3, 0.55, 0.15));
+			float greyish = 1.0 - smoothstep(0.03, 0.12, max(max(abs(c.r - c.g), abs(c.g - c.b)), abs(c.r - c.b)));
+			if (greyish > 0.5) {
+				// dressed stone: brick bond with varied course heights and block widths (world-space hash)
+				float yy = p.y * 0.62 + 0.37;
+				float course = floor(yy);
+				float ch = mix(0.7, 1.3, hash12(vec2(course, 5.3)));
+				float cy = fract(yy);
+				float xoff = hash12(vec2(course, 9.1)) * 7.0;
+				float bw = mix(1.2, 2.6, hash12(vec2(course, 2.7)));
+				float xx = (p.x + xoff) / (bw * 1.6);
+				float cell = floor(xx + 0.35 * sin(course * 1.7));
+				float cx = fract(xx + 0.35 * sin(course * 1.7));
+				float jx = min(cx, 1.0 - cx) * bw * 1.6;
+				float jy = min(cy, 1.0 - cy) * ch / 0.62;
+				float jn = 1.0 - smoothstep(0.03, 0.09, min(jx, jy));
+				albedo *= mix(0.85, 1.1, hash12(vec2(cell, course) + 2.0)) * (1.0 - jn * 0.5);
+			} else {
+				// rammed earth panel: horizontal strata, root tendrils, cracks, occasional niches, edge AO
+				float sy = p.y * 1.4 + fbm2(p * vec2(0.15, 0.4)) * 1.5;
+				float strata = sin(sy * 3.1) * 0.5 + 0.5;
+				float band = hash12(vec2(floor(sy), 7.0));
+				albedo *= mix(0.82, 1.1, strata * 0.5 + band * 0.5);
+				float root = smoothstep(0.93, 0.99, ridge(vec2(p.x * 0.6 + fbm2(p * 0.3) * 2.0, p.y * 0.18)));
+				albedo = mix(albedo, albedo * vec3(0.55, 0.45, 0.35), root);
+				float crack = smoothstep(0.96, 0.995, ridge(p * 0.35 + fbm2(p * 0.2) * 1.2));
+				albedo *= 1.0 - crack * 0.0;
+				vec2 ncell = floor(p / vec2(7.0, 6.0));
+				vec2 nf = fract(p / vec2(7.0, 6.0));
+				if (hash12(ncell + 11.0) > 0.72) {
+					vec2 nd = abs(nf - vec2(0.5, 0.55)) / vec2(0.12, 0.2);
+					float niche = 1.0 - smoothstep(0.85, 1.0, max(nd.x, nd.y + max(0.0, -(nf.y - 0.55)) * 0.0));
+					float arch = 1.0 - smoothstep(0.85, 1.0, length((nf - vec2(0.5, 0.42)) / vec2(0.12, 0.12)));
+					albedo *= 1.0 - max(niche, arch * step(nf.y, 0.45)) * 0.55;
+				}
+			}
+			// AO gradient toward the panel's edges (where it meets the foreground mass)
+			ao *= mix(0.55, 1.0, smoothstep(-0.1, -2.5, s.x));
+		}		mat = -1;
 		int vzb = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
 		if (vzb == 2) { albedo *= 0.3; }   // inferno back walls stay the painting's near-black red
 		// contact darkening where the foreground meets the back wall
@@ -294,7 +328,26 @@ void fragment() {
 	float front = clamp(gn.z, 0.0, 1.0);
 
 	bool parchment = mat == M_SAND && p.x >= scroll_rect.x && p.y >= scroll_rect.y && p.x <= scroll_rect.z && p.y <= scroll_rect.w;
-	if (parchment) {
+	if (layer == 0 && p.x >= shrine_rect.x && p.y >= shrine_rect.y && p.x <= shrine_rect.z && p.y <= shrine_rect.w) {
+		// summit shrine: grassy alpine crag - warm grey rock strata, grass/moss mantles over every step top,
+		// and a carved stone plinth right under the trophy
+		vec3 rock = mix(vec3(dot(albedo, vec3(0.33))), albedo, 0.35) * vec3(1.05, 1.0, 0.92);
+		float sy = p.y * 1.2 + p.x * 0.2 + fbm2(p * vec2(0.1, 0.25)) * 1.8;
+		float fs = fract(sy);
+		float ledge = smoothstep(0.0, 0.12, fs) * (1.0 - smoothstep(0.55, 1.0, fs));
+		albedo = rock * mix(0.65, 1.15, hash12(vec2(floor(sy), 4.0))) * mix(0.7, 1.12, ledge);
+		float mantle = smoothstep(0.45, 0.85, gn.y + fbm2(p * 2.5) * 0.25);
+		albedo = mix(albedo, srgb_to_lin(vec3(0.36, 0.58, 0.16)) * mix(0.8, 1.2, dh), clamp(mantle, 0.0, 1.0));
+		vec2 pd = abs(p - (shrine_trophy + vec2(0.5, 1.5)));
+		float plinth = step(pd.x, 1.6) * step(pd.y, 0.55);
+		if (plinth > 0.5) {
+			float jn = 1.0 - smoothstep(0.02, 0.07, min(abs(fract((p.x - shrine_trophy.x + 1.6) / 1.07) - 0.5) * 1.07, 0.55 - pd.y));
+			albedo = srgb_to_lin(vec3(0.82, 0.78, 0.7)) * (1.0 - jn * 0.35);
+			emit += vec3(1.0, 0.8, 0.45) * 0.08;
+		}
+		rough = mix(0.8, 0.6, mantle);
+		n = normalize(gn + vec3(0.0, (ledge - 0.5) * 0.35, 0.0) + (dn - gn) * 0.45);
+	} else if (parchment) {
 		// illuminated parchment: warm vellum with fibres, soft wrinkles, age blotches and burnt, darker edges
 		vec3 vellum = srgb_to_lin(vec3(0.86, 0.72, 0.5));
 		float fib = fbm2(vec2(p.x * 6.0, p.y * 0.8)) * 0.5 + 0.5;
@@ -311,6 +364,15 @@ void fragment() {
 		// continuous world-space strata + large tonal patches flowing across tile boundaries, so
 		// neighbouring tiles read as one rock mass rather than individual blocks
 		float st = gnoise(vec2(p.x * 0.18, p.y * 1.6)) * 0.5 + 0.5;
+		if (scroll_rect.x >= 0.0) {
+			float sy2 = p.y * 1.3 + fbm2(p * vec2(0.12, 0.35)) * 1.6;
+			albedo *= mix(0.8, 1.12, hash12(vec2(floor(sy2), 8.0))) * mix(0.9, 1.05, sin(sy2 * 6.2831) * 0.5 + 0.5);
+			float root = smoothstep(0.975, 0.995, ridge(vec2(p.x * 0.35 + fbm2(p * 0.2) * 2.5, p.y * 0.12)));
+			albedo = mix(albedo, albedo * vec3(0.55, 0.42, 0.32), root * 0.5 * smoothstep(0.3, 1.5, s.w));
+			float crack = smoothstep(0.985, 0.998, ridge(p * 0.22 + fbm2(p * 0.12) * 1.3)) * smoothstep(0.35, 0.65, fbm2(p * 0.07) + 0.5);
+			albedo *= 1.0 - crack * 0.0;   // (contour-like lines read as a web; disabled)
+			ao *= mix(0.72, 1.0, smoothstep(0.0, 2.5, s.w));
+		}
 		float band = sin(p.y * 0.9 + fbm2(p * vec2(0.08, 0.25)) * 3.0) * 0.5 + 0.5;
 		float patch = fbm3(p * 0.12) * 0.5 + 0.5;
 		albedo *= mix(0.78, 1.12, st) * mix(0.8, 1.1, dh) * mix(0.85, 1.12, band) * mix(0.82, 1.15, patch);
@@ -404,11 +466,16 @@ void fragment() {
 			vec2 wob = vec2(sin(t * 3.1 + p.y * 4.0 + p.x), cos(t * 2.7 + p.x * 3.3 - p.y)) * 0.18;
 			n = normalize(gn + vec3(wob, 0.0) * smoothstep(0.2, 0.9, gn.z));
 			float flow = fbm2(vec2(p.x * 2.0, p.y * 0.7 - t * 1.6)) * 0.5 + 0.5;
+			// falling water: long streaks racing downward (p.y grows downward), white foam at the edges
+			float streak = smoothstep(0.55, 0.9, fbm2(vec2(p.x * 5.0, p.y * 0.35 - t * 4.5)) * 0.5 + 0.5);
+			float foamE = 1.0 - smoothstep(0.0, 0.3, s.w);
+			flow = max(flow, streak);
 			float fr = pow(1.0 - clamp(dot(n, vd), 0.0, 1.0), 2.5);
 			vec3 deep = srgb_to_lin(vec3(0.12, 0.36, 0.78));
 			albedo = deep * mix(0.35, 0.6, flow) * (1.0 - fr * 0.5);
 			float spark = smoothstep(0.985, 1.0, ridge(p * 1.2 + wob * 2.0 + vec2(0.0, t * 0.6)));
-			emit = srgb_to_lin(vec3(0.25, 0.55, 1.0)) * (0.08 + 0.2 * flow) + vec3(0.8, 0.92, 1.0) * (fr * 0.6 + spark * 0.35);
+			emit = srgb_to_lin(vec3(0.25, 0.55, 1.0)) * (0.08 + 0.2 * flow) + vec3(0.8, 0.92, 1.0) * (fr * 0.6 + spark * 0.35 + streak * 0.25);
+			albedo = mix(albedo, vec3(0.85, 0.92, 1.0), foamE * (0.4 + 0.4 * streak));
 			rough = 0.03;
 			spec = 1.0;
 		}

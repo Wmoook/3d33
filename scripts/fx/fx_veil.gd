@@ -53,6 +53,7 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	_build_leaves()
 	_build_dapples()
 	_build_glints()
+	_build_drips()
 	_motes = _mote_emitter()
 	add_child(_motes)
 	print("FxVeil: %d ms, falls %d, leaf chunks %d, dapples %d, glints %d" % [Time.get_ticks_msec() - t0, _falls.size(),
@@ -210,6 +211,27 @@ func _build_fall(comp: Array[Vector2i]) -> void:
 	ring.position = base + Vector3(0, 0.05, 0.97)
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(ring)
+	# a faint rainbow in the spray on the sunnier side of the plunge
+	var side := 1.0
+	var sun_r := 0
+	var sun_l := 0
+	for k in range(2, 9):
+		sun_r += 1 if sunny(int(cx) + k, int(py) - 2) else 0
+		sun_l += 1 if sunny(int(cx) - k, int(py) - 2) else 0
+	if sun_l > sun_r:
+		side = -1.0
+	if maxi(sun_l, sun_r) >= 2:
+		var rb := MeshInstance3D.new()
+		rb.name = "SprayRainbow"
+		var rq := QuadMesh.new()
+		rq.size = Vector2(9.0, 4.5)
+		rb.mesh = rq
+		var rbm := ShaderMaterial.new()
+		rbm.shader = preload("res://shaders/fx/rainbow.gdshader")
+		rb.material_override = rbm
+		rb.position = base + Vector3(side * 3.0, 2.25 - 0.2, -0.7)
+		rb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(rb)
 	_falls.append({"center": Vector2(cx, (lip + y1) * 0.5), "sheet": mi, "mist": mist, "spray": spray,
 		"veil": veil, "ring": ring, "h": y1 - lip})
 
@@ -536,6 +558,73 @@ func _build_glints() -> void:
 	add_child(mi)
 	_glint_count = pos.size()
 
+# ------------------------------------------------------------------------------------------ drips
+
+const DRIP_POOL := 8
+var _drip_sites: Array[Vector3] = []   # world pos of a ceiling drip point, z = fall height (tiles)
+var _drips: Array[GPUParticles3D] = []
+var _drip_t := 0.0
+
+## Ceilings over water: a solid tile with open air below and a water surface within 10 tiles straight down.
+func _build_drips() -> void:
+	for t in maps.water_surface:
+		var h := FxInteractiveBlocks._tile_hash(t + Vector2i(77, 3))
+		if h.x > 0.35:
+			continue
+		var y := t.y - 1
+		while y > 0 and FxOverlayMaps.is_open(lvl, t.x, y) and t.y - y < 11:
+			y -= 1
+		if t.y - y >= 11 or y <= 0 or FxOverlayMaps.is_open(lvl, t.x, y):
+			continue
+		if sunny(t.x, y + 1):
+			continue   # open sky above: rain would be odd, drips only under ceilings
+		_drip_sites.append(Vector3(t.x + 0.3 + h.y * 0.4, -float(y + 1) + 0.02, float(t.y - y - 1)))
+	for i in DRIP_POOL:
+		var p := GPUParticles3D.new()
+		p.name = "Drip"
+		p.amount = 3
+		p.lifetime = 1.6
+		p.randomness = 0.8
+		p.emitting = false
+		p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
+		p.visibility_aabb = AABB(Vector3(-1, -12, -1), Vector3(2, 13, 2))
+		var pm := ParticleProcessMaterial.new()
+		pm.direction = Vector3(0, -1, 0)
+		pm.spread = 0.0
+		pm.initial_velocity_min = 0.0
+		pm.initial_velocity_max = 0.2
+		pm.gravity = Vector3(0, -14, 0)
+		pm.color_ramp = _ramp([Color(0.8, 0.92, 1.0, 0.0), Color(0.8, 0.92, 1.0, 0.9), Color(0.8, 0.92, 1.0, 0.9)], [0.0, 0.15, 1.0])
+		p.process_material = pm
+		var q := QuadMesh.new()
+		q.size = Vector2(0.05, 0.16)
+		var m := ShaderMaterial.new()
+		m.shader = MIX_SHADER
+		q.material = m
+		p.draw_pass_1 = q
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(p)
+		_drips.append(p)
+
+func _assign_drips(ft: Vector2) -> void:
+	var near: Array = []
+	for s in _drip_sites:
+		var d := Vector2(s.x, -s.y).distance_to(ft)
+		if d < 24.0:
+			near.append([d, s])
+	near.sort_custom(func(a, b): return a[0] < b[0])
+	for i in _drips.size():
+		var p := _drips[i]
+		if i < near.size():
+			var s: Vector3 = near[i][1]
+			var at := Vector3(s.x, s.y, 0.2)
+			if p.position != at or not p.emitting:
+				p.position = at
+				p.lifetime = clampf(sqrt(2.0 * s.z / 14.0), 0.25, 1.6)   # the drop dies where it meets the water
+				p.emitting = true
+		else:
+			p.emitting = false
+
 # ------------------------------------------------------------------------------------------ sun motes
 
 func _mote_emitter() -> GPUParticles3D:
@@ -597,6 +686,7 @@ func _process(delta: float) -> void:
 			c.node.emitting = (c.center as Vector2).distance_to(ft) < ACTIVE_RADIUS
 		for dp in _dapples:
 			dp.node.visible = (dp.center as Vector2).distance_to(ft) < ACTIVE_RADIUS + 6.0
+		_assign_drips(ft)
 		for fl in _falls:
 			var near: bool = (fl.center as Vector2).distance_to(ft) < ACTIVE_RADIUS + fl.h * 0.5
 			fl.mist.emitting = near

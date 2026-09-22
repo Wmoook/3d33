@@ -6,6 +6,7 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 uniform vec3 crest : source_color = vec3(0.75, 0.92, 1.0);
 uniform vec3 deep : source_color = vec3(0.15, 0.45, 1.0);
 uniform float intensity = 1.0;
+uniform float flow = 0.0;   // tiles/s the surface drifts toward +x (0 = still, Odyssey)
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -20,7 +21,7 @@ float vnoise(vec2 p) {
 }
 
 void fragment() {
-	float x = UV.x;
+	float x = UV.x - TIME * flow;
 	float d = UV.y;
 	float t = TIME;
 	float wave = sin(x * 1.7 + t * 1.6) * 0.05 + sin(x * 4.3 - t * 2.3) * 0.03 + (vnoise(vec2(x * 2.0, t * 0.6)) - 0.5) * 0.06;

@@ -235,6 +235,8 @@ func _build_water() -> void:
 	# merge surface tiles into horizontal runs -> one strip mesh each
 	var sm := ShaderMaterial.new()
 	sm.shader = WATER_SHADER
+	if not maps.is_odyssey():
+		sm.set_shader_parameter("flow", 1.4)   # FV channels flow west -> east (matches the world's water)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var surf := {}
