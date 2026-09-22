@@ -42,6 +42,40 @@ static func hud(spacing: int = 0) -> Font:
 static func hud_medium(spacing: int = 0) -> Font:
 	return _var("hudm_%d" % spacing, "res://assets/ui/fonts/Rajdhani-Medium.ttf", 0, spacing)
 
+## Animated letter-spacing WITHOUT creating a new FontVariation per spacing value (each new variation is a new
+## glyph cache = rasterization hitches on the frame a card animates). Draws glyph by glyph with a fixed font.
+static func spaced_width(f: Font, text: String, fs: int, spacing: float) -> float:
+	var w := 0.0
+	for i in text.length():
+		w += f.get_char_size(text.unicode_at(i), fs).x + spacing
+	return w - spacing
+
+## outline > 0 draws the outline pass instead of the fill.
+static func draw_spaced(ci: CanvasItem, f: Font, pos: Vector2, text: String, fs: int, spacing: float, color: Color, outline: int = 0) -> void:
+	var x := pos.x
+	for i in text.length():
+		var c := text.unicode_at(i)
+		if outline > 0:
+			ci.draw_char_outline(f, Vector2(x, pos.y), text[i], fs, outline, color)
+		else:
+			ci.draw_char(f, Vector2(x, pos.y), text[i], fs, color)
+		x += f.get_char_size(c, fs).x + spacing
+
+## Rasterize every glyph the animated cards use, at their sizes, once (called behind the loading screen),
+## so the first zone card / title / victory never stalls on glyph uploads.
+static func warm_glyphs(ci: CanvasItem) -> void:
+	var caps := "ABCDEFGHIJKLMNOPQRSTUVWXYZ'-.,!"
+	var lower := "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ.,'!-"
+	var digits := "0123456789:./%+ BESTIMCOINSDEATH"
+	var faint := Color(1, 1, 1, 0.004)
+	for pair in [[title(0, 700), 66], [title(0, 800), 164], [title(0, 800), 96], [title(0, 700), 58]]:
+		ci.draw_string(pair[0], Vector2(-4000, -4000), caps, HORIZONTAL_ALIGNMENT_LEFT, -1, pair[1], faint)
+		ci.draw_string_outline(pair[0], Vector2(-4000, -4000), caps, HORIZONTAL_ALIGNMENT_LEFT, -1, pair[1], 10, faint)
+	for sz in [32, 42, 28, 30]:
+		ci.draw_string(serif_italic(500), Vector2(-4000, -4000), lower, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, faint)
+	for sz in [44, 42, 24, 26, 20, 22]:
+		ci.draw_string(hud(), Vector2(-4000, -4000), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, faint)
+
 static func glass_box(radius: int = 14, alpha: float = 0.55) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(GLASS.r, GLASS.g, GLASS.b, alpha)

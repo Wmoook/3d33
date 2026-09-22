@@ -26,8 +26,6 @@ void fragment() {
 	vec3 c = textureLod(screen_tex, uv, 0.0).rgb;
 	float absorb = 1.0 - exp(-v_depth * 0.16);
 	c = mix(c * tint, deep, absorb * 0.65);
-	float sp = pow(max(sin(w.x * 5.0 + n.x * 2.0 + t * 2.0) * sin(w.y * 4.0 - n.y * 2.0 - t * 1.6), 0.0), 18.0);
-	c += vec3(0.6, 0.85, 1.0) * sp * 0.35 * (1.0 - absorb);
 	ALBEDO = c;
 	ALPHA = 1.0;
 }

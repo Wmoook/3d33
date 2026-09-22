@@ -146,17 +146,17 @@ func _draw_title() -> void:
 	var cy := H * 0.47
 	var k := _k(1.1, 2.8)
 	var o := _outk()
-	var spacing := int(lerpf(70.0, 22.0, k) + (1.0 - o) * 30.0)
-	var f := UITheme.title(spacing, 800)
+	var spacing := lerpf(70.0, 22.0, k) + (1.0 - o) * 30.0
+	var f := UITheme.title(0, 800)
 	var fs := 164
 	var text := "EX ODYSSEY"
-	var tw := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x - spacing
+	var tw := UITheme.spaced_width(f, text, fs, spacing)
 	var p := Vector2(W * 0.5 - tw * 0.5, cy)
 	var a := k * o
 	_title_mat.set_shader_parameter("y0", (cy - fs * 0.72) / H)
 	_title_mat.set_shader_parameter("y1", (cy + 4.0) / H)
 	# soft glow halo + drop shadow, then the gradient face
-	_title_ctl.draw_string_outline(f, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 26, Color(1.0, 0.65, 0.25, 0.05 * a))
-	_title_ctl.draw_string_outline(f, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 12, Color(1.0, 0.7, 0.3, 0.1 * a))
-	_title_ctl.draw_string(f, p + Vector2(0, 6), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.0, 0.0, 0.0, 0.5 * a))
-	_title_ctl.draw_string(f, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, a))
+	UITheme.draw_spaced(_title_ctl, f, p, text, fs, spacing, Color(1.0, 0.65, 0.25, 0.05 * a), 26)
+	UITheme.draw_spaced(_title_ctl, f, p, text, fs, spacing, Color(1.0, 0.7, 0.3, 0.1 * a), 12)
+	UITheme.draw_spaced(_title_ctl, f, p + Vector2(0, 6), text, fs, spacing, Color(0.0, 0.0, 0.0, 0.5 * a))
+	UITheme.draw_spaced(_title_ctl, f, p, text, fs, spacing, Color(1, 1, 1, a))

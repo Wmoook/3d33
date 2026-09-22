@@ -120,6 +120,8 @@ func _map_rect() -> Rect2:
 	return Rect2(Vector2((size.x - w) * 0.5, 196.0), Vector2(w, w * 0.5))
 
 func _draw_fg() -> void:
+	if _t < 1.0:
+		UITheme.warm_glyphs(_fg)
 	var W := size.x
 	var H := size.y
 	var a := _shown

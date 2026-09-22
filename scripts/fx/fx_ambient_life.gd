@@ -441,7 +441,7 @@ func _update_glows(delta: float) -> void:
 			var best: Dictionary = cands[randi() % cands.size()]
 			var top := Vector2(randf_range(best.min.x, best.max.x + 1.0), float(best.min.y) - 1.8)
 			_glows.append({"kind": 1, "pos": top, "vel": Vector2.ZERO, "life": 0.0, "max": randf_range(6.0, 12.0),
-				"ph": randf() * TAU, "col": Color(1.0, 0.92, 0.75), "home": top, "r": randf_range(0.5, 1.3)})
+				"ph": randf() * TAU, "col": Color(1.0, 0.72, 0.42), "home": top, "r": randf_range(0.5, 1.3)})
 	# corruption wisps orbit the ball for a moment
 	_wisp_cd -= delta
 	if _wisp_cd <= 0.0 and WorldPalette.zone_at(int(ball.x), int(ball.y)) == WorldPalette.Z_CORRUPT:
@@ -479,7 +479,7 @@ func _update_glows(delta: float) -> void:
 				if db.length() < 1.5:
 					target += db.normalized() * 2.0
 				g.vel = (target - g.pos) * 6.0
-				bright = 1.5 + 0.6 * sin(t_now * 30.0 + g.ph)
+				bright = 1.0 + 0.4 * sin(t_now * 30.0 + g.ph)
 				size = 0.6
 			2:
 				var orbit: bool = g.life < g.max - 1.3

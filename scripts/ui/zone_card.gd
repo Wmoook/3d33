@@ -45,10 +45,10 @@ func _draw() -> void:
 		var h := 190.0 - i * 20.0
 		var w := size.x * (0.9 - i * 0.06)
 		draw_rect(Rect2(cx - w * 0.5, cy - h * 0.5 - 4, w, h), Color(0, 0, 0, 0.07 * a))
-	var spacing := int(lerpf(34.0, 14.0, a_in) + (1.0 - a_out) * 10.0)
-	var f := UITheme.title(spacing, 700)
+	var spacing := lerpf(34.0, 14.0, a_in) + (1.0 - a_out) * 10.0
+	var f := UITheme.title(0, 700)
 	var fs := 66
-	var tw := f.get_string_size(_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var tw := UITheme.spaced_width(f, _name, fs, spacing)
 	var gold := Color(UITheme.GOLD.r, UITheme.GOLD.g, UITheme.GOLD.b, a)
 	# rules
 	var rule_len := 170.0 * _ease(clampf((_t - 0.15) / IN_T, 0.0, 1.0))
@@ -60,10 +60,10 @@ func _draw() -> void:
 	_diamond(Vector2(cx + gap + rule_len + 8, ry), 4.0, Color(gold, a))
 	# name: glow passes then crisp text
 	var p := Vector2(cx - tw * 0.5, cy)
-	draw_string(f, p + Vector2(0, 3), _name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.6 * a))
-	draw_string_outline(f, p, _name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 10, Color(1.0, 0.7, 0.3, 0.07 * a))
-	draw_string_outline(f, p, _name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(1.0, 0.75, 0.35, 0.14 * a))
-	draw_string(f, p, _name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.96, 0.88, a))
+	UITheme.draw_spaced(self, f, p + Vector2(0, 3), _name, fs, spacing, Color(0, 0, 0, 0.6 * a))
+	UITheme.draw_spaced(self, f, p, _name, fs, spacing, Color(1.0, 0.7, 0.3, 0.07 * a), 10)
+	UITheme.draw_spaced(self, f, p, _name, fs, spacing, Color(1.0, 0.75, 0.35, 0.14 * a), 4)
+	UITheme.draw_spaced(self, f, p, _name, fs, spacing, Color(1.0, 0.96, 0.88, a))
 	# subtitle
 	if _sub != "":
 		var sa := _ease(clampf((_t - 0.5) / IN_T, 0.0, 1.0)) * a_out

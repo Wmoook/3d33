@@ -150,7 +150,11 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		+ hoff * smoothstep(0.0, 0.45, s_front);
 	// (s_front: the main bevel follows the SMOOTH outline so staircases read as slopes; the true grid
 	// footprint keeps a low lip so every solid tile is still covered at the gameplay plane)
-	float zf = Z_FG_TOP * round_prof(s_front / 0.5) + 0.26 * smoothstep(0.5, 3.5, s.w)
+	// dense dither regions (solid next to pores/burrows): flatten the per-tile pillow into one continuous
+	// front surface; the pores become recesses with only a narrow rim bevel
+	float pore_near = smoothstep(0.08, 0.45, fld.g);
+	float s_bev = mix(s_front, max(s_front * 3.0, s_front), pore_near);
+	float zf = Z_FG_TOP * round_prof(s_bev / 0.5) + 0.26 * smoothstep(0.5, 3.5, s.w)
 		+ relief * smoothstep(0.0, 0.8, s_front);
 	zf = max(zf, 0.13 * round_prof(sf / 0.14));
 	// tiny islands: domed, lumpy pebble / crystal forms instead of flat plugs
@@ -159,7 +163,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		return zf;
 	}
 	// background wall (tiny enclosed pockets sit much shallower: pits in the rock)
-	float zbase = mix(Z_BG, -1.3, fld.g);   // non-solid tiles always stay below z = -0.8
+	float zbase = mix(Z_BG, -1.05, fld.g);   // non-solid tiles always stay below z = -0.8
 	float zb = zbase + 0.42 * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10) * smoothstep(0.0, 0.6, sw);
 	float back;
 	if (sw >= 0.0) {

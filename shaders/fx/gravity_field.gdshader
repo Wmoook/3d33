@@ -10,7 +10,7 @@ uniform vec2 level_size = vec2(400.0, 200.0);
 uniform vec3 col_core : source_color = vec3(1.0, 0.86, 0.45);
 uniform vec3 col_edge : source_color = vec3(0.9, 0.7, 0.4);
 uniform vec3 col_dot : source_color = vec3(0.75, 0.9, 1.0);
-uniform float intensity = 0.5;
+uniform float intensity = 0.3;
 uniform float flow_speed = 1.0;
 uniform vec3 ball_pos = vec3(-1000.0);  // currents brighten and quicken around the ball
 

@@ -101,9 +101,22 @@ func _find_pockets() -> void:
 		if ok and comp.size() <= 8:
 			for i in comp:
 				pocket[i] = 1
+	# thin burrows: enclosed air (not sky) with >= 5 solid 8-neighbours also reads as pores in the rock
+	for y in range(1, H - 1):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if solid[i] or sky[i] or pocket[i]:
+				continue
+			var c := 0
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if (dx != 0 or dy != 0) and solid[i + dy * W + dx]:
+						c += 1
+			if c >= 5:
+				pocket[i] = 2
 	var cnt := 0
 	for i in n:
-		cnt += pocket[i]
+		cnt += 1 if pocket[i] else 0
 	timings["pocket_tiles"] = cnt
 
 func _find_floaters(fgb: PackedByteArray, has_fg: PackedByteArray) -> void:
@@ -315,7 +328,7 @@ func _classify() -> void:
 	_find_pockets()
 	_find_specks()
 	for i in n:
-		if pocket[i] and not has_bgc[i]:
+		if pocket[i] == 1 and not has_bgc[i]:
 			bgb[i * 4] = int(fgb[i * 4] * 0.5); bgb[i * 4 + 1] = int(fgb[i * 4 + 1] * 0.5)
 			bgb[i * 4 + 2] = int(fgb[i * 4 + 2] * 0.5); bgb[i * 4 + 3] = 255
 			has_bgc[i] = 1

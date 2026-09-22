@@ -54,11 +54,13 @@ func _draw() -> void:
 	for i in 10:
 		draw_circle(c, (520.0 - i * 44.0) * (0.6 + 0.4 * _k(0.0, 1.6)), Color(1.0, 0.72, 0.3, 0.018 * _k(0.0, 1.2) * o))
 	var a := _k(0.3, 1.4) * o
-	var sp := int(lerpf(60.0, 20.0, _k(0.3, 2.0)))
-	var f := UITheme.title(sp, 800)
+	var sp := lerpf(60.0, 20.0, _k(0.3, 2.0))
+	var f := UITheme.title(0, 800)
+	var vt := "ODYSSEY COMPLETE"
+	var vp := Vector2(W * 0.5 - UITheme.spaced_width(f, vt, 96, sp) * 0.5, c.y)
 	draw_string(UITheme.hud_medium(9), Vector2(0, c.y - 110), "THE  SOUL  RETURNS", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.6 * _k(0.1, 1.0) * o))
-	draw_string_outline(f, Vector2(0, c.y), "ODYSSEY COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, W, 96, 14, Color(1, 0.7, 0.3, 0.1 * a))
-	draw_string(f, Vector2(0, c.y), "ODYSSEY COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, W, 96, Color(1.0, 0.88, 0.6, a))
+	UITheme.draw_spaced(self, f, vp, vt, 96, sp, Color(1, 0.7, 0.3, 0.1 * a), 14)
+	UITheme.draw_spaced(self, f, vp, vt, 96, sp, Color(1.0, 0.88, 0.6, a))
 	if stats.get("new_best", false):
 		var pb := 0.75 + 0.25 * sin(_t * 3.0)
 		draw_string(UITheme.hud(8), Vector2(0, c.y + 84), "NEW  BEST  TIME", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(UITheme.GOLD, pb * _k(1.2, 0.6) * o))

@@ -337,7 +337,7 @@ func _draw() -> void:
 	var o := _map.position
 	var frame := Rect2(o - Vector2(12, 44), _map.size + Vector2(24, 56))
 	draw_style_box(UITheme.glass_box(22, 0.62), frame)
-	var fs := int(lerpf(17.0, 26.0, _full_a))
+	var fs := 26 if _full_a > 0.5 else 17   # two fixed sizes (no per-frame glyph rasterization)
 	var title := "MAP OF THE ODYSSEY" if _full_a > 0.5 else "EX CREW ODYSSEY"
 	draw_string(UITheme.title(4, 700), o + Vector2(4, -14), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(UITheme.GOLD, 0.9))
 	var right := zone_name if _full_a > 0.5 else "M  expand"
