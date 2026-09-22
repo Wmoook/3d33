@@ -13,26 +13,69 @@ var blocks: FxInteractiveBlocks
 var bursts: FxBursts
 var overlays: FxOverlays
 var life: FxAmbientLife
+var mech: FxMechBlocks
+var veil: FxVeil          # daylight scenery FX (non-Odyssey levels)
+var day_life: FxDayLife
+var cfg := {}
+var level_id := "odyssey"
+## WorldView (zones). Found as a sibling named "WorldView" when the shell doesn't call set_world().
+var world: Node
+## Zones where fireflies never appear (sunlit surface zones of day levels).
+const SUNLIT_ZONES: Array[StringName] = [&"surface", &"sky", &"canopy", &"forest", &"meadow", &"summit", &"sunlit"]
+
+## Per-level config (res://levels/config/<id>.json), called BEFORE build(). Odyssey (id "odyssey" or no
+## config) keeps every hand-tuned region exactly as before.
+func set_level_config(c: Dictionary) -> void:
+	cfg = c
+	level_id = String(c.get("id", "odyssey"))
+
+func set_world(w: Node) -> void:
+	world = w
+
+func is_odyssey() -> bool:
+	return level_id == "odyssey"
 
 func build(lvl: EELevel, s) -> void:
 	level = lvl
 	sim = s
+	if world == null and get_parent():
+		world = get_parent().get_node_or_null("WorldView")
 	bursts = FxBursts.new()
 	bursts.name = "Bursts"
 	add_child(bursts)
 	blocks = FxInteractiveBlocks.new()
 	blocks.name = "InteractiveBlocks"
 	blocks.bursts = bursts
+	blocks.odyssey = is_odyssey()
 	add_child(blocks)
 	blocks.build(lvl, s)
 	overlays = FxOverlays.new()
 	overlays.name = "Overlays"
+	overlays.set_level_config(cfg)
 	add_child(overlays)
 	overlays.build(lvl)
+	mech = FxMechBlocks.new()
+	mech.name = "MechBlocks"
+	mech.bursts = bursts
+	add_child(mech)
+	mech.build(lvl, s)
 	life = FxAmbientLife.new()
 	life.name = "AmbientLife"
+	life.odyssey = is_odyssey()
+	if world and world.has_method(&"get_zone_at"):
+		life.zone_fn = Callable(world, &"get_zone_at")
+		life.no_firefly_zones = SUNLIT_ZONES
 	add_child(life)
 	life.build(lvl, overlays.maps)
+	if not is_odyssey():
+		veil = FxVeil.new()
+		veil.name = "Veil"
+		add_child(veil)
+		veil.build(lvl, overlays.maps)
+		day_life = FxDayLife.new()
+		day_life.name = "DayLife"
+		add_child(day_life)
+		day_life.build(lvl, veil)
 	player = FxPlayerBall.new()
 	player.name = "PlayerBall"
 	player.bursts = bursts
@@ -64,8 +107,15 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 		player.underwater = inb and (m.water[t.y * m.W + t.x] == 1 or not FxOverlayMaps.is_open(level, t.x, t.y))
 	player.update_from_sim(world_pos, s, delta)
 	blocks.set_ball_pos(world_pos)
+	if mech:
+		mech.sim = sim
+		mech.set_ball_pos(world_pos)
 	if life:
 		life.set_ball(world_pos)
+	if veil:
+		veil.set_ball(world_pos)
+	if day_life:
+		day_life.set_ball(world_pos)
 	if overlays:
 		overlays.set_ball(world_pos)
 
@@ -75,6 +125,10 @@ func update_camera(cam_pos: Vector3) -> void:
 		overlays.focus_override = cam_pos
 	if life:
 		life.set_focus(cam_pos)
+	if veil:
+		veil.focus_override = cam_pos
+	if day_life:
+		day_life.set_focus(cam_pos)
 
 ## Ghost replay ball for the shell: hero look, desaturated, ~35% alpha, no lights/trail/bursts/events.
 ## Shell adds it to the tree and drives it with ghost.update_ghost(world_pos, ghost_sim, delta).
@@ -93,6 +147,8 @@ func set_high_contrast(on: bool) -> void:
 func set_glyph_boost(amount: float) -> void:
 	if blocks:
 		blocks.set_glyph_boost(amount)
+	if mech:
+		mech.set_glyph_boost(clampf((amount - 1.0) / 0.5, 0.0, 3.0))
 
 ## Quality presets: the ball's carried light casts shadows (High/Ultra) or not (Low/Medium).
 func set_ball_shadows(on: bool) -> void:
@@ -147,6 +203,10 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			bursts.play(&"coin_ring", p, Vector3.UP, Color(1.0, 0.95, 0.75))
 		&"portal":
 			blocks.portal_fx(data.get("from"), data.get("to"))
+		&"switch":
+			mech.on_switch(data)
+		&"piano":
+			mech.on_piano(data)
 		&"death":
 			player.on_death()
 		&"respawn":

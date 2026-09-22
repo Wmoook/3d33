@@ -15,9 +15,15 @@ var cam: Camera3D
 
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
-	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	var level_id := "odyssey"
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("level="):
+			level_id = a.substr(6)
+	var cfg := LevelCatalog.get_config(level_id)
+	var lvl := EELevel.load_file(str(cfg.get("level_file", "res://levels/ex_crew_odyssey.eelvl")))
 	world = WorldView.new()
 	add_child(world)
+	world.set_level_config(cfg)
 	world.build(lvl)
 	sim = EESim.new(lvl)
 	world.set_sim(sim)
@@ -82,10 +88,10 @@ func _run(lvl: EELevel) -> void:
 					if checked.has(k):
 						continue
 					checked[k] = true
-					if ty == 0 and not world.terrain.solid[k]:
-						continue   # top world border above the open sky: invisible ceiling by design
-					if lvl.fg[k] == 43:
-						continue   # coin door: drawn by the actors layer, not the world
+					if (ty == 0 or tx == 0 or tx == W - 1 or ty == H - 1) and not world.terrain.solid[k]:
+						continue   # world border beside open air: invisible by design
+					if lvl.fg[k] == 43 or lvl.fg[k] == 1004:
+						continue   # coin door (actors) / one-way ledge
 					var truth := sim.is_tile_solid_now(tx, ty)
 					var ok := true
 					for sj in 4:

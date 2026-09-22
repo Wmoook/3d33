@@ -102,6 +102,28 @@ crossed. `&"time"` is emitted only if the level has time doors.
 
 Added events: `complete` {tile, ticks} (121), `secret` {tile}, `god_mode` {on}.
 
+Forgotten Veil additions (phase 2):
+- `switch` {kind: `&"purple"`/`&"orange"`, id, on} and `door_state` {kind: `&"purple"`/`&"orange"`, id, open}:
+  emitted once the switch state actually applies (a press that would close a gate on the player is
+  deferred via `Player.tilequeue` and applies the tick *after* the box has left the gate). Emitted
+  from a dirty-flag diff, so ticks without switch writes cost nothing.
+- `piano` {tile, note} (also `drum` 83 / `guitar` 1520): on entering the tile, in god mode too
+  (Me.touchBlock `isme` branch). `note` = the tile's rotation (Lookup.getInt). Non-solid.
+- `blink` {tile, id}: entering an invisible arrow/dot 411-414, 460, 1519 (EE `setBlink(-100)`,
+  the moment the invisible block flashes visible). Not in god mode.
+
+Added query helpers: `is_switch_on(id)` (purple, per player; survives death, cleared by `reset()`),
+`is_orange_switch_on(id)`, `get_tile_number(tx, ty)` (Lookup.getInt: switch/door id, coin count,
+piano note, one-way rotation).
+
+Forgotten Veil block audit (all per upstream AS3, tested in `tests/physics_test_fv.gd`):
+purple switch 113 / door 184 / gate 185 (id = rotation), speed boosts 114-117 (speed := +-16 px/tick
+directly, zero gravity, 1 px left-steps from integer x), cyan/magenta/yellow keys 408-410 with doors
+1005-1007 / gates 1008-1010, pink one-way 1004 (rotatable: 1 up, 2 right, 3 down, 0 left), coin door 43
+needing 16, piano 77, invisible gravity 412 (== up arrow 2) / 414 (== dot 4), solidity of 68/69
+(solid), 223/224/272 (air), scifi 85-90 (solid; 89/90 one-way), portals 242 + invisible 381.
+Route: `LEVEL_ROUTE_FV.md`, `tests/physics_fv_route.gd`.
+
 ## Added members (beyond CONTRACTS.md)
 - **State**: `teleported` (the last tick jumped discontinuously, so skip interpolation),
   `has_silver_crown`, `deaths`, `checkpoint`, `current_tile`, `modifier_x/y`, `morx/mory/mox/moy`,

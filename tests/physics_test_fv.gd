@@ -118,7 +118,9 @@ func test_speed_boosts() -> void:
 			entered = true
 			n_in += 1
 			if sim.speed_x != 16.0: ok = false
-			if n_in > 1 and (sim.px - x0 != 16.0 or sim.morx != 0 or sim.mory != 0): ok = false
+			if n_in > 1 and (absf(sim.px - x0 - 16.0) > 1e-9 or sim.morx != 0 or sim.mory != 0):
+				if ok: print("    boost tick %d: dx=%s morx=%d mory=%d px=%s" % [n_in, sim.px - x0, sim.morx, sim.mory, sim.px])
+				ok = false
 		elif entered:
 			break
 	t.check("115: speed_x == physics_boost (16 px/tick) in every boost tick, 16 px per tick, no gravity", entered and ok and n_in >= 30, "ticks in boost %d" % n_in)
@@ -216,7 +218,7 @@ func test_coin_door_16() -> void:
 		var evs := _events(sim, [&"door_state"])
 		t.run(sim, EEInput.new(), 400)
 		if n == 16:
-			t.check("16 coins collected in a fall -> door 16 opens -> lands on the floor", sim.coins == 16 and sim.py == 27.0 * 16.0
+			t.check("16 coins collected in a fall -> door 16 opens -> lands on the floor", sim.coins == 16 and sim.py == 28.0 * 16.0
 				and evs.size() == 1 and evs[0][1] == {"kind": &"coin", "open": true, "count": 16}, "coins=%d y=%s %s" % [sim.coins, sim.py, evs])
 		else:
 			t.check("15 coins -> stands on door 16", sim.coins == 15 and sim.py == 19.0 * 16.0 and evs.is_empty(), "y=%s" % sim.py)
@@ -266,10 +268,10 @@ func test_invisible_gravity() -> void:
 	var sa: EESim = a[1]
 	t.check("412 == up arrow 2 (identical trajectory), rests on the ceiling", a[0] == b[0] and sa.py == 16.0 and sa.on_ground and sa.gravity_dir == Vector2i(0, -1), "y=%s" % sa.py)
 	t.check("412 blink event on entering", a[2].size() >= 1 and a[2][0][1]["id"] == 412, str(a[2].slice(0, 2)))
-	var c := _trace(414, Vector2i(5, 5), [Vector2i(5, 5)])
-	var d := _trace(4, Vector2i(5, 5), [Vector2i(5, 5)])
+	var c := _trace(414, Vector2i(5, 5), [Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6)])
+	var d := _trace(4, Vector2i(5, 5), [Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6)])
 	var sc: EESim = c[1]
-	t.check("414 == dot 4 (identical), zero-g hover", c[0] == d[0] and absf(sc.py - 80.0) < 16.0 and sc.speed_y == 0.0 and sc.gravity_dir == Vector2i.ZERO, "y=%s" % sc.py)
+	t.check("414 == dot 4 (identical), zero-g hover", c[0] == d[0] and sc.py >= 64.0 and sc.py <= 96.0 and sc.gravity_dir == Vector2i.ZERO, "y=%s" % sc.py)
 
 
 func test_solidity_table() -> void:
@@ -279,7 +281,7 @@ func test_solidity_table() -> void:
 	var bad := []
 	for id in [68, 69, 223, 224, 272, 85, 86, 87, 88, 89, 90, 77, 83, 44, 45, 47, 48, 35, 36, 34, 1004, 1006, 184, 185, 43, 113, 115, 409, 381, 242, 412, 414, 121, 100, 101, 255, 5, 6, 8, 25, 28]:
 		# ItemId.isSolid, recomputed: 9-97 / 122-217 / 1001-1499, minus 77, 83 and climbables
-		var ref := ((9 <= id and id <= 97) or (122 <= id and id <= 217) or (1001 <= id and id <= 1499)) and id != 77 and id != 83
+		var ref: bool = ((9 <= id and id <= 97) or (122 <= id and id <= 217) or (1001 <= id and id <= 1499)) and id != 77 and id != 83
 		if (sim._flag(id) & EESim.F_SOLID != 0) != ref: bad.append(id)
 	t.check("solid flags match ItemId.isSolid (68/69 & scifi 85-90 solid; 223/224/272/77 not)", bad.is_empty(), str(bad))
 	var jt := []

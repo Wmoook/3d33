@@ -68,6 +68,10 @@ func stuck(sim: EESim) -> bool:
 # ---------------------------------------------------------------- tests
 func _init() -> void:
 	print("=== EE physics tests ===")
+	if OS.get_environment("PHYS_ONLY") == "fv":     # quick iteration on the Forgotten Veil block
+		load("res://tests/physics_test_fv.gd").new(self).run_all()
+		_finish()
+		return
 	test_spawn_real_level()
 	test_free_fall()
 	test_jump()
@@ -85,6 +89,10 @@ func _init() -> void:
 	test_key_gate_deferred()
 	test_key_door_real_level()
 	load("res://tests/physics_test_fv.gd").new(self).run_all()
+	_finish()
+
+
+func _finish() -> void:
 	# break signal->lambda->sim reference cycles so nothing leaks at exit
 	for s in _sims:
 		for c in s.sim_event.get_connections():

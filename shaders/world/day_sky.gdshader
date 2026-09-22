@@ -9,7 +9,7 @@ uniform vec2 level_size = vec2(400.0, 200.0);
 uniform vec3 sun_dir = vec3(-0.3, 0.55, 0.78);
 uniform float parallax = 0.6;     // 1 = locked to the level, 0 = fixed to the camera
 uniform float spread = 1.3;       // >1: the painting is seen "further away" (smaller)
-uniform float brightness = 1.6;
+uniform float brightness = 1.3;
 uniform float cave_amount = 0.0;
 uniform vec3 cave_top = vec3(0.5, 0.55, 0.6);
 uniform vec3 cave_bottom = vec3(0.05, 0.05, 0.06);

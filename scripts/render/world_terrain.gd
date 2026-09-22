@@ -268,10 +268,19 @@ func sky_paint_image() -> Image:
 	var filled := PackedByteArray()
 	filled.resize(W * H)
 	for i in W * H:
-		if sky[i]:
+		if sky[i] and not _is_border(i % W, i / W):   # the black world border is not part of the sky art
 			buf[i * 4] = src[i * 3]; buf[i * 4 + 1] = src[i * 3 + 1]; buf[i * 4 + 2] = src[i * 3 + 2]; buf[i * 4 + 3] = 255
 			filled[i] = 1
 	_dilate(buf, filled)
+	# border tiles never seeded: give them their inner neighbour's sky colour
+	for x in W:
+		for k in 4:
+			buf[x * 4 + k] = buf[(W + x) * 4 + k]
+			buf[((H - 1) * W + x) * 4 + k] = buf[((H - 2) * W + x) * 4 + k]
+	for y in H:
+		for k in 4:
+			buf[(y * W) * 4 + k] = buf[(y * W + 1) * 4 + k]
+			buf[(y * W + W - 1) * 4 + k] = buf[(y * W + W - 2) * 4 + k]
 	var img := Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
 	img.resize(W * 4, H * 4, Image.INTERPOLATE_CUBIC)
 	return img
