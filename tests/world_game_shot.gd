@@ -40,17 +40,13 @@ func _ready() -> void:
 	if key != "":
 		sim._set_key(StringName(key), true)
 	await _wait(2.5)
-	var ov: Node3D = game.collision_overlay
-	var parent := ov.get_parent()
-	parent.remove_child(ov)
+	game.collision_overlay.visible = false
 	await _wait(0.3)
-	print("overlay in tree: ", ov.is_inside_tree(), " others: ", _find_mm(get_tree().root))
-	_shot(nm)
-	parent.add_child(ov)
+	await _shot(nm)
 	game.collision_overlay.visible = true
 	game.collision_overlay.mark_dirty()
 	await _wait(0.3)
-	_shot(nm + "_f3")
+	await _shot(nm + "_f3")
 	get_tree().quit()
 
 func _wait(t: float) -> void:
@@ -63,10 +59,3 @@ func _shot(n: String) -> void:
 	get_viewport().get_texture().get_image().save_png("user://world_game_%s.png" % n)
 	print("SHOT world_game_", n)
 
-func _find_mm(n: Node) -> Array:
-	var out := []
-	if n is MultiMeshInstance3D and n.visible and n.is_visible_in_tree() and n.multimesh and n.multimesh.instance_count > 1000:
-		out.append(str(n.get_path()) + ":" + str(n.multimesh.instance_count))
-	for c in n.get_children():
-		out.append_array(_find_mm(c))
-	return out
