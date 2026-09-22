@@ -172,3 +172,9 @@ Consequences:
   and call `DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)` first thing in the test's
   `_ready()`, so it never steals keyboard focus from the user's game.
 - Never kill Godot by name; only PIDs you launched.
+- UPDATE (user: "the tests keep opening in front and taking over what I have up"): ALL windowed tests MUST
+  go through the invisible runner, never launch Godot windowed directly:
+  `bash /c/Users/super/ex-odyssey/tools_run_test.sh res://tests/x.tscn [args]`
+  It runs a mirror project (C:/Users/super/ex-odyssey-test, junctions to the real folders) whose settings make
+  the window unfocusable, off-screen and silent. user:// is the same folder, so screenshots land where they did.
+  Headless: `$G --headless --audio-driver Dummy --path . -s res://tests/x.gd` (unchanged).
