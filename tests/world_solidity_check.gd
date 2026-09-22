@@ -29,8 +29,9 @@ func _ready() -> void:
 	world.set_sim(sim)
 	world.set_debug_mode(3)
 	world.doors.set_mask_mode(true)
-	for n in [world.decor, world.lights, world.backdrop]:
-		n.visible = false
+	for n in [world.decor, world.lights, world.backdrop, world.trials]:
+		if n:
+			n.visible = false   # decals / props / lights are not terrain mass
 	world.atmosphere.post_layer.visible = false
 	world.atmosphere.fog_volume.visible = false
 	for p in world.atmosphere.particles.values():

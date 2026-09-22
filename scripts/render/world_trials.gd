@@ -77,7 +77,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	d.name = "TrialGlyph%d" % (k + 1)
 	d.texture_albedo = glyph
 	d.texture_emission = glyph
-	d.emission_energy = 3.0
+	d.emission_energy = 2.0
 	d.modulate = col
 	d.albedo_mix = 0.55
 	d.size = Vector3(4.6, 4.5, 4.6)           # decal projects along its local -Y (depth 4.5)

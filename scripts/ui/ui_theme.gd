@@ -95,6 +95,22 @@ static func scrim_tex() -> Texture2D:
 	_cache["scrim"] = t
 	return t
 
+## White feathered radial glow (tint via modulate).
+static func glow_tex() -> Texture2D:
+	if _cache.has("glow"):
+		return _cache["glow"]
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var dx := (x + 0.5 - n * 0.5) / (n * 0.5)
+			var dy := (y + 0.5 - n * 0.5) / (n * 0.5)
+			var a := clampf((exp(-(dx * dx + dy * dy) * 2.6) - exp(-2.6)) / (1.0 - exp(-2.6)), 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	var t := ImageTexture.create_from_image(img)
+	_cache["glow"] = t
+	return t
+
 static func draw_scrim(ci: CanvasItem, center: Vector2, sz: Vector2, alpha: float) -> void:
 	if alpha <= 0.001:
 		return

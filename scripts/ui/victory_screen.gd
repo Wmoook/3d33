@@ -55,8 +55,10 @@ func _draw() -> void:
 	var o := 1.0 if _out < 0.0 else 1.0 - clampf(_out / 0.8, 0.0, 1.0)
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.015, 0.01, 0.62 * _k(0.0, 1.0) * o))
 	var c := Vector2(W * 0.5, H * 0.42)
-	for i in 10:
-		draw_circle(c, (520.0 - i * 44.0) * (0.6 + 0.4 * _k(0.0, 1.6)), Color(1.0, 0.72, 0.3, 0.018 * _k(0.0, 1.2) * o))
+	# golden bloom: one feathered radial glow (no stacked rings)
+	var br := 1040.0 * (0.6 + 0.4 * _k(0.0, 1.6))
+	draw_texture_rect(UITheme.glow_tex(), Rect2(c - Vector2(br, br * 0.62), Vector2(br * 2.0, br * 1.24)), false,
+		Color(1.0, 0.72, 0.3, 0.16 * _k(0.0, 1.2) * o))
 	var a := _k(0.3, 1.4) * o
 	var sp := lerpf(60.0, 20.0, _k(0.3, 2.0))
 	var f := UITheme.title(0, 800)
