@@ -26,6 +26,9 @@ const SPOTS := {
 	"forge": Vector2(160, 185),
 	"tree_back": Vector2(80, 5),
 	"flame_skull": Vector2(172, 105),
+	"walk1": Vector2(100, 11),
+	"walk2": Vector2(115, 11),
+	"walk3": Vector2(130, 11),
 	"surface_mid": Vector2(140, 10),
 	"house": Vector2(14, 8),
 	"tunnel2": Vector2(150, 55),
@@ -97,7 +100,6 @@ func _ready() -> void:
 		world.lights.moon.shadow_enabled = false
 	if _nodoors:
 		world.doors.visible = false
-		world.backdrop.get_node("MoonOccluder").visible = false
 	if _nokey:
 		world.lights.key_light.visible = false
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)

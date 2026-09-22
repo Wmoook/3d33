@@ -13,11 +13,19 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	var H := lvl.height
 	ground_top.resize(W)
 	for x in W:
-		var gy := 0
+		var gy := -1
 		for y in 30:
 			if terrain.sky[y * W + x]:
 				gy = y + 1
 		ground_top[x] = gy
+	# columns with no sky at all (tree trunks under canopies reaching the top) take the deepest
+	# ground of their neighbours, so the occluder never rises into the surface there
+	var raw := ground_top.duplicate()
+	for x in W:
+		var g := raw[x]
+		for dx in range(-8, 9):
+			g = maxf(g, raw[clampi(x + dx, 0, W - 1)])
+		ground_top[x] = g
 	_make_hills(W)
 	_make_moon_occluder(W, H)
 

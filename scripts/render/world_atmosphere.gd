@@ -26,7 +26,7 @@ var PRESETS := {
 	WorldPalette.Z_EARTH: {"key": 3.08, "key_col": Color(1.0, 0.82, 0.66), "ambient": Color(0.80, 0.69, 0.67), "amb_e": 1.00, "exposure": 1.62, "glow": 0.9,
 		"sat": 1.1, "contrast": 1.1, "sky": 0.15, "moon": 0.0, "fill": 1.98, "fill_col": Color(1.0, 0.8, 0.62),
 		"parts": {"dust": 1.0}},
-	WorldPalette.Z_HELL: {"key": 1.96, "key_col": Color(1.0, 0.6, 0.4), "ambient": Color(0.86, 0.66, 0.59), "amb_e": 1.00, "exposure": 1.00, "glow": 1.35,
+	WorldPalette.Z_HELL: {"key": 1.96, "key_col": Color(1.0, 0.6, 0.4), "ambient": Color(0.86, 0.66, 0.59), "amb_e": 0.45, "exposure": 1.00, "glow": 1.35,
 		"sat": 1.18, "contrast": 1.14, "sky": 0.0, "moon": 0.0, "fill": 1.10, "fill_col": Color(1.0, 0.6, 0.35),
 		"parts": {"dust": 0.6}},
 	WorldPalette.Z_CORRUPT: {"key": 2.52, "key_col": Color(0.85, 0.7, 1.0), "ambient": Color(0.74, 0.63, 0.83), "amb_e": 1.00, "exposure": 1.56, "glow": 1.2,
@@ -53,7 +53,7 @@ var PRESETS := {
 var FOG := {
 	WorldPalette.Z_SURFACE: [Color(0.55, 0.62, 0.85), 0.018, Color(0.0, 0.0, 0.0), 0.0],
 	WorldPalette.Z_EARTH: [Color(0.75, 0.5, 0.4), 0.045, Color(0.012, 0.005, 0.003), 0.02],
-	WorldPalette.Z_HELL: [Color(1.0, 0.55, 0.3), 0.07, Color(0.09, 0.022, 0.004), 0.05],
+	WorldPalette.Z_HELL: [Color(1.0, 0.55, 0.3), 0.06, Color(0.045, 0.011, 0.002), 0.05],
 	WorldPalette.Z_CORRUPT: [Color(0.7, 0.45, 1.0), 0.065, Color(0.03, 0.008, 0.05), 0.08],
 	WorldPalette.Z_ICE: [Color(0.75, 0.88, 1.0), 0.06, Color(0.008, 0.014, 0.025), 0.12],
 	WorldPalette.Z_LAKE: [Color(0.45, 0.6, 1.0), 0.065, Color(0.006, 0.012, 0.035), 0.15],

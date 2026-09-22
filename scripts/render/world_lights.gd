@@ -55,8 +55,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	key_light.name = "KeyLight"
 	key_light.spot_range = 80.0
 	key_light.spot_attenuation = 0.6
-	key_light.spot_angle = 62.0
-	key_light.spot_angle_attenuation = 0.6
+	key_light.spot_angle = 80.0              # cone edge always far outside the ~40-tile view
+	key_light.spot_angle_attenuation = 0.35
 	key_light.light_energy = 1.0
 	key_light.light_size = 1.5
 	key_light.shadow_enabled = true
@@ -123,7 +123,7 @@ func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
 		match kind:
 			0:
 				col = col.lerp(Color(1.0, 0.55, 0.2), 0.4)
-				energy = clampf(0.9 + cnt * 0.07, 1.0, 3.2)
+				energy = clampf(0.9 + cnt * 0.07, 1.0, 3.2) * 0.7
 				rng = clampf(6.0 + cnt * 0.35, 7.0, 16.0)
 				flick = 0.22
 				pos.z = 1.6

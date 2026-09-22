@@ -16,6 +16,7 @@ const ACTIONS := [
 	[0, 0, 0, 0, 1], [1, 0, 0, 0, 1], [0, 1, 0, 0, 1],
 ]
 const ACTION_NAMES := ["-", "L", "R", "U", "D", "J", "LJ", "RJ"]
+const MAX_REPS := 12
 
 ## Legs: [name, heuristic target tile, predicate, predicate arg, macro ticks, state-key resolution]
 const LEGS := [
@@ -192,15 +193,17 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 	var inp := EEInput.new()
 	var parent := PackedInt32Array([-1])
 	var act := PackedByteArray([0])
-	var buckets := {}          # h -> Array of [idx, snapshot]
+	var reps := PackedByteArray([0])
+	var buckets := {}          # h -> Array of [idx, snapshot, key]
 	var heads := {}
 	var hs: Array = []         # sorted non-empty bucket keys
 	var seen := {}
 	var tiles_seen := {}
 	sim.restore(start)
-	seen[_key()] = true
+	var root_key := _key()
+	seen[root_key] = true
 	var h0 := _h(dist, dist2)
-	buckets[h0] = [[0, start]]; heads[h0] = 0; hs.append(h0)
+	buckets[h0] = [[0, start, root_key]]; heads[h0] = 0; hs.append(h0)
 	var queued := 1
 	var best_h := h0
 	var expanded := 0
@@ -218,6 +221,14 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 			sim.restore(node[1])
 			events.clear()
 			_apply(ACTIONS[a], macro, inp)
+			# keep holding the action until the coarse state actually changes (slow motion,
+			# e.g. accelerating from rest, would otherwise be pruned as "already seen")
+			var r := 1
+			var key := _key()
+			while key == node[2] and r < MAX_REPS and not sim.is_dead and not _goal(leg):
+				_apply(ACTIONS[a], macro, inp)
+				r += 1
+				key = _key()
 			if sim.is_dead:
 				continue
 			for e in events:
@@ -228,18 +239,19 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 						print("  portal used: ", pk, " (expanded ", expanded, ")")
 				elif e[0] == &"coin":
 					print("  COIN collected (expanded ", expanded, ")")
-			var key := _key()
 			if seen.has(key):
 				continue
 			seen[key] = true
 			parent.append(node[0])
 			act.append(a)
+			reps.append(r)
 			var idx := parent.size() - 1
 			if _goal(leg):
 				var chain: Array = []
 				var n := idx
 				while n > 0:
-					chain.push_front(act[n])
+					for q in reps[n]:
+						chain.push_front(act[n])
 					n = parent[n]
 				print("  goal reached: expanded %d, nodes %d" % [expanded, parent.size()])
 				return [chain, sim.snapshot()]
@@ -261,7 +273,7 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 			if not buckets.has(h):
 				buckets[h] = []; heads[h] = 0
 				hs.insert(hs.bsearch(h), h)
-			buckets[h].append([idx, sim.snapshot()])
+			buckets[h].append([idx, sim.snapshot(), key])
 			queued += 1
 		if expanded % 5000 == 0:
 			sim.restore(node[1])

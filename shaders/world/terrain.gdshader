@@ -199,7 +199,7 @@ void fragment() {
 		albedo = c * 0.85;
 		mat = -1;
 		int vzb = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
-		if (vzb == 2) { albedo *= 0.45; }   // inferno back walls stay the painting's near-black red
+		if (vzb == 2) { albedo *= 0.3; }   // inferno back walls stay the painting's near-black red
 		// contact darkening where the foreground meets the back wall
 		ao = mix(0.55, 1.0, smoothstep(-0.05, -0.8, s.x)) * mix(0.6, 1.0, smoothstep(-3.2, -1.7, wp.z));
 		rough = 0.85;
