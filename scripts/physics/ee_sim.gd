@@ -414,8 +414,9 @@ const _SNAP_PROPS: Array[StringName] = [&"px", &"py", &"prev_px", &"prev_py", &"
 	&"_current", &"_ev_keys", &"_ev_coins", &"_ev_bcoins", &"_ev_timedoor", &"_ev_grav"]
 
 
-## Full state snapshot (cheap: packed arrays are copy-on-write). restore() makes the sim continue
-## bit-identically from that point. Used by EEReplay seeking and the route search.
+## Full state snapshot. restore() makes the sim continue bit-identically from that point, any
+## number of times, in any order. Cheap: the big per-tile arrays are shared, which is safe because
+## the sim never writes them in place (it swaps in a modified copy; see _set_tile).
 func snapshot() -> Array:
 	var s := []
 	s.resize(_SNAP_PROPS.size() + 1)
@@ -424,6 +425,7 @@ func snapshot() -> Array:
 		if v is Dictionary or v is Array:
 			v = v.duplicate(true)
 		s[i] = v
+	s[_SNAP_PROPS.find(&"_queue")] = _queue.duplicate()   # mutated in place every tick
 	s[_SNAP_PROPS.size()] = _rng.state
 	return s
 
@@ -434,6 +436,7 @@ func restore(s: Array) -> void:
 		if v is Dictionary or v is Array:
 			v = v.duplicate(true)
 		set(_SNAP_PROPS[i], v)
+	_queue = (s[_SNAP_PROPS.find(&"_queue")] as PackedInt32Array).duplicate()
 	_rng.state = s[_SNAP_PROPS.size()]
 
 
@@ -1118,6 +1121,7 @@ func _door_passable(val: int, cx: int, cy: int) -> bool:
 func _reveal_secret(cx: int, cy: int) -> void:
 	var i := cy * width + cx
 	if _secrets[i] == 0:
+		_secrets = _secrets.duplicate()   # copy-on-write (see _set_tile)
 		_secrets[i] = 1
 		sim_event.emit(&"secret", {"tile": Vector2i(cx, cy)})
 
@@ -1214,8 +1218,12 @@ func _touch_block(cx: int, cy: int, isgodmode: bool) -> void:
 
 
 func _set_tile(cx: int, cy: int, id: int) -> void:
+	# Packed arrays are shared by reference in Godot 4: never write in place, so snapshots that
+	# still reference the old array stay valid (writes are rare: coin pickups only).
 	var i := cy * width + cx
+	tiles = tiles.duplicate()
 	tiles[i] = id
+	_lookup = _lookup.duplicate()
 	_lookup[i] = 0          # setTileComplex -> lookup.deleteLookup
 
 

@@ -39,6 +39,31 @@ func _init() -> void:
 	sim = EESim.new(lvl)
 	sim.sim_event.connect(_on_event)
 	var budget := int(OS.get_environment("ROUTE_LEG_NODES")) if OS.get_environment("ROUTE_LEG_NODES") != "" else 400000
+	# ROUTE_LOCAL="sx,sy,gx,gy,macro,mode": debug a single leg from a tile position to a goal tile
+	if OS.get_environment("ROUTE_LOCAL") != "":
+		var a := OS.get_environment("ROUTE_LOCAL").split(",")
+		sim.px = int(a[0]) * 16.0; sim.py = int(a[1]) * 16.0
+		sim.prev_px = sim.px; sim.prev_py = sim.py
+		var g := Vector2i(int(a[2]), int(a[3]))
+		var leg := ["local", g, "tile", g, int(a[4]), a[5]]
+		_build_open(false)
+		var r := _search(sim.snapshot(), leg, _distance_field([g]), PackedInt32Array(), budget)
+		if r.is_empty():
+			print("LOCAL: unreachable")
+		else:
+			print("LOCAL: reached in %d macros: %s" % [r[0].size(), str(r[0].map(func(x): return ACTION_NAMES[x]))])
+		_cleanup()
+		quit()
+		return
+	# ROUTE_EXPLORE=1: exhaustive coarse exploration from spawn (no goal); dumps reached cells
+	if OS.get_environment("ROUTE_EXPLORE") == "1":
+		_build_open(false)
+		var leg := ["explore", Vector2i(0, 0), "never", 0, 8, "coarse"]
+		_search(sim.snapshot(), leg, _distance_field([Vector2i(0, 0)]), PackedInt32Array(), budget)
+		print("portals used: ", portals_used.keys())
+		_cleanup()
+		quit()
+		return
 	var all_actions: Array = []    # [action, macro] pairs
 	var first_leg := 0
 	# ROUTE_RESUME=1: continue after the last leg that succeeded in a previous run
@@ -140,6 +165,7 @@ func _h(dist: PackedInt32Array, dist2: PackedInt32Array) -> int:
 var _fine := false
 var _medium := false
 var reached_cells := {}
+var portals_used := {}
 
 func _key() -> int:
 	if _fine:
@@ -194,6 +220,14 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 			_apply(ACTIONS[a], macro, inp)
 			if sim.is_dead:
 				continue
+			for e in events:
+				if e[0] == &"portal":
+					var pk := "%s->%s" % [e[1]["from"], e[1]["to"]]
+					if not portals_used.has(pk):
+						portals_used[pk] = true
+						print("  portal used: ", pk, " (expanded ", expanded, ")")
+				elif e[0] == &"coin":
+					print("  COIN collected (expanded ", expanded, ")")
 			var key := _key()
 			if seen.has(key):
 				continue

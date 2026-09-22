@@ -36,6 +36,7 @@ var _look := Vector2.ZERO
 var _tilt := Vector2.ZERO
 var _grav := Vector2(0, -1)          # smoothed gravity direction (world axes, y up)
 var _fall_look := Vector2.ZERO
+var _lag_comp := Vector2.ZERO
 var _smooth_boost := 0.0             # extra smoothing during intro swoop (decays)
 var _noise := FastNoiseLite.new()
 var _t := 0.0
@@ -80,6 +81,7 @@ func snap_to(world_pos: Vector3) -> void:
 	_focus_vel = Vector3.ZERO
 	_look = Vector2.ZERO
 	_fall_look = Vector2.ZERO
+	_lag_comp = Vector2.ZERO
 
 ## Switch to follow mode; with swoop=true the camera glides from wherever it is (title -> gameplay).
 func begin_follow(swoop: bool) -> void:
@@ -102,13 +104,18 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 	# by an extra amount that grows with speed; capped so the ball stays in the upper part of the frame.
 	var v_g := vel.dot(_grav)
 	var he := half_extents()
-	var lead := 0.0
+	var extra := 0.0
+	var lag_comp := Vector2.ZERO
 	if v_g > FALL_LOOK_START:
-		lead = (v_g - FALL_LOOK_START) * follow_smooth + clampf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, 0.0, FALL_LOOK_MAX)
-	var fl := _grav * minf(lead, he.y * 1.25)
-	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(6.0 if fl.length() > _fall_look.length() else 1.5) * delta))
+		extra = minf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, minf(FALL_LOOK_MAX, he.y * 0.6))
+		lag_comp = _grav * (v_g - FALL_LOOK_START) * (follow_smooth + _smooth_boost * _smooth_boost * 1.1)
+	var fl := _grav * extra
+	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(5.0 if fl.length() > _fall_look.length() else 1.5) * delta))
+	# smoothed too (fast), so arrow fields that kick the along-gravity speed around don't jerk the target
+	_lag_comp = _lag_comp.lerp(lag_comp, 1.0 - exp(-6.0 * delta))
+	lag_comp = _lag_comp
 	var up := -_grav * FRAME_UP
-	var target := Vector3(world_pos.x + _look.x + _fall_look.x + up.x, world_pos.y + _look.y + _fall_look.y + up.y, 0.0)
+	var target := Vector3(world_pos.x + _look.x + _fall_look.x + lag_comp.x + up.x, world_pos.y + _look.y + _fall_look.y + lag_comp.y + up.y, 0.0)
 	target = _clamp_focus(target)
 	# Teleports (portals, respawn far away): don't drag the camera across the map.
 	if focus.distance_to(target) > 30.0 and _smooth_boost <= 0.0:
@@ -117,6 +124,14 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 	_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
 	var st := follow_smooth + _smooth_boost * _smooth_boost * 1.1
 	focus = _smooth_damp(focus, target, st, delta)
+	# Safety leash: however the smoothing/look-ahead behaves (e.g. after a long frame hitch), the ball never
+	# leaves the central part of the frame.
+	var he2 := half_extents()
+	var leash := Vector2(he2.x * 0.72, he2.y * 0.42)
+	var fx := clampf(focus.x, world_pos.x - leash.x, world_pos.x + leash.x)
+	var fy := clampf(focus.y, world_pos.y - leash.y, world_pos.y + leash.y)
+	if fx != focus.x or fy != focus.y:
+		focus = _clamp_focus(Vector3(fx, fy, 0.0))
 	var tl := _look + _fall_look * 0.5
 	var tilt_target := Vector2(clampf(tl.x / LOOK_AHEAD_MAX.x, -1.0, 1.0) * MAX_YAW, clampf(tl.y / LOOK_AHEAD_MAX.y, -1.0, 1.0) * MAX_PITCH_TILT)
 	_tilt = _tilt.lerp(tilt_target, 1.0 - exp(-3.0 * delta))

@@ -144,10 +144,10 @@ func _make_ghost_node(parent3d: Node3D) -> void:
 		mi.mesh = sm
 		var m := StandardMaterial3D.new()
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.albedo_color = Color(0.82, 0.86, 0.95, 0.35)
+		m.albedo_color = Color(0.86, 0.9, 1.0, 0.35)
 		m.emission_enabled = true
-		m.emission = Color(0.55, 0.62, 0.8)
-		m.emission_energy_multiplier = 0.35
+		m.emission = Color(0.62, 0.72, 0.95)
+		m.emission_energy_multiplier = 1.1
 		m.rim_enabled = true
 		m.rim = 1.0
 		m.rim_tint = 0.2

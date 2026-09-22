@@ -69,7 +69,7 @@ func _make_hills(W: int) -> void:
 		var z: float = d[0]
 		var spread := 1.0 + (-z) / 60.0
 		var mi := MeshInstance3D.new()
-		mi.mesh = _ridge_mesh(-60.0 * spread, W + 60.0 * spread, d[1], d[2], d[3], 101 + k, z, d[6])
+		mi.mesh = _ridge_mesh(-400.0 * spread, W + 400.0 * spread, d[1], d[2], d[3], 101 + k, z, d[6])
 		var m := ShaderMaterial.new()
 		m.shader = sh
 		m.set_shader_parameter("haze", d[4])

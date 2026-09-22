@@ -207,6 +207,32 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 		if terrain.sky[ty * W + tx]:
 			cave_props_in_sky += 1
 	cave_prop_count = mid_x.size() + fg_x.size()
+	# moss tufts on underground rock tops and hanging moss under ceilings: break up stair silhouettes
+	var moss_x: Array[Transform3D] = []
+	var moss_c: Array[Color] = []
+	for y in range(2, H - 2):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if not terrain.solid[i] or terrain.sky[i - W] or terrain.sky[i + W]:
+				continue
+			var m: int = terrain.mat_ids[i]
+			if m != WorldPalette.M_EARTH and m != WorldPalette.M_STONE and m != WorldPalette.M_WOOD and m != WorldPalette.M_BONE:
+				continue
+			var top := not terrain.solid[i - W]
+			var under := not terrain.solid[i + W]
+			var mc := Color(0.2, 0.3, 0.12).lerp(cols.get_pixel(x, y), 0.35).darkened(0.2)
+			if top and _rng.randf() < 0.3:
+				for k in 2:
+					var s := _rng.randf_range(0.4, 0.7)
+					moss_x.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s * 0.6, s)),
+						Vector3(x + _rng.randf(), -y + 0.02, _rng.randf_range(-1.8, 0.2))))
+					moss_c.append(_vary(mc, 0.15))
+			if under and _rng.randf() < 0.25:
+				var s := _rng.randf_range(0.45, 0.8)
+				moss_x.append(Transform3D(Basis(Vector3.RIGHT, PI).scaled(Vector3(s, s * 1.1, s)),
+					Vector3(x + _rng.randf(), -y - 1.0 + 0.02, _rng.randf_range(-1.8, 0.1))))
+				moss_c.append(_vary(mc.darkened(0.2), 0.15))
+	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
 	var dark := _foliage_mat(0.0, 0.0, 0.0, 0.9)
 	_add_mm("NearSilhouettes", _cone(), dark, fg_x, fg_c)

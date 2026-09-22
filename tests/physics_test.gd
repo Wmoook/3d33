@@ -481,3 +481,27 @@ func test_snapshot() -> void:
 	inp.jump = true
 	run(sim, inp, 300)
 	check("restore() continues bit-identically", sim.state_hash() == h)
+	# restoring an OLD snapshot after a divergent branch (coin pickup mutates tiles, queue mutates
+	# every tick) must not leak anything from that branch
+	var l := make_level(12, 12)
+	put(l, 5, 2, 255)
+	put(l, 5, 6, 100)
+	put(l, 8, 10, 50)
+	var s2 := new_sim(l)
+	var i2 := EEInput.new()
+	run(s2, i2, 5)
+	var old := s2.snapshot()
+	var h_old := s2.state_hash()
+	run(s2, i2, 60)                   # falls through the coin
+	i2.right = true
+	run(s2, i2, 80)                   # bumps the secret block
+	check("branch collected the coin", s2.coins == 1 and s2.is_coin_collected(5, 6))
+	s2.restore(old)
+	check("old snapshot restored exactly (coin back, hash equal)", s2.state_hash() == h_old and s2.coins == 0 and not s2.is_coin_collected(5, 6) and not s2.is_secret_revealed(8, 10))
+	var fresh := new_sim(l)
+	var i3 := EEInput.new()
+	run(fresh, i3, 5)
+	i2.right = false
+	run(s2, i2, 200)
+	run(fresh, i3, 200)
+	check("continuation after restore == fresh run", s2.state_hash() == fresh.state_hash())

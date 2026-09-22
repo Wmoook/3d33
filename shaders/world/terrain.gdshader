@@ -149,11 +149,12 @@ void fragment() {
 	}
 
 	// ---- geometric normal (world space) from the height field ----
-	float e = 0.04;
-	float hx1 = height_smooth(p + vec2(e, 0.0));
-	float hx0 = height_smooth(p - vec2(e, 0.0));
-	float hy1 = height_smooth(p + vec2(0.0, e));
-	float hy0 = height_smooth(p - vec2(0.0, e));
+	// central differences on the (bilinear) baked height, one texel apart: 4 taps
+	float e = 1.0 / htpt;
+	float hx1 = textureLod(height_tex, huv(p + vec2(e, 0.0)), 0.0).r;
+	float hx0 = textureLod(height_tex, huv(p - vec2(e, 0.0)), 0.0).r;
+	float hy1 = textureLod(height_tex, huv(p + vec2(0.0, e)), 0.0).r;
+	float hy0 = textureLod(height_tex, huv(p - vec2(0.0, e)), 0.0).r;
 	// world y = -p.y  ->  dz/dwy = -(dz/dpy)
 	vec3 gn = normalize(vec3(-(hx1 - hx0) / (2.0 * e), (hy1 - hy0) / (2.0 * e), 1.0));
 	if (layer == 0 && s.x < 0.0) {
@@ -197,6 +198,8 @@ void fragment() {
 		region_sample(bgcol_tex, p, 20.0, c, bm, bb);
 		albedo = c * 0.85;
 		mat = -1;
+		int vzb = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
+		if (vzb == 2) { albedo *= 0.45; }   // inferno back walls stay the painting's near-black red
 		// contact darkening where the foreground meets the back wall
 		ao = mix(0.55, 1.0, smoothstep(-0.05, -0.8, s.x)) * mix(0.6, 1.0, smoothstep(-3.2, -1.7, wp.z));
 		rough = 0.85;
@@ -209,11 +212,11 @@ void fragment() {
 		ao = mix(0.5, 1.0, smoothstep(-0.05, -1.0, s.x)) * mix(0.5, 1.0, smoothstep(-12.0, -5.0, wp.z));
 		int vz = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
 		if (vz == 2) {
-			// inferno depths: dark basalt with glowing lava fissures deep in the back
-			albedo *= 0.45;
+			// inferno depths: near-black basalt (the painting's black void) with rare glowing fissures
+			albedo = albedo * 0.12 + vec3(0.02, 0.012, 0.01);
 			float fis = smoothstep(0.975, 0.998, ridge(p * 0.28 + fbm2(p * 0.09) * 1.4));
 			float pulse = 0.7 + 0.3 * sin(TIME * 0.8 + p.x * 0.1);
-			emit += vec3(1.0, 0.3, 0.05) * fis * 1.1 * pulse * smoothstep(-5.0, -9.0, wp.z);
+			emit += vec3(1.0, 0.3, 0.05) * fis * 0.5 * pulse * smoothstep(-5.0, -9.0, wp.z);
 		} else if (vz == 3) {
 			float vn = smoothstep(0.982, 0.998, ridge(p * 0.3 + fbm2(p * 0.1) * 1.5));
 			emit += vec3(0.6, 0.15, 1.0) * vn * 0.35;
@@ -236,7 +239,8 @@ void fragment() {
 		rough = mix(0.62, 0.92, dh);
 		n = normalize(mix(gn, dn, 0.85));
 	} else if (mat == M_STONE || mat == M_METAL) {
-		albedo *= mix(0.7, 1.15, dh);
+		float bev = 1.0 - smoothstep(0.0, 0.14, max(s.x, 0.0));      // worn, lighter chipped edges
+		albedo *= mix(0.7, 1.15, dh) * (1.0 + bev * 0.25);
 		rough = mix(0.35, 0.75, dh);
 		spec = 0.55;
 		n = normalize(mix(gn, triplanar_normal(detail_nrm2, wp, gn, 0.45), 0.9));
@@ -257,17 +261,35 @@ void fragment() {
 		float sp = hash12(floor(wp.xy * 40.0 + vdir.xy * 6.0));
 		emit += vec3(0.7, 0.85, 1.0) * step(0.996, sp) * 3.0;
 	} else if (mat == M_ICE || mat == M_GLASS || mat == M_GEM) {
-		// crystal: fake refraction (parallax inner layer), fresnel rim, inner glow
+		// crystal: faceted (flat voronoi facets with per-facet tilt), parallax inner depth, subsurface glow
+		// that brightens where the ice is thin (edges, hanging tips), fresnel rim
 		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
+		vec2 fq = p * (mat == M_ICE ? 1.6 : 2.2);
+		vec2 fi = floor(fq);
+		vec2 ff = fq - fi;
+		float best = 9.0; vec2 cell = vec2(0.0);
+		for (int yy = -1; yy <= 1; yy++) {
+			for (int xx = -1; xx <= 1; xx++) {
+				vec2 g = vec2(float(xx), float(yy));
+				vec2 o = hash22(fi + g) * 0.45 + 0.5;
+				float d = length(g + o - ff);
+				if (d < best) { best = d; cell = fi + g; }
+			}
+		}
+		vec2 tilt = hash22(cell + 3.7) * 0.45;
+		vec3 fn = normalize(gn + vec3(tilt, 0.0) * smoothstep(0.3, 0.8, gn.z));
 		vec2 par = p + vec2(vdir.x, -vdir.y) * 0.6;
 		float inner = fbm3(par * 1.3 + t * 0.03) * 0.5 + 0.5;
-		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 3.0);
-		float glow = (mat == M_GEM) ? 0.7 : (mat == M_ICE ? 0.25 : 0.4);
-		albedo = albedo * mix(0.35, 0.7, inner);
-		emit += albedo * glow * (0.4 + inner) + albedo * fres * 0.8;
-		rough = 0.28;
-		spec = 0.45;
-		n = normalize(mix(gn, dn, 0.12));
+		float fres = pow(1.0 - clamp(dot(fn, vdir), 0.0, 1.0), 3.0);
+		float thin = 1.0 - smoothstep(0.05, 0.6, s.w);
+		float tip = smoothstep(0.2, 0.9, -gn.y) * thin;             // downward-facing edges = icicle tips
+		float glow = (mat == M_GEM) ? 0.7 : (mat == M_ICE ? 0.3 : 0.4);
+		vec3 base = albedo;
+		albedo = base * mix(0.3, 0.65, inner) * (0.85 + 0.3 * hash12(cell));
+		emit += base * glow * (0.35 + inner) * (0.6 + thin) + base * fres * 0.9 + mix(base, vec3(0.8, 0.95, 1.0), 0.5) * tip * 1.2;
+		rough = 0.12;
+		spec = 0.55;
+		n = fn;
 	} else if (mat == M_WATER) {
 		// deep glossy water: dark body, light shafts + caustics near the surface, foam on the top face
 		vec2 wv = vec2(fbm2(p * vec2(0.6, 1.4) + vec2(t * 0.3, 0.0)), fbm2(p * vec2(0.6, 1.4) + vec2(-t * 0.22, 3.0) + 9.0));
@@ -296,9 +318,11 @@ void fragment() {
 		// shape and a bright rim along its silhouette; yellow (31) tiles burn hotter than orange (30)
 		vec3 tint = albedo;
 		float heat = smoothstep(0.3, 0.7, tint.g / max(tint.r, 0.01));
-		vec2 fw = vec2(fbm2(p * 0.8 + vec2(0.0, -t * 0.25)), fbm2(p * 0.8 + 5.0 + vec2(0.0, -t * 0.2))) * 0.6;
-		float plates = cobbles(p * 1.5 + fw);
-		float crack = 1.0 - smoothstep(0.03, 0.2, plates);
+		// flame licks: cracks stretched vertically and scrolling upward, two scales mixed
+		vec2 fw = vec2(fbm2(p * 0.8 + vec2(0.0, t * 0.35)), fbm2(p * 0.8 + 5.0 + vec2(0.0, t * 0.3))) * 0.9;
+		vec2 lq = vec2(p.x * 1.4, p.y * 0.55 + t * 0.45) + fw;
+		float plates = min(cobbles(lq), cobbles(lq * 2.1 + 7.3) + 0.12);
+		float crack = (1.0 - smoothstep(0.03, 0.18, plates)) * (0.55 + 0.45 * fbm2(p * 0.4 + t * 0.1));
 		float depth_in = smoothstep(0.15, 1.6, s.w);              // distance inside the painted flame
 		float core = smoothstep(0.35, 1.0, depth_in * (0.55 + 0.6 * heat) + fbm2(p * 1.3 - vec2(0.0, t * 0.6)) * 0.25);
 		float rim = (1.0 - smoothstep(0.0, 0.18, max(s.x, 0.0))) * smoothstep(-1.0, 0.2, wp.z);
@@ -311,13 +335,17 @@ void fragment() {
 		rough = mix(0.8, 0.35, glow);
 		n = normalize(mix(gn, dn, 0.8 * (1.0 - glow)));
 	} else if (mat == M_OBSIDIAN) {
-		albedo = vec3(0.012, 0.01, 0.016);
-		rough = 0.06;
-		spec = 1.0;
-		n = normalize(mix(gn, dn, 0.1));
+		// volcanic glass: near-black, mirror gloss, conchoidal ripples, cool rim sheen + edge highlight so it
+		// always reads as solid against dark backdrops
 		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
-		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 4.0);
-		emit += vec3(0.25, 0.05, 0.4) * fres * 0.4;
+		float ripple = sin(length(fract(p * 0.5) - 0.5) * 18.0 + fbm2(p * 0.8) * 4.0) * 0.5 + 0.5;
+		n = normalize(gn + vec3(dn.xy - gn.xy, 0.0) * 0.12 + vec3((ripple - 0.5) * 0.08, 0.0, 0.0));
+		albedo = vec3(0.018, 0.02, 0.028) * (0.8 + 0.4 * ripple);
+		rough = 0.05;
+		spec = 1.0;
+		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 3.0);
+		float edge = 1.0 - smoothstep(0.0, 0.16, max(s.x, 0.0));
+		emit += vec3(0.35, 0.5, 0.75) * (fres * 0.35 + edge * 0.22) * smoothstep(-1.2, 0.0, wp.z);
 	} else if (mat == M_GRASS || mat == M_FOLIAGE) {
 		float fuzz = triplanar_h(detail_hgt, wp * 3.0, gn, 0.9);
 		albedo *= mix(0.65, 1.2, fuzz);
@@ -347,16 +375,18 @@ void fragment() {
 		// tornado: swirling wind-carved vapour
 		// tornado: vapour bands whirling around the funnel axis
 		float ax = 22.0 - (p.y - 80.0) * 0.12;
-		float band = p.y * 1.3 + sin((p.x - ax) * 0.35 - t * 2.2) * 1.2;
+		float band = p.y * 0.55 + fbm2(vec2(p.x * 0.2, p.y * 0.3)) * 2.5 + sin((p.x - ax) * 0.35 - t * 2.2) * 0.9;
 		float swirl = fbm3(vec2((p.x - ax) * 0.45 - t * 1.6, band) + fbm2(p * 0.25 - t * 0.3));
-		float streak = sin(band * 3.0 + swirl * 2.5) * 0.5 + 0.5;
-		albedo *= mix(0.55, 1.3, streak * (swirl * 0.5 + 0.5) + 0.25);
+		float streak = smoothstep(0.2, 0.9, sin(band * 2.2 + swirl * 3.5) * 0.5 + 0.5) * (fbm2(p * 0.9 - t * 0.5) * 0.5 + 0.5);
+		albedo *= mix(0.6, 1.25, streak + 0.2 * (swirl * 0.5 + 0.5));
 		emit += albedo * 0.06;
 		rough = 0.95;
 		n = normalize(gn + vec3(0.0, (streak - 0.5) * 0.35, 0.0));
 	} else if (mat == M_BONE) {
-		albedo = mix(albedo, vec3(0.78, 0.72, 0.6), 0.3) * mix(0.75, 1.05, dh);
-		rough = 0.5;
+		// pale polished bone: bright ivory, porous micro-pits, a warm subsurface lift
+		albedo = mix(albedo, vec3(0.92, 0.88, 0.78), 0.6) * mix(0.82, 1.05, dh);
+		emit += albedo * 0.06;
+		rough = 0.38;
 		n = normalize(mix(gn, dn, 0.4));
 	} else {
 		n = normalize(mix(gn, dn, 0.8 * detail_amt));
@@ -392,13 +422,22 @@ void fragment() {
 		albedo *= mix(0.85, 1.1, mh);
 		rough = clamp(rough + (mh - 0.5) * 0.25, 0.05, 1.0);
 	}
+	int vzf = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
+	if (vzf == 4 && layer == 0 && mat != M_OBSIDIAN && mat != M_WATER) {
+		// frozen cavern: soft snow caps on every up-facing surface, with sparkle
+		float cap = smoothstep(0.35, 0.75, gn.y + fbm2(p * 2.0) * 0.25);
+		albedo = mix(albedo, vec3(0.86, 0.9, 0.97), cap * 0.85);
+		rough = mix(rough, 0.6, cap);
+		vec3 vd2 = normalize(CAMERA_POSITION_WORLD - wp);
+		emit += vec3(0.8, 0.9, 1.0) * cap * step(0.996, hash12(floor(wp.xy * 40.0 + vd2.xy * 6.0))) * 2.5;
+	}
 	if (layer == 0) {
 		// the sides of the solid mass lose emission and detail as they recede
 		emit *= smoothstep(-2.2, -0.15, wp.z);
 	}
 	// outside the level (the margin ring): fade to dark rock
 	float outside = max(max(-p.x, p.x - level_size.x), max(-p.y, p.y - level_size.y));
-	albedo *= mix(1.0, 0.25, smoothstep(0.0, 3.0, outside));
+	albedo *= mix(1.0, 0.7, smoothstep(0.0, 3.0, outside));
 	ALBEDO = albedo * ao;
 	ROUGHNESS = rough;
 	METALLIC = metal;

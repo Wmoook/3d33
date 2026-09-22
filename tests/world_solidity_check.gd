@@ -82,6 +82,8 @@ func _run(lvl: EELevel) -> void:
 					if checked.has(k):
 						continue
 					checked[k] = true
+					if ty == 0 and not world.terrain.solid[k]:
+						continue   # top world border above the open sky: invisible ceiling by design
 					if lvl.fg[k] == 43:
 						continue   # coin door: drawn by the actors layer, not the world
 					var truth := sim.is_tile_solid_now(tx, ty)

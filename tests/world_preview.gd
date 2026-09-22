@@ -25,6 +25,7 @@ const SPOTS := {
 	"rootworks": Vector2(228, 130),
 	"forge": Vector2(160, 185),
 	"tree_back": Vector2(80, 5),
+	"flame_skull": Vector2(172, 105),
 	"surface_mid": Vector2(140, 10),
 	"house": Vector2(14, 8),
 	"tunnel2": Vector2(150, 55),
@@ -42,6 +43,9 @@ var _perf := false
 var _mode := 0
 var _suffix := ""
 var _redkey := false
+var _nomoon := false
+var _nokey := false
+var _nodoors := false
 var sim: EESim
 
 func _ready() -> void:
@@ -57,6 +61,12 @@ func _ready() -> void:
 			_mode = 1; _suffix = "_grid"
 		elif a == "zones":
 			_mode = 2; _suffix = "_zones"
+		elif a == "nomoonshadow":
+			_nomoon = true; _suffix += "_nomoon"
+		elif a == "nodoors":
+			_nodoors = true; _suffix += "_nodoors"
+		elif a == "nokey":
+			_nokey = true; _suffix += "_nokey"
 		elif a == "redkey":
 			_redkey = true; _suffix += "_open"
 		elif a.begins_with("dist="):
@@ -83,6 +93,12 @@ func _ready() -> void:
 	if _redkey:
 		sim._set_key(&"red", true)
 	world.set_debug_mode(_mode)
+	if _nomoon:
+		world.lights.moon.shadow_enabled = false
+	if _nodoors:
+		world.doors.visible = false
+	if _nokey:
+		world.lights.key_light.visible = false
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	print("CAVE PROPS %d, inside sky mask: %d %s" % [world.decor.cave_prop_count, world.decor.cave_props_in_sky,
 		"OK" if world.decor.cave_props_in_sky == 0 else "FAIL"])
@@ -108,31 +124,36 @@ func _measure(focus: Vector3, frames: int) -> float:
 ## Frame time per feature toggle at one spot (vsync off).
 func _run_perf() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	var focus := _place(SPOTS[_names[0]])
 	var env := world.get_environment()
-	print("PERF base %.2f ms" % await _measure(focus, 120))
+	print("viewport ", get_viewport().get_visible_rect().size)
+	var base_ms: float = await _measure(focus, 120)
+	print("PERF base %.2f ms, %.1fM primitives/frame, gpu %.2f ms" % [base_ms,
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1e6,
+		RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.doors.visible = false
-	print("PERF -doors %.2f ms" % await _measure(focus, 120))
+	print("PERF -doors %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.decor.visible = false
-	print("PERF -decor %.2f ms" % await _measure(focus, 120))
+	print("PERF -decor %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	env.volumetric_fog_enabled = false
-	print("PERF -fog %.2f ms" % await _measure(focus, 120))
+	print("PERF -fog %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	env.ssr_enabled = false
-	print("PERF -ssr %.2f ms" % await _measure(focus, 120))
+	print("PERF -ssr %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	env.ssil_enabled = false
-	print("PERF -ssil %.2f ms" % await _measure(focus, 120))
+	print("PERF -ssil %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	env.ssao_enabled = false
-	print("PERF -ssao %.2f ms" % await _measure(focus, 120))
+	print("PERF -ssao %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.lights.key_light.shadow_enabled = false
-	print("PERF -keyshadow %.2f ms" % await _measure(focus, 120))
+	print("PERF -keyshadow %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.lights.moon.shadow_enabled = false
-	print("PERF -moonshadow %.2f ms" % await _measure(focus, 120))
+	print("PERF -moonshadow %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	for l in world.lights.cluster_lights:
 		l.shadow_enabled = false
 
-	print("PERF -omnishadows %.2f ms" % await _measure(focus, 120))
+	print("PERF -omnishadows %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.terrain.visible = false
-	print("PERF -terrain %.2f ms" % await _measure(focus, 120))
+	print("PERF -terrain %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	get_tree().quit()
 
 func _run() -> void:

@@ -5,7 +5,7 @@ extends Node3D
 ## shares one grid mesh and one ShaderMaterial.
 
 const CHUNK := 16
-const VPT := 12         # vertices per tile (2x the SDF bake: crisp cliff edges)
+const VPT := 8          # vertices per tile (= the SDF bake density; solidity check stays at 0)
 const MARGIN := 16      # extra tiles of terrain around the level
 
 var level: EELevel
@@ -30,6 +30,8 @@ var backwall := PackedByteArray()
 var floaters := {}
 ## Tiny enclosed air pockets (the key "dither" holes in the rock): drawn as shallow pits, not deep holes.
 var pocket := PackedByteArray()
+## Tiny solid islands (<= 3 tiles, 8-connected): sculpted as organic pebbles / crystals / embers.
+var speck := PackedByteArray()
 var timings := {}
 
 func build(lvl: EELevel) -> void:
@@ -204,6 +206,37 @@ func _compute_sky() -> void:
 func _sky_passable(i: int) -> bool:
 	return not solid[i] and not backwall[i] and not WorldPalette.is_key_door(level.fg[i])
 
+func _find_specks() -> void:
+	var n := W * H
+	speck.resize(n)
+	speck.fill(0)
+	var seen := PackedByteArray()
+	seen.resize(n)
+	for start in n:
+		if seen[start] or not solid[start]:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		while qi < comp.size() and comp.size() <= 4:
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := x + dx
+					var ny := y + dy
+					if nx < 0 or ny < 0 or nx >= W or ny >= H:
+						continue
+					var j := ny * W + nx
+					if seen[j] or not solid[j]:
+						continue
+					seen[j] = 1
+					comp.append(j)
+		if comp.size() <= 3:
+			for i in comp:
+				speck[i] = 1
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
@@ -227,10 +260,30 @@ func _classify() -> void:
 			var id: int = level.fg[i]
 			var z := WorldPalette.zone_at(x, y)
 			zones[i] = z
-			if _is_border(x, y) and not WorldPalette.is_world_solid(id):
-				id = 44   # the world border is always solid (EE)
+			var border_rock := false
+			if _is_border(x, y):
+				# EE world border (always solid in physics). Visually: the top row above open air is not
+				# drawn at all (the sky continues); elsewhere it continues its inner neighbour's rock, or
+				# is plain dark bedrock.
+				var inner: int = level.fg[clampi(y, 1, H - 2) * W + clampi(x, 1, W - 2)]
+				if y == 0 and not WorldPalette.is_world_solid(inner):
+					continue
+				if WorldPalette.is_world_solid(inner):
+					id = inner
+				else:
+					id = 44
+					border_rock = true
 			# THE canonical colour of every tile = the EE minimap (CONTRACTS "canonical art")
 			var mc := Color8(mmd[i * 3], mmd[i * 3 + 1], mmd[i * 3 + 2]) if mm_ok else WorldPalette.base_color(id)
+			if _is_border(x, y):
+				var ii := clampi(y, 1, H - 2) * W + clampi(x, 1, W - 2)
+				mc = Color8(mmd[ii * 3], mmd[ii * 3 + 1], mmd[ii * 3 + 2]) if mm_ok else mc
+			if border_rock:
+				solid[i] = 1
+				mat_ids[i] = WorldPalette.M_STONE
+				fgb[i * 4] = 42; fgb[i * 4 + 1] = 36; fgb[i * 4 + 2] = 34; fgb[i * 4 + 3] = WorldPalette.M_STONE
+				has_fg[i] = 1
+				continue
 			if WorldPalette.is_world_solid(id):
 				solid[i] = 1
 				var m := WorldPalette.material_for(id, x, y, z)
@@ -249,6 +302,9 @@ func _classify() -> void:
 				has_bgc[i] = 1
 				backwall[i] = 1
 	_compute_sky()
+	for x in W:
+		if not solid[x] and sky[W + x]:
+			sky[x] = 1
 	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
 	_dilate(fgb, has_fg)
@@ -257,6 +313,7 @@ func _classify() -> void:
 			orig[i * 4] = fgb[i * 4]; orig[i * 4 + 1] = fgb[i * 4 + 1]; orig[i * 4 + 2] = fgb[i * 4 + 2]; orig[i * 4 + 3] = fgb[i * 4 + 3]
 	orig_img = Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, orig)
 	_find_pockets()
+	_find_specks()
 	for i in n:
 		if pocket[i] and not has_bgc[i]:
 			bgb[i * 4] = int(fgb[i * 4] * 0.5); bgb[i * 4 + 1] = int(fgb[i * 4 + 1] * 0.5)
@@ -308,6 +365,7 @@ func _field_image() -> Image:
 	for i in W * H:
 		b[i * 4] = 255 if sky[i] else 0
 		b[i * 4 + 1] = 255 if pocket[i] else 0
+		b[i * 4 + 2] = 255 if speck[i] else 0
 		b[i * 4 + 3] = 255
 	img.set_data(W, H, false, Image.FORMAT_RGBA8, b)
 	return img

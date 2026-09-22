@@ -126,6 +126,8 @@ static func material_for(id: int, x: int, y: int, z: int) -> int:
 		42, 46, 9:
 			if z == Z_TORNADO:
 				return M_CLOUD
+			if z == Z_HELL or z == Z_BONES:
+				return M_BONE
 			if z == Z_ICE:
 				return M_SNOW
 			return M_STONE
