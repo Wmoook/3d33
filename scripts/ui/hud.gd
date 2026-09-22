@@ -16,7 +16,7 @@ void fragment() {
 """
 
 var _s := {"coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "keys": {}, "time": 0.0, "god": false,
-	"crown": false, "zone": "", "visible": true}
+	"crown": false, "zone": "", "visible": true, "best": -1.0}
 var _t := 0.0
 var _pop_gold := 0.0
 var _pop_blue := 0.0
@@ -110,6 +110,10 @@ func _draw() -> void:
 	var tr := Rect2(W - 300, 30, 264, 86)
 	draw_style_box(UITheme.glass_box(16, 0.5), tr)
 	draw_string(lab, Vector2(tr.position.x + 24, 60), "TIME", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UITheme.INK_DIM)
+	var best: float = _s.best
+	if best >= 0.0:
+		var bs := "BEST  %02d:%05.2f" % [int(best / 60.0), fmod(best, 60.0)]
+		draw_string(lab, Vector2(tr.position.x, 60), bs, HORIZONTAL_ALIGNMENT_RIGHT, tr.size.x - 22, 16, Color(UITheme.GOLD, 0.8))
 	_shadow_string(num, Vector2(tr.position.x + 22, 102), ts, 42, UITheme.INK, HORIZONTAL_ALIGNMENT_LEFT, tr.size.x - 40)
 	if str(_s.zone) != "":
 		draw_string(UITheme.title(3, 600), Vector2(W - 536, tr.end.y + 34), str(_s.zone), HORIZONTAL_ALIGNMENT_RIGHT, 500, 18, Color(1, 1, 1, 0.5))
@@ -130,7 +134,7 @@ func _draw() -> void:
 				draw_rect(Rect2(0, size.y - 110 + i * 11, 1100, 110 - i * 11), Color(0, 0, 0, 0.035 * ha))
 			var hy := size.y - 44
 			var x := 44.0
-			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["F3", "collision"], ["ESC", "menu"]]:
+			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["H", "ghost"], ["F3", "collision"], ["ESC", "menu"]]:
 				x = _hint(Vector2(x, hy), pair[0], pair[1], ha) + 26
 
 func _coin_row(c: Vector2, n: int, total: int, blue: bool, spin: float, pop: float) -> void:

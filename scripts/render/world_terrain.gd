@@ -5,13 +5,14 @@ extends Node3D
 ## shares one grid mesh and one ShaderMaterial.
 
 const CHUNK := 16
-const VPT := 16         # vertices per tile (2x the SDF bake: crisp cliff edges)
+const VPT := 12         # vertices per tile (2x the SDF bake: crisp cliff edges)
 const MARGIN := 16      # extra tiles of terrain around the level
 
 var level: EELevel
 var W := 0
 var H := 0
 var material: ShaderMaterial
+var shadow_material: ShaderMaterial
 var fgcol_img: Image
 var orig_img: Image
 var info_img: Image
@@ -172,24 +173,18 @@ func _load_minimap() -> Image:
 	img.convert(Image.FORMAT_RGB8)
 	return img
 
-## True sky visibility: open air straight up to the level top (column test), plus air reachable from it
-## that stays within 2 tiles of the local ground line (under canopies / overhangs at the surface).
-## Tunnels and anything underground never see the sky.
+## Sky visibility = flood fill from the top open row (y = 1, below the solid 44 border) through air that
+## is not solid, not a key door/gate and has no back wall (bg block / minimap-coloured air), staying in
+## the surface band (y <= SKY_MAX_Y) so tunnel mouths don't leak the sky underground.
+const SKY_MAX_Y := 22
+
 func _compute_sky() -> void:
-	var ground := PackedInt32Array()
-	ground.resize(W)
-	for x in W:
-		var gy := H
-		for y in range(1, H):   # row 0 is the solid world border
-			if solid[y * W + x] or backwall[y * W + x]:
-				gy = y
-				break
-			sky[y * W + x] = 1
-		ground[x] = gy
 	var q := PackedInt32Array()
-	for i in W * H:
-		if sky[i]:
-			q.append(i)
+	for x in W:
+		var i0 := W + x
+		if _sky_passable(i0):
+			sky[i0] = 1
+			q.append(i0)
 	var qi := 0
 	while qi < q.size():
 		var i := q[qi]; qi += 1
@@ -198,18 +193,16 @@ func _compute_sky() -> void:
 		for k in 4:
 			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
 			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
-			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+			if nx < 0 or ny < 1 or nx >= W or ny > SKY_MAX_Y:
 				continue
 			var j := ny * W + nx
-			if sky[j] or solid[j] or backwall[j]:
-				continue
-			var lim := 0
-			for dx in range(-8, 9):
-				lim = maxi(lim, ground[clampi(nx + dx, 0, W - 1)])
-			if ny > lim + 2:
+			if sky[j] or not _sky_passable(j):
 				continue
 			sky[j] = 1
 			q.append(j)
+
+func _sky_passable(i: int) -> bool:
+	return not solid[i] and not backwall[i] and not WorldPalette.is_key_door(level.fg[i])
 
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
@@ -442,11 +435,11 @@ func _bake_height() -> void:
 	material.set_shader_parameter("height_margin", float(HMARGIN))
 	material.set_shader_parameter("htpt", float(HTPT))
 
-func _grid_mesh() -> ArrayMesh:
-	var n := CHUNK * VPT
+func _grid_mesh(vpt: int = VPT) -> ArrayMesh:
+	var n := CHUNK * vpt
 	var verts := PackedVector3Array()
 	verts.resize((n + 1) * (n + 1))
-	var inv := 1.0 / VPT
+	var inv := 1.0 / vpt
 	var k := 0
 	for j in n + 1:
 		var y := -j * inv
@@ -479,8 +472,15 @@ func _grid_mesh() -> ArrayMesh:
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return m
 
+const SHADOW_VPT := 4
+
 func _make_chunks() -> void:
 	var mesh := _grid_mesh()
+	var smesh := _grid_mesh(SHADOW_VPT)
+	shadow_material = ShaderMaterial.new()
+	shadow_material.shader = load("res://shaders/world/terrain_shadow.gdshader")
+	for k in ["sdf_tex", "field_tex", "level_size", "height_tex", "height_margin"]:
+		shadow_material.set_shader_parameter(k, material.get_shader_parameter(k))
 	var x0 := -MARGIN
 	while x0 < W + MARGIN:
 		var y0 := -MARGIN
@@ -490,9 +490,17 @@ func _make_chunks() -> void:
 			mi.material_override = material
 			mi.position = Vector3(x0, -y0, 0.0)
 			mi.custom_aabb = AABB(Vector3(0, -CHUNK, -14.5), Vector3(CHUNK, CHUNK, 16.0))
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.name = "Chunk_%d_%d" % [x0, y0]
 			add_child(mi)
+			var sh := MeshInstance3D.new()
+			sh.mesh = smesh
+			sh.material_override = shadow_material
+			sh.position = mi.position
+			sh.custom_aabb = mi.custom_aabb
+			sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			sh.name = "Shadow_%d_%d" % [x0, y0]
+			add_child(sh)
 			y0 += CHUNK
 		x0 += CHUNK
 

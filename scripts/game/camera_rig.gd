@@ -98,9 +98,15 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 	if gravity.length_squared() > 0.01:
 		_grav = _grav.slerp(gravity.normalized(), 1.0 - exp(-GRAV_SMOOTH * delta)).normalized()
 	# Long falls: frame the terrain coming up along gravity.
+	# The damped follow trails a fast fall by ~speed * smooth_time, so compensate that lag first, then lead
+	# by an extra amount that grows with speed; capped so the ball stays in the upper part of the frame.
 	var v_g := vel.dot(_grav)
-	var fl := _grav * clampf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, 0.0, FALL_LOOK_MAX)
-	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(3.0 if fl.length() > _fall_look.length() else 1.2) * delta))
+	var he := half_extents()
+	var lead := 0.0
+	if v_g > FALL_LOOK_START:
+		lead = (v_g - FALL_LOOK_START) * follow_smooth + clampf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, 0.0, FALL_LOOK_MAX)
+	var fl := _grav * minf(lead, he.y * 1.25)
+	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(6.0 if fl.length() > _fall_look.length() else 1.5) * delta))
 	var up := -_grav * FRAME_UP
 	var target := Vector3(world_pos.x + _look.x + _fall_look.x + up.x, world_pos.y + _look.y + _fall_look.y + up.y, 0.0)
 	target = _clamp_focus(target)

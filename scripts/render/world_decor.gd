@@ -8,6 +8,9 @@ var _rng := RandomNumberGenerator.new()
 var _mat_foliage: ShaderMaterial
 var _mat_prop: ShaderMaterial
 var _mat_glow: ShaderMaterial
+## Validation: cave props placed in total / inside the sky mask (must be 0).
+var cave_prop_count := 0
+var cave_props_in_sky := 0
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_rng.seed = 1337
@@ -170,7 +173,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 	for y in range(2, H - 2):
 		for x in range(1, W - 1):
 			var i := y * W + x
-			if terrain.solid[i] or terrain.sky[i] or terrain.pocket[i]:
+			# cave props only in air the sky flood never reaches (and never in the surface band's air)
+			if terrain.solid[i] or terrain.sky[i] or terrain.pocket[i] or _near_sky(terrain, x, y, W, H):
 				continue
 			var ceil := terrain.solid[i - W] == 1
 			var floor := terrain.solid[i + W] == 1
@@ -196,9 +200,25 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 				var b := Basis.from_scale(Vector3(r * 2.0, -len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
 				fg_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y + 1.2 - len * 0.5, _rng.randf_range(3.5, 5.5))))
 				fg_c.append(c.darkened(0.8))
+	cave_props_in_sky = 0
+	for t in mid_x + fg_x:
+		var tx := clampi(int(floor(t.origin.x)), 0, W - 1)
+		var ty := clampi(int(floor(-t.origin.y)), 0, H - 1)
+		if terrain.sky[ty * W + tx]:
+			cave_props_in_sky += 1
+	cave_prop_count = mid_x.size() + fg_x.size()
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
 	var dark := _foliage_mat(0.0, 0.0, 0.0, 0.9)
 	_add_mm("NearSilhouettes", _cone(), dark, fg_x, fg_c)
+
+func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
+	for dy in range(-4, 5):
+		for dx in range(-4, 5):
+			var nx := clampi(x + dx, 0, W - 1)
+			var ny := clampi(y + dy, 0, H - 1)
+			if terrain.sky[ny * W + nx]:
+				return true
+	return false
 
 func _vary(c: Color, a: float) -> Color:
 	var f := 1.0 + _rng.randf_range(-a, a)
@@ -221,7 +241,7 @@ func _foliage_mat(wind: float, transl: float, emit: float, rough: float) -> Shad
 	return m
 
 ## col.a > 1 is used as emission strength for glow props (stored in custom data).
-func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color], glow := false) -> void:
+func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color], glow := false, cast_shadows := false) -> void:
 	if xs.is_empty():
 		return
 	var mm := MultiMesh.new()
@@ -243,7 +263,7 @@ func _add_mm(nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: 
 	mi.name = nm
 	mi.multimesh = mm
 	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if not glow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 
 ## A clump of ~9 tapered blades; vertex colour dark base -> light tip, alpha = sway weight.

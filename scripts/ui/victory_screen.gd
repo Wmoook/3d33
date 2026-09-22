@@ -56,6 +56,12 @@ func _draw() -> void:
 	draw_string(UITheme.hud_medium(9), Vector2(0, c.y - 110), "THE  SOUL  RETURNS", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.6 * _k(0.1, 1.0) * o))
 	draw_string_outline(f, Vector2(0, c.y), "ODYSSEY COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, W, 96, 14, Color(1, 0.7, 0.3, 0.1 * a))
 	draw_string(f, Vector2(0, c.y), "ODYSSEY COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, W, 96, Color(1.0, 0.88, 0.6, a))
+	if stats.get("new_best", false):
+		var pb := 0.75 + 0.25 * sin(_t * 3.0)
+		draw_string(UITheme.hud(8), Vector2(0, c.y + 74), "NEW  BEST  TIME", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(UITheme.GOLD, pb * _k(1.2, 0.6) * o))
+	elif float(stats.get("best", -1.0)) > 0.0:
+		var b: float = stats.best
+		draw_string(UITheme.hud_medium(4), Vector2(0, c.y + 74), "BEST  %02d:%05.2f" % [int(b / 60.0), fmod(b, 60.0)], HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.5 * _k(1.2, 0.6) * o))
 	var rk := _k(1.0, 1.0) * o
 	draw_line(Vector2(c.x - 300 * rk, c.y + 36), Vector2(c.x + 300 * rk, c.y + 36), Color(UITheme.GOLD, 0.7 * rk), 1.5, true)
 	var t: float = stats.time

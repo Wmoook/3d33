@@ -4,14 +4,14 @@ extends Node3D
 ## from the level art, flicker, a soft focus fill light, and shadow budget management (only the lights
 ## nearest the focus cast shadows).
 
-const SHADOW_BUDGET := 6
+const SHADOW_BUDGET := 2   # + key light + moon = at most 4 shadowed lights
 const BIN := 6   # tiles per clustering bin
 
 var moon: DirectionalLight3D
 var focus_light: OmniLight3D
 ## Big soft shadowed key light up-left in front of the scene: sculpts every bevel and throws the
 ## foreground's shadow onto the recessed walls (the main "3D diorama" read).
-var key_light: OmniLight3D
+var key_light: SpotLight3D
 var key_energy := 1.0
 var key_color := Color(1, 0.9, 0.8)
 var cluster_lights: Array[OmniLight3D] = []
@@ -51,10 +51,12 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	focus_light.light_volumetric_fog_energy = 0.0
 	add_child(focus_light)
 
-	key_light = OmniLight3D.new()
+	key_light = SpotLight3D.new()   # one shadow frustum instead of an omni cube
 	key_light.name = "KeyLight"
-	key_light.omni_range = 70.0
-	key_light.omni_attenuation = 0.6
+	key_light.spot_range = 80.0
+	key_light.spot_attenuation = 0.6
+	key_light.spot_angle = 62.0
+	key_light.spot_angle_attenuation = 0.6
 	key_light.light_energy = 1.0
 	key_light.light_size = 1.5
 	key_light.shadow_enabled = true
@@ -155,6 +157,10 @@ func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
 		l.light_specular = 0.6 if kind < 3 else 0.15
 		l.light_volumetric_fog_energy = 1.2 if kind == 0 else 0.7
 		l.shadow_enabled = false
+		l.distance_fade_enabled = true
+		l.distance_fade_begin = 45.0
+		l.distance_fade_length = 12.0
+		l.distance_fade_shadow = 25.0
 		l.shadow_bias = 0.05
 		l.shadow_normal_bias = 1.0
 		l.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
@@ -170,6 +176,7 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	focus_light.position = world_pos + Vector3(0.0, 1.5, 3.0)
 	focus_light.light_energy = focus_fill_energy
 	key_light.position = world_pos + Vector3(-11.0, 13.0, 17.0)
+	key_light.look_at(world_pos + Vector3(2.0, -2.0, -2.0), Vector3.UP)
 	key_light.light_energy = key_energy
 	key_light.light_color = key_color
 	moon.light_energy = 2.2 * moon_energy
@@ -187,7 +194,7 @@ func _assign_shadows() -> void:
 	order.sort_custom(func(a, b): return a[0] < b[0])
 	for k in order.size():
 		var li: OmniLight3D = cluster_lights[order[k][1]]
-		li.shadow_enabled = k < SHADOW_BUDGET and order[k][0] < 900.0
+		li.shadow_enabled = k < SHADOW_BUDGET and order[k][0] < 400.0
 
 func _process(delta: float) -> void:
 	_time += delta

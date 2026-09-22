@@ -14,6 +14,7 @@ var sim: EESim
 var cam: Camera3D
 
 func _ready() -> void:
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
 	world = WorldView.new()
 	add_child(world)

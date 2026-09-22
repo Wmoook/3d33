@@ -24,6 +24,10 @@ const SPOTS := {
 	"tunnel": Vector2(40, 30),
 	"rootworks": Vector2(228, 130),
 	"forge": Vector2(160, 185),
+	"tree_back": Vector2(80, 5),
+	"surface_mid": Vector2(140, 10),
+	"house": Vector2(14, 8),
+	"tunnel2": Vector2(150, 55),
 }
 
 var world: WorldView
@@ -41,6 +45,7 @@ var _redkey := false
 var sim: EESim
 
 func _ready() -> void:
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	var only := []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("only="):
@@ -78,6 +83,9 @@ func _ready() -> void:
 	if _redkey:
 		sim._set_key(&"red", true)
 	world.set_debug_mode(_mode)
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	print("CAVE PROPS %d, inside sky mask: %d %s" % [world.decor.cave_prop_count, world.decor.cave_props_in_sky,
+		"OK" if world.decor.cave_props_in_sky == 0 else "FAIL"])
 	world.zone_changed.connect(func(z): print("ZONE ", z, " ", world.get_zone_info(z).get("title")))
 	_run()
 

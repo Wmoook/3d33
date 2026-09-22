@@ -36,6 +36,7 @@ var _tornado: GPUParticles3D
 var _tornado_dust: GPUParticles3D
 var _snow: GPUParticles3D
 var _spores: GPUParticles3D
+var _ash: GPUParticles3D
 var _cull_t := 0.0
 var _focus := Vector3(-1000, 0, 0)
 var _zone_w := {}  # zone -> smoothed weight around the camera
@@ -351,6 +352,9 @@ func _build_ambient() -> void:
 	_spores = _camera_emitter(220, 9.0, Color(0.85, 0.5, 1.0, 0.9), Vector3(0.1, 0.18, 0), 0.16, true)
 	_spores.name = "Spores"
 	add_child(_spores)
+	_ash = _camera_emitter(200, 8.0, Color(0.55, 0.45, 0.4, 0.9), Vector3(0.25, -0.35, 0), 0.12, true)
+	_ash.name = "Ash"
+	add_child(_ash)
 
 func _tornado_system(n: int, dust: bool) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
@@ -426,6 +430,8 @@ func _process(delta: float) -> void:
 	_zone_w["corrupt"] = move_toward(_zone_w.get("corrupt", 0.0), _zone_frac(ftile, WorldPalette.Z_CORRUPT), delta)
 	_drive_camera_emitter(_snow, _zone_w["ice"], f)
 	_drive_camera_emitter(_spores, _zone_w["corrupt"], f)
+	_zone_w["hell"] = move_toward(_zone_w.get("hell", 0.0), _zone_frac(ftile, WorldPalette.Z_HELL), delta)
+	_drive_camera_emitter(_ash, _zone_w["hell"], f)
 	var tv := ftile.x < 46.0 + ACTIVE_RADIUS and ftile.y > 75.0 - 25.0 and ftile.y < 150.0 + 25.0
 	_tornado.visible = tv
 	_tornado_dust.visible = tv

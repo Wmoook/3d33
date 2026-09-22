@@ -67,6 +67,19 @@ func _init() -> void:
 			_cleanup()
 			quit(1)
 			return
+		# verify: replaying the chain from the leg start must land on the goal state
+		sim.restore(snap)
+		events.clear()
+		var vi := EEInput.new()
+		var goal_seen := false
+		for a in res[0]:
+			_apply(ACTIONS[a], leg[4], vi)
+		sim.restore(res[1])
+		var want := Vector2(sim.px, sim.py)
+		sim.restore(snap)
+		for a in res[0]:
+			_apply(ACTIONS[a], leg[4], vi)
+		print("  chain check: replay end (%.1f,%.1f) vs search end (%.1f,%.1f)" % [sim.px, sim.py, want.x, want.y])
 		snap = res[1]
 		for a in res[0]:
 			all_actions.append([a, leg[4]])

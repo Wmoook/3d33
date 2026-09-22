@@ -47,6 +47,8 @@ var pause_menu: PauseMenu
 var victory: VictoryScreen
 var collision_overlay: Node3D   # CollisionOverlay (preloaded so a stale class cache can't break boot)
 const CollisionOverlayScript := preload("res://scripts/game/collision_overlay.gd")
+const GhostRunsScript := preload("res://scripts/game/ghost_runs.gd")
+var ghost: Node   # ghost_runs.gd: run recording + best-run ghost
 var _fade: ColorRect
 
 var _play_ticks := 0
@@ -174,6 +176,11 @@ func _boot() -> void:
 	loading.set_progress(0.9, "Charting the depths")
 	await _frames(1)
 	minimap.build(level, sim)
+	ghost = GhostRunsScript.new()
+	ghost.name = "GhostRuns"
+	add_child(ghost)
+	ghost.best_changed.connect(func(t: int): hud.set_state({"best": t * 0.01 if t >= 0 else -1.0}))
+	ghost.setup(level, sim, actors, _world_root)
 	collision_overlay = CollisionOverlayScript.new()
 	collision_overlay.name = "CollisionOverlay"
 	_world_root.add_child(collision_overlay)
@@ -357,7 +364,9 @@ func _physics_process(_delta: float) -> void:
 	if _god_request:
 		_god_request = false
 		_toggle_god()
+	ghost.record(input)
 	sim.tick(input)
+	ghost.tick_ghost()
 	_play_ticks += 1
 	if "teleported" in sim:
 		_snap_render = sim.teleported
@@ -365,6 +374,10 @@ func _physics_process(_delta: float) -> void:
 		_snap_render = absf(sim.px - sim.prev_px) > 40.0 or absf(sim.py - sim.prev_py) > 40.0
 
 func _fill_input() -> void:
+	if "god_toggle" in input:
+		input.god_toggle = false
+	if "jump_pressed" in input:
+		input.jump_pressed = false
 	if input_provider.is_valid():
 		var d: Dictionary = input_provider.call(_play_ticks)
 		input.left = d.get("left", false)
@@ -380,12 +393,18 @@ func _fill_input() -> void:
 	input.up = Input.is_action_pressed(&"ee_up")
 	input.down = Input.is_action_pressed(&"ee_down")
 	# Space tapped and released between two ticks still registers for one tick.
-	input.jump = Input.is_action_pressed(&"ee_jump") or _jump_latch
+	if "jump_pressed" in input:
+		input.jump = Input.is_action_pressed(&"ee_jump")
+		input.jump_pressed = _jump_latch    # EEInput edge flag (sim clears it after use)
+	else:
+		input.jump = Input.is_action_pressed(&"ee_jump") or _jump_latch
 	_jump_latch = false
 
 func _toggle_god() -> void:
 	var on := not bool(sim.in_god_mode)
-	if sim.has_method(&"set_god_mode"):
+	if "god_toggle" in input:
+		input.god_toggle = true      # consumed by sim.tick, recorded in replays
+	elif sim.has_method(&"set_god_mode"):
 		sim.set_god_mode(on)
 	else:
 		sim.in_god_mode = on
@@ -410,6 +429,8 @@ func _process(delta: float) -> void:
 				var gd: Vector2i = sim.gravity_dir if "gravity_dir" in sim else Vector2i(0, 1)
 				rig.follow(_render_pos, vel, delta, Vector2(gd.x, -gd.y))
 				_update_world_actors(_render_pos, delta)
+				if ghost:
+					ghost.update_visual(f, delta)
 			if state == State.INTRO:
 				_intro_t += delta
 				if _intro_t > 2.3:
@@ -564,7 +585,8 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"complete":
 			audio.play("crown", 0.0, 0.0)
 			hud.flash(UITheme.GOLD, 0.8)
-			victory.show_stats({"time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
+			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
+			victory.show_stats({"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
 				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0})
 
 # ======================================================================= input / menus
@@ -594,6 +616,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_jump_latch = true
 			elif event.is_action_pressed(&"ee_god"):
 				_god_request = true
+			elif event.is_action_pressed(&"ee_ghost"):
+				ghost.toggle()
+				audio.play("ui_move", -8.0, 0.0)
 			elif event.is_action_pressed(&"ee_collision"):
 				collision_overlay.visible = not collision_overlay.visible
 				collision_overlay.mark_dirty()
@@ -644,6 +669,8 @@ func restart_run() -> void:
 		sim.restart()
 	else:
 		sim.reset()
+	if ghost:
+		ghost.on_reset()
 	_play_ticks = 0
 	_snap_render = true
 	_key_dur.clear()

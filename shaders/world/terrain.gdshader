@@ -292,19 +292,24 @@ void fragment() {
 		spec = 0.55;
 		n = normalize(mix(gn, dn, 0.6));
 	} else if (mat == M_FIRE) {
-		// molten rock: dark crust cracked with glowing flowing magma
-		vec2 fp = p * 0.9 + vec2(0.0, t * 0.35);
-		float flow = fbm3(fp + fbm2(p * 0.6 - t * 0.1) * 1.3) * 0.5 + 0.5;
-		float crack = smoothstep(0.35, 0.75, flow);
-		vec3 hot = srgb_to_lin(vec3(1.0, 0.8, 0.4));
-		vec3 mid = albedo;
-		float heat = smoothstep(0.25, 0.6, dot(albedo, vec3(0.3, 0.6, 0.1)));   // yellow (31) hotter than orange (30)
-		flow = mix(flow * 0.7, flow * 0.6 + 0.4, heat);
-		crack = smoothstep(0.35, 0.75, flow);
-		albedo = mix(albedo * 0.2, albedo * 0.5, crack);
-		emit += mix(mid * 0.35, mix(mid, hot, 0.5) * 2.2, crack * crack) * (0.35 + 0.65 * crack);
-		rough = 0.5;
-		n = normalize(mix(gn, dn, 0.6 * (1.0 - crack)));
+		// sculpted molten form: dark cooled crust, glowing crack network, hot cores deep inside each flame
+		// shape and a bright rim along its silhouette; yellow (31) tiles burn hotter than orange (30)
+		vec3 tint = albedo;
+		float heat = smoothstep(0.3, 0.7, tint.g / max(tint.r, 0.01));
+		vec2 fw = vec2(fbm2(p * 0.8 + vec2(0.0, -t * 0.25)), fbm2(p * 0.8 + 5.0 + vec2(0.0, -t * 0.2))) * 0.6;
+		float plates = cobbles(p * 1.5 + fw);
+		float crack = 1.0 - smoothstep(0.03, 0.2, plates);
+		float depth_in = smoothstep(0.15, 1.6, s.w);              // distance inside the painted flame
+		float core = smoothstep(0.35, 1.0, depth_in * (0.55 + 0.6 * heat) + fbm2(p * 1.3 - vec2(0.0, t * 0.6)) * 0.25);
+		float rim = (1.0 - smoothstep(0.0, 0.18, max(s.x, 0.0))) * smoothstep(-1.0, 0.2, wp.z);
+		float flick = 0.85 + 0.15 * sin(t * 6.0 + p.x * 1.7 + p.y);
+		vec3 hot = srgb_to_lin(vec3(1.0, 0.86, 0.5));
+		vec3 glow_col = mix(tint, hot, 0.35 + 0.5 * heat);
+		float glow = max(crack * (0.6 + 0.8 * heat), max(core, rim * 0.8));
+		albedo = mix(tint * vec3(0.12, 0.07, 0.06), tint * 0.6, glow);   // crust is near-black basalt
+		emit += glow_col * (crack * 1.6 + core * core * 3.2 + rim * 1.4) * mix(0.55, 1.1, heat) * flick;
+		rough = mix(0.8, 0.35, glow);
+		n = normalize(mix(gn, dn, 0.8 * (1.0 - glow)));
 	} else if (mat == M_OBSIDIAN) {
 		albedo = vec3(0.012, 0.01, 0.016);
 		rough = 0.06;
@@ -379,9 +384,11 @@ void fragment() {
 
 	// crisp micro grain on every rock-like surface
 	if (mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {
-		vec3 mn = triplanar_normal(detail_nrm2, wp, gn, 1.6);
-		n = normalize(n + (mn - gn) * 0.55);
-		float mh = triplanar_h(detail_hgt, wp, gn, 2.1);
+		// single planar projection (front-facing) is enough for the fine grain; skipped on steep cliffs
+		float fz = smoothstep(0.35, 0.7, abs(gn.z));
+		vec3 mt = texture(detail_nrm2, wp.xy * 1.6).xyz * 2.0 - 1.0;
+		n = normalize(n + vec3(mt.xy, 0.0) * 0.55 * fz);
+		float mh = mix(0.5, texture(detail_hgt, wp.xy * 2.1).r, fz);
 		albedo *= mix(0.85, 1.1, mh);
 		rough = clamp(rough + (mh - 0.5) * 0.25, 0.05, 1.0);
 	}
