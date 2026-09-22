@@ -164,3 +164,11 @@ Consequences:
    - crowns 5: visible small gold glints; coins/portals/spawn/coin door stay hero objects.
    The painting (minimap colors) is still the palette, but visibility wins every conflict.
 3. F3 = collision overlay (shell). World keeps tests/world_solidity_check at ~0 mismatches.
+
+## TEST RUNS MUST BE INVISIBLE AND SILENT (user plays on this machine)
+- Logic tests: `$G --headless --audio-driver Dummy --path . -s res://tests/x.gd`
+- Screenshot tests (need the GPU, so not headless) ALWAYS run off-screen and muted:
+  `$G --audio-driver Dummy --position 20000,20000 --path . res://tests/x.tscn`
+  and call `DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)` first thing in the test's
+  `_ready()`, so it never steals keyboard focus from the user's game.
+- Never kill Godot by name; only PIDs you launched.
