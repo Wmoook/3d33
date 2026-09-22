@@ -398,6 +398,57 @@ func get_portal(tx: int, ty: int) -> Variant:
 	return _portals.get(ty * width + tx, null)
 
 
+## Every piece of mutable simulation state (per-tick loop temporaries excluded).
+const _SNAP_PROPS: Array[StringName] = [&"px", &"py", &"prev_px", &"prev_py", &"speed_x", &"speed_y",
+	&"gravity_dir", &"on_ground", &"is_dead", &"in_god_mode", &"coins", &"blue_coins", &"has_crown",
+	&"has_silver_crown", &"deaths", &"checkpoint", &"teleported", &"modifier_x", &"modifier_y",
+	&"current_tile", &"flip_gravity", &"jump_count", &"max_jumps", &"jump_boost", &"speed_boost",
+	&"low_gravity", &"is_invulnerable", &"is_on_fire", &"run_ticks", &"morx", &"mory", &"mox", &"moy",
+	&"tiles", &"_lookup", &"_next_spawn", &"_secrets", &"_keys", &"_keys_timer", &"_offset",
+	&"_timedoor_state", &"_hide_timedoor_offset", &"_show_coin_gate", &"_show_blue_coin_gate",
+	&"_show_death_gate", &"_orange_switches", &"_switches", &"_collide_crown", &"_collide_silver_crown",
+	&"_state_queue", &"_keys_queue", &"_tile_queue", &"_ticks", &"_queue", &"_last_jump", &"_slippery",
+	&"_pastx", &"_pasty", &"_ox", &"_oy", &"overlapa", &"overlapb", &"overlapc", &"overlapd",
+	&"_last_portal_set", &"_last_portal", &"_dead_offset", &"_fire_time_start", &"_fire_duration",
+	&"_horizontal", &"_vertical", &"_spacedown", &"_spacejustdown", &"_prev_jump_held", &"_mx", &"_my",
+	&"_current", &"_ev_keys", &"_ev_coins", &"_ev_bcoins", &"_ev_timedoor", &"_ev_grav"]
+
+
+## Full state snapshot (cheap: packed arrays are copy-on-write). restore() makes the sim continue
+## bit-identically from that point. Used by EEReplay seeking and the route search.
+func snapshot() -> Array:
+	var s := []
+	s.resize(_SNAP_PROPS.size() + 1)
+	for i in _SNAP_PROPS.size():
+		var v: Variant = get(_SNAP_PROPS[i])
+		if v is Dictionary or v is Array:
+			v = v.duplicate(true)
+		s[i] = v
+	s[_SNAP_PROPS.size()] = _rng.state
+	return s
+
+
+func restore(s: Array) -> void:
+	for i in _SNAP_PROPS.size():
+		var v: Variant = s[i]
+		if v is Dictionary or v is Array:
+			v = v.duplicate(true)
+		set(_SNAP_PROPS[i], v)
+	_rng.state = s[_SNAP_PROPS.size()]
+
+
+## Hash of the whole simulation state (for determinism checks).
+func state_hash() -> int:
+	var h := 0
+	for p in _SNAP_PROPS:
+		var v: Variant = get(p)
+		if v is Array and not v.is_empty() and v[0] is Callable:
+			h = hash([h, v.size()])      # queued callables: compare count only
+		else:
+			h = hash([h, v])
+	return hash([h, _rng.state])
+
+
 # ================================================================ tick
 
 ## Exactly one original EE physics tick (10 ms): PlayState.tick() -> World.update() -> Player.tick(),

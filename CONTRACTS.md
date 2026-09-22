@@ -136,3 +136,19 @@ Consequences:
   are subtle currents over the backdrop; doors look like the painted mass but shimmer when their key is active.
 - Shell minimap (M) = this image, beautifully presented (smoothly upscaled, vignette, glow), plus the player
   marker, collected coins removed, and opened doors shown.
+
+## Zones / "where am I" (user directive)
+"You should know when you're in a cave or whatnot, and give it the correct bg that would go there."
+- WorldView is the single source of truth for location: `func get_zone_at(tile: Vector2i) -> StringName`,
+  `func get_zone_info(zone: StringName) -> Dictionary` ({title, subtitle, music_mood, ...}), and
+  `signal zone_changed(zone: StringName)` emitted from update_focus() (with hysteresis so it doesn't flicker).
+- Zones are derived from the level itself, not only hand-drawn rectangles: e.g. a precomputed per-tile map
+  from "sky visibility" (is there open air up to the top edge?), enclosure/cave size, depth below the surface,
+  and the dominant nearby minimap colors (fire orange/yellow -> inferno, purple -> corruption, white/grey+
+  icicles -> frozen cavern, blue water -> demon's lake), refined with hand-authored overrides where needed.
+- Each zone gets the RIGHT backdrop behind empty (black) air: surface = night sky, moon, stars, distant hills
+  and trees; tunnels = close dark earth walls and roots; big caves = layered distant rock, stalactites and fog;
+  inferno = glowing lava depths, heat haze, embers; corruption = violet mist and veins; frozen = ice walls,
+  snowfall, cold blue light; lake = underwater light caustics and reflections. Backdrops and environment
+  (fog, ambient light, exposure, grading, particles) crossfade smoothly between zones.
+- Shell uses get_zone_at/zone_changed for title cards, music and ambience (no separate zone rectangles).

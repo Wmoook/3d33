@@ -1,0 +1,417 @@
+class_name WorldTerrain
+extends Node3D
+## Sculpted terrain: one continuous GPU-displaced height field (foreground mass, recessed background wall,
+## deep cave back wall) driven by baked sub-tile SDFs. Chunked (32x32 tiles) for culling; every chunk
+## shares one grid mesh and one ShaderMaterial.
+
+const CHUNK := 16
+const VPT := 16         # vertices per tile (2x the SDF bake: crisp cliff edges)
+const MARGIN := 16      # extra tiles of terrain around the level
+
+var level: EELevel
+var W := 0
+var H := 0
+var material: ShaderMaterial
+var fgcol_img: Image
+var info_img: Image
+var bgcol_img: Image
+var sdf_img: Image
+## Per-tile material class (PackedByteArray W*H), zone ids and sky mask, shared with other world modules.
+var mat_ids := PackedByteArray()
+var zones := PackedByteArray()
+var sky := PackedByteArray()
+var solid := PackedByteArray()
+## Tiny isolated solid islands (<= 3 tiles: sparks, debris, drips) are removed from the height field
+## and rendered as floating 3D props by WorldDecor (their collision is unchanged). Index -> tile colour.
+var floaters := {}
+## Tiny enclosed air pockets (the key "dither" holes in the rock): drawn as shallow pits, not deep holes.
+var pocket := PackedByteArray()
+var timings := {}
+
+func build(lvl: EELevel) -> void:
+	level = lvl
+	W = lvl.width
+	H = lvl.height
+	var t0 := Time.get_ticks_msec()
+	_classify()
+	timings["classify"] = Time.get_ticks_msec() - t0
+	t0 = Time.get_ticks_msec()
+	var mask := PackedByteArray()
+	mask.resize(W * H)
+	for i in W * H:
+		var m := 0
+		if solid[i]:
+			m = 3
+		elif _has_bg(lvl.bg[i]) or pocket[i]:
+			m = 2
+		mask[i] = m
+	sdf_img = WorldSdfBaker.bake(mask, W, H)
+	timings["sdf_bake"] = Time.get_ticks_msec() - t0
+	t0 = Time.get_ticks_msec()
+	_make_material()
+	_bake_height()
+	timings["material"] = Time.get_ticks_msec() - t0
+	t0 = Time.get_ticks_msec()
+	_make_chunks()
+	timings["chunks"] = Time.get_ticks_msec() - t0
+
+func _is_border(x: int, y: int) -> bool:
+	return x == 0 or y == 0 or x == W - 1 or y == H - 1
+
+## Air components (4-connected over non-solid tiles) of <= 8 tiles, not touching the sky and holding
+## no spawn/portal: unreachable in play, so they only exist as texture in the painting.
+func _find_pockets() -> void:
+	var n := W * H
+	pocket.resize(n)
+	pocket.fill(0)
+	var seen := PackedByteArray()
+	seen.resize(n)
+	var comp := PackedInt32Array()
+	for start in n:
+		if seen[start] or solid[start]:
+			continue
+		comp.clear()
+		comp.append(start)
+		seen[start] = 1
+		var qi := 0
+		var ok := true
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var id: int = level.fg[i]
+			if sky[i] or id == 255 or id == 242 or id == 381:
+				ok = false
+			var x := i % W
+			var y := i / W
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if seen[j] or solid[j]:
+					continue
+				seen[j] = 1
+				comp.append(j)
+		if ok and comp.size() <= 8:
+			for i in comp:
+				pocket[i] = 1
+	var cnt := 0
+	for i in n:
+		cnt += pocket[i]
+	timings["pocket_tiles"] = cnt
+
+func _find_floaters(fgb: PackedByteArray, has_fg: PackedByteArray) -> void:
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	var comp := PackedInt32Array()
+	for start in W * H:
+		if seen[start] or not solid[start]:
+			continue
+		comp.clear()
+		comp.append(start)
+		seen[start] = 1
+		var qi := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := x + dx
+					var ny := y + dy
+					if nx < 0 or ny < 0 or nx >= W or ny >= H:
+						continue
+					var j := ny * W + nx
+					if seen[j] or not solid[j]:
+						continue
+					seen[j] = 1
+					comp.append(j)
+		if comp.size() <= 3:
+			for i in comp:
+				if _is_border(i % W, i / W):
+					continue
+				floaters[i] = [Color8(fgb[i * 4], fgb[i * 4 + 1], fgb[i * 4 + 2]), int(mat_ids[i]), comp.size()]
+				solid[i] = 0
+				has_fg[i] = 0
+				fgb[i * 4 + 3] = 0
+	# a floater that hung in the open sky leaves sky behind it
+	for i in floaters:
+		var x: int = i % W
+		var y: int = i / W
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+			var nx: int = x + d.x
+			var ny: int = y + d.y
+			if nx >= 0 and ny >= 0 and nx < W and ny < H and sky[ny * W + nx]:
+				sky[i] = 1
+				break
+
+static func _has_bg(id: int) -> bool:
+	return id >= 500 and id != 645
+
+func _classify() -> void:
+	var n := W * H
+	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n)
+	fgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
+	bgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
+	info_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
+	var fgb := PackedByteArray(); fgb.resize(n * 4)
+	var bgb := PackedByteArray(); bgb.resize(n * 4)
+	var has_fg := PackedByteArray(); has_fg.resize(n)
+	var has_bgc := PackedByteArray(); has_bgc.resize(n)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			var id: int = level.fg[i]
+			var z := WorldPalette.zone_at(x, y)
+			zones[i] = z
+			if _is_border(x, y):
+				# the obsidian world border mirrors its inner neighbour (rock continues, sky stays open)
+				var ix := clampi(x, 1, W - 2)
+				var iy := clampi(y, 1, H - 2)
+				id = level.fg[iy * W + ix]
+			if WorldPalette.is_world_solid(id):
+				solid[i] = 1
+				var m := WorldPalette.material_for(id, x, y, z)
+				mat_ids[i] = m
+				var c := WorldPalette.base_color(id)
+				fgb[i * 4] = c.r8; fgb[i * 4 + 1] = c.g8; fgb[i * 4 + 2] = c.b8; fgb[i * 4 + 3] = m
+				has_fg[i] = 1
+			var b: int = level.bg[i]
+			if _has_bg(b):
+				var bc: Color = WorldPalette.BG_COLORS.get(b, Color8(40, 40, 40))
+				bgb[i * 4] = bc.r8; bgb[i * 4 + 1] = bc.g8; bgb[i * 4 + 2] = bc.b8; bgb[i * 4 + 3] = 255
+				has_bgc[i] = 1
+	# Open night sky: flood fill from the top row through empty (no fg solid, no bg) tiles, upper area only.
+	var q := PackedInt32Array()
+	for x in W:
+		var i0 := x
+		if not solid[i0] and not _has_bg(level.bg[i0]):
+			sky[i0] = 1
+			q.append(i0)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		var x := i % W
+		var y := i / W
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = x + d.x
+			var ny: int = y + d.y
+			if nx < 0 or ny < 0 or nx >= W or ny >= 24:
+				continue
+			var j := ny * W + nx
+			if sky[j] or solid[j] or _has_bg(level.bg[j]):
+				continue
+			sky[j] = 1
+			q.append(j)
+	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
+	_find_floaters(fgb, has_fg)
+	_dilate(fgb, has_fg)
+	_find_pockets()
+	for i in n:
+		if pocket[i] and not has_bgc[i]:
+			bgb[i * 4] = int(fgb[i * 4] * 0.5); bgb[i * 4 + 1] = int(fgb[i * 4 + 1] * 0.5)
+			bgb[i * 4 + 2] = int(fgb[i * 4 + 2] * 0.5); bgb[i * 4 + 3] = 255
+			has_bgc[i] = 1
+	_dilate(bgb, has_bgc)
+	# bg alpha: 255 present, else 0 (colour stays dilated)
+	for i in n:
+		if not has_bgc[i]:
+			bgb[i * 4 + 3] = 0
+	fgcol_img.set_data(W, H, false, Image.FORMAT_RGBA8, fgb)
+	bgcol_img.set_data(W, H, false, Image.FORMAT_RGBA8, bgb)
+	var inf := PackedByteArray(); inf.resize(n * 4)
+	for i in n:
+		inf[i * 4] = 255 if solid[i] else 0
+		inf[i * 4 + 1] = 255 if _has_bg(level.bg[i]) else 0
+		inf[i * 4 + 2] = zones[i]
+		inf[i * 4 + 3] = 255 if sky[i] else 0
+	info_img.set_data(W, H, false, Image.FORMAT_RGBA8, inf)
+
+## Multi-source BFS: copies the nearest filled tile's rgba into unfilled tiles (keeps colour sampling
+## at solid boundaries free of "air" colour).
+func _dilate(buf: PackedByteArray, filled: PackedByteArray) -> void:
+	var q := PackedInt32Array()
+	var done := filled.duplicate()
+	for i in W * H:
+		if done[i]:
+			q.append(i)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if done[j]:
+				continue
+			done[j] = 1
+			buf[j * 4] = buf[i * 4]; buf[j * 4 + 1] = buf[i * 4 + 1]; buf[j * 4 + 2] = buf[i * 4 + 2]; buf[j * 4 + 3] = buf[i * 4 + 3]
+			q.append(j)
+
+func _field_image() -> Image:
+	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
+	var b := PackedByteArray(); b.resize(W * H * 4)
+	for i in W * H:
+		b[i * 4] = 255 if sky[i] else 0
+		b[i * 4 + 1] = 255 if pocket[i] else 0
+		b[i * 4 + 3] = 255
+	img.set_data(W, H, false, Image.FORMAT_RGBA8, b)
+	return img
+
+## Per material: sculpted height offset (tiles) and surface relief amplitude.
+const RELIEF := {
+	WorldPalette.M_EARTH: [0.0, 1.0], WorldPalette.M_STONE: [0.05, 1.2], WorldPalette.M_MARBLE: [0.0, 0.2],
+	WorldPalette.M_ICE: [0.1, 0.4], WorldPalette.M_WATER: [-0.1, 0.05], WorldPalette.M_CORRUPT: [0.06, 1.0],
+	WorldPalette.M_FIRE: [0.1, 0.7], WorldPalette.M_OBSIDIAN: [0.0, 0.5], WorldPalette.M_GLASS: [0.08, 0.1],
+	WorldPalette.M_GRASS: [0.06, 0.15], WorldPalette.M_FOLIAGE: [0.2, 2.0], WorldPalette.M_FLESH: [0.2, 0.7],
+	WorldPalette.M_WOOD: [0.05, 0.5], WorldPalette.M_METAL: [0.05, 0.2], WorldPalette.M_CLOUD: [0.1, 0.25],
+	WorldPalette.M_SAND: [0.0, 0.6], WorldPalette.M_GEM: [0.2, 0.08], WorldPalette.M_SNOW: [0.05, 0.9],
+	WorldPalette.M_BONE: [0.1, 0.9],
+}
+
+func _relief_image() -> Image:
+	var b := PackedByteArray(); b.resize(W * H * 2)
+	var data := fgcol_img.get_data()   # alpha = material (dilated into air)
+	for i in W * H:
+		var m: int = data[i * 4 + 3]
+		var r: Array = RELIEF.get(m, [0.0, 1.0])
+		b[i * 2] = clampi(int((r[0] + 0.5) * 255.0), 0, 255)
+		b[i * 2 + 1] = clampi(int(r[1] / 2.0 * 255.0), 0, 255)
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_RG8, b)
+	return img
+
+## Cave back-wall tint: heavily blurred foreground colours, darkened, nudged per zone.
+func _tint_image() -> Image:
+	var small := fgcol_img.duplicate() as Image
+	small.resize(W / 8, H / 8, Image.INTERPOLATE_CUBIC)
+	small.resize(W / 4, H / 4, Image.INTERPOLATE_BILINEAR)
+	var zone_tint := [Color(0.5, 0.55, 0.7), Color(0.9, 0.6, 0.5), Color(1.0, 0.45, 0.25), Color(0.75, 0.45, 1.0),
+		Color(0.6, 0.8, 1.0), Color(0.45, 0.6, 1.0), Color(0.7, 0.7, 0.8), Color(0.85, 0.7, 0.55), Color(0.9, 0.5, 0.5)]
+	for y in small.get_height():
+		for x in small.get_width():
+			var c := small.get_pixel(x, y)
+			var z: int = zones[clampi(y * 4 + 2, 0, H - 1) * W + clampi(x * 4 + 2, 0, W - 1)]
+			var zt: Color = zone_tint[z]
+			var l := c.get_luminance()
+			var d := c.lerp(Color(l, l, l), 0.35) * zt
+			small.set_pixel(x, y, Color(d.r * 0.85, d.g * 0.85, d.b * 0.85))
+	return small
+
+func _noise_tex(freq: float, seed_v: int, octaves: int, normal_strength: float, ntype := FastNoiseLite.TYPE_SIMPLEX_SMOOTH) -> ImageTexture:
+	var fn := FastNoiseLite.new()
+	fn.noise_type = ntype
+	fn.frequency = freq
+	fn.seed = seed_v
+	fn.fractal_octaves = octaves
+	fn.fractal_type = FastNoiseLite.FRACTAL_FBM
+	var img := fn.get_seamless_image(512, 512)
+	img.convert(Image.FORMAT_RGBA8)
+	if normal_strength > 0.0:
+		img.bump_map_to_normal_map(normal_strength)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+func _make_material() -> void:
+	var sdf_tex := ImageTexture.create_from_image(sdf_img)
+	material = ShaderMaterial.new()
+	material.shader = load("res://shaders/world/terrain.gdshader")
+	material.set_shader_parameter("sdf_tex", sdf_tex)
+	material.set_shader_parameter("field_tex", ImageTexture.create_from_image(_field_image()))
+	material.set_shader_parameter("relief_tex", ImageTexture.create_from_image(_relief_image()))
+	material.set_shader_parameter("level_size", Vector2(W, H))
+	material.set_shader_parameter("fgcol_tex", ImageTexture.create_from_image(fgcol_img))
+	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
+	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
+	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))
+	material.set_shader_parameter("detail_nrm", _noise_tex(0.025, 11, 5, 5.0))
+	material.set_shader_parameter("detail_nrm2", _noise_tex(0.03, 23, 4, 4.0))
+	material.set_shader_parameter("detail_hgt", _noise_tex(0.015, 37, 4, 0.0))
+
+const HTPT := 16         # baked height texels per tile
+const HMARGIN := 16      # tiles of margin in the height bake
+
+## Renders the full height field once into an HDR SubViewport (GPU, reuses terrain_common include);
+## the terrain samples it instead of evaluating the procedural height per vertex / shadow pass.
+func _bake_height() -> void:
+	var vp := SubViewport.new()
+	vp.name = "HeightBake"
+	vp.size = Vector2i((W + 2 * HMARGIN) * HTPT, (H + 2 * HMARGIN) * HTPT)
+	vp.disable_3d = true
+	vp.use_hdr_2d = true
+	vp.transparent_bg = false
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	var rect := ColorRect.new()
+	rect.size = Vector2(vp.size)
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/world/height_bake.gdshader")
+	for k in ["sdf_tex", "field_tex", "relief_tex", "level_size"]:
+		m.set_shader_parameter(k, material.get_shader_parameter(k))
+	m.set_shader_parameter("margin", float(HMARGIN))
+	rect.material = m
+	vp.add_child(rect)
+	add_child(vp)
+	material.set_shader_parameter("height_tex", vp.get_texture())
+	material.set_shader_parameter("height_margin", float(HMARGIN))
+	material.set_shader_parameter("htpt", float(HTPT))
+
+func _grid_mesh() -> ArrayMesh:
+	var n := CHUNK * VPT
+	var verts := PackedVector3Array()
+	verts.resize((n + 1) * (n + 1))
+	var inv := 1.0 / VPT
+	var k := 0
+	for j in n + 1:
+		var y := -j * inv
+		for i in n + 1:
+			verts[k] = Vector3(i * inv, y, 0.0)
+			k += 1
+	var idx := PackedInt32Array()
+	idx.resize(n * n * 6)
+	k = 0
+	var row := n + 1
+	for j in n:
+		for i in n:
+			var a := j * row + i
+			var b := a + 1
+			var c := a + row
+			var d := c + 1
+			# alternate diagonals to avoid directional bias
+			if (i + j) & 1:
+				idx[k] = a; idx[k + 1] = b; idx[k + 2] = c
+				idx[k + 3] = b; idx[k + 4] = d; idx[k + 5] = c
+			else:
+				idx[k] = a; idx[k + 1] = b; idx[k + 2] = d
+				idx[k + 3] = a; idx[k + 4] = d; idx[k + 5] = c
+			k += 6
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
+
+func _make_chunks() -> void:
+	var mesh := _grid_mesh()
+	var x0 := -MARGIN
+	while x0 < W + MARGIN:
+		var y0 := -MARGIN
+		while y0 < H + MARGIN:
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = material
+			mi.position = Vector3(x0, -y0, 0.0)
+			mi.custom_aabb = AABB(Vector3(0, -CHUNK, -9.5), Vector3(CHUNK, CHUNK, 11.0))
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			mi.name = "Chunk_%d_%d" % [x0, y0]
+			add_child(mi)
+			y0 += CHUNK
+		x0 += CHUNK
+
+func set_debug_grid(on: bool) -> void:
+	material.set_shader_parameter("debug_grid", on)

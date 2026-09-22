@@ -1,0 +1,121 @@
+extends Node3D
+## World art preview: builds the WorldView, flies a perspective camera to showcase spots and saves
+## user://world_<name>.png for each. Run in a window (not headless):
+##   godot --path . res://tests/world_preview.tscn [-- only=skull,ice grid dist=60 settle=40]
+## "grid" overlays the true collision grid (red = solid, green = air, yellow tile lines).
+
+const SPOTS := {
+	"spawn": Vector2(65, 11),
+	"surface_tree": Vector2(150, 8),
+	"sign": Vector2(40, 45),
+	"logo": Vector2(108, 47),
+	"upper_lake": Vector2(222, 50),
+	"skull": Vector2(135, 102),
+	"purple": Vector2(205, 92),
+	"tornado": Vector2(22, 110),
+	"bones": Vector2(150, 175),
+	"ice": Vector2(322, 138),
+	"demon": Vector2(315, 165),
+	"torches": Vector2(345, 92),
+}
+
+var world: WorldView
+var cam: Camera3D
+var _names: Array = []
+var _settle := 45
+var _dist := 36.0
+var _grid := false
+var _yaw := 0.0
+var _fps_samples := []
+var _perf := false
+
+func _ready() -> void:
+	var only := []
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("only="):
+			only = a.substr(5).split(",")
+		elif a == "perf":
+			_perf = true
+		elif a == "grid":
+			_grid = true
+		elif a.begins_with("dist="):
+			_dist = float(a.substr(5))
+		elif a.begins_with("yaw="):
+			_yaw = float(a.substr(4))
+		elif a.begins_with("settle="):
+			_settle = int(a.substr(7))
+	for k in SPOTS:
+		if only.is_empty() or k in only:
+			_names.append(k)
+	cam = Camera3D.new()
+	cam.fov = 36.0
+	cam.near = 0.5
+	cam.far = 600.0
+	add_child(cam)
+	cam.current = true
+	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	world = WorldView.new()
+	add_child(world)
+	world.build(lvl)
+	world.set_debug_grid(_grid)
+	_run()
+
+func _place(tile: Vector2) -> Vector3:
+	var focus := Vector3(tile.x + 0.5, -tile.y - 0.5, 0.0)
+	cam.position = focus + Vector3(sin(deg_to_rad(_yaw)) * _dist, 2.5, cos(deg_to_rad(_yaw)) * _dist)
+	cam.look_at(focus + Vector3(0, 0.5, 0), Vector3.UP)
+	return focus
+
+func _measure(focus: Vector3, frames: int) -> float:
+	for f in 20:
+		world.update_focus(focus, 1.0 / 60.0)
+		await get_tree().process_frame
+	var t0 := Time.get_ticks_usec()
+	for f in frames:
+		world.update_focus(focus, 1.0 / 60.0)
+		await get_tree().process_frame
+	return float(Time.get_ticks_usec() - t0) / frames / 1000.0
+
+## Frame time per feature toggle at one spot (vsync off).
+func _run_perf() -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var focus := _place(SPOTS[_names[0]])
+	var env := world.get_environment()
+	print("PERF base %.2f ms" % await _measure(focus, 120))
+	env.volumetric_fog_enabled = false
+	print("PERF -fog %.2f ms" % await _measure(focus, 120))
+	env.ssr_enabled = false
+	print("PERF -ssr %.2f ms" % await _measure(focus, 120))
+	env.ssil_enabled = false
+	print("PERF -ssil %.2f ms" % await _measure(focus, 120))
+	env.ssao_enabled = false
+	print("PERF -ssao %.2f ms" % await _measure(focus, 120))
+	world.lights.key_light.shadow_enabled = false
+	print("PERF -keyshadow %.2f ms" % await _measure(focus, 120))
+	world.lights.moon.shadow_enabled = false
+	print("PERF -moonshadow %.2f ms" % await _measure(focus, 120))
+	for l in world.lights.cluster_lights:
+		l.shadow_enabled = false
+
+	print("PERF -omnishadows %.2f ms" % await _measure(focus, 120))
+	world.terrain.visible = false
+	print("PERF -terrain %.2f ms" % await _measure(focus, 120))
+	get_tree().quit()
+
+func _run() -> void:
+	if _perf:
+		await _run_perf()
+		return
+	for nm in _names:
+		var focus := _place(SPOTS[nm])
+		var t0 := Time.get_ticks_usec()
+		for f in _settle:
+			world.update_focus(focus, 1.0 / 60.0)
+			await get_tree().process_frame
+		var frame_us := float(Time.get_ticks_usec() - t0) / _settle
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var path := "user://world_%s%s.png" % [nm, "_grid" if _grid else ""]
+		img.save_png(path)
+		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
+	get_tree().quit()

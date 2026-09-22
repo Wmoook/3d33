@@ -79,6 +79,8 @@ func _init() -> void:
 	test_god_mode()
 	test_scripted_run()
 	test_perf()
+	test_replay()
+	test_snapshot()
 	# break signal->lambda->sim reference cycles so nothing leaks at exit
 	for s in _sims:
 		for c in s.sim_event.get_connections():
@@ -429,3 +431,53 @@ func test_perf() -> void:
 		sim.tick(inp)
 	var us := float(Time.get_ticks_usec() - t0) / n
 	check("tick cost well under 0.5 ms", us < 150.0, "%.1f us/tick over %d ticks, ended at (%.0f,%.0f)" % [us, n, sim.px, sim.py])
+
+
+func test_replay() -> void:
+	print("[replay]")
+	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	var sim := new_sim(lvl)
+	var rep := EEReplay.new()
+	var inp := EEInput.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 3000:
+		if i % 23 == 0:
+			inp.left = rng.randf() < 0.4; inp.right = rng.randf() < 0.5; inp.jump = rng.randf() < 0.5
+			inp.up = rng.randf() < 0.1; inp.down = rng.randf() < 0.1
+			inp.jump_pressed = rng.randf() < 0.2
+		inp.god_toggle = i == 1500 or i == 2000
+		rep.record(inp)
+		sim.tick(inp)
+	var h1 := sim.state_hash()
+	var fin := Vector4(sim.px, sim.py, sim.speed_x, sim.speed_y)
+	rep.meta = {"level": "ex_crew_odyssey", "hash": h1}
+	var path := "user://physics_test_replay.eerp"
+	check("replay saved", rep.save(path) == OK)
+	var bytes := FileAccess.get_file_as_bytes(path).size()
+	var rep2 := EEReplay.load_file(path)
+	check("replay loaded (%d ticks, %d bytes)" % [rep2.tick_count() if rep2 else -1, bytes], rep2 != null and rep2.tick_count() == 3000 and rep2.frames == rep.frames)
+	var sim2 := new_sim(lvl)
+	rep2.play_all(sim2)
+	check("replay reproduces the run bit-exactly", sim2.state_hash() == h1 and Vector4(sim2.px, sim2.py, sim2.speed_x, sim2.speed_y) == fin and h1 == int(rep2.meta["hash"]),
+		"final (%.4f,%.4f) v=(%.6f,%.6f) ticks=%d" % [sim2.px, sim2.py, sim2.speed_x, sim2.speed_y, sim2.ticks()])
+	# replaying on the same (already used) sim instance: start() resets it
+	rep2.play_all(sim)
+	check("replay on a reused sim (reset) is identical", sim.state_hash() == h1)
+
+
+func test_snapshot() -> void:
+	print("[snapshot/restore]")
+	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	var sim := new_sim(lvl)
+	var inp := EEInput.new()
+	inp.right = true
+	run(sim, inp, 400)
+	var snap := sim.snapshot()
+	inp.jump = true
+	run(sim, inp, 300)
+	var h := sim.state_hash()
+	sim.restore(snap)
+	inp.jump = true
+	run(sim, inp, 300)
+	check("restore() continues bit-identically", sim.state_hash() == h)

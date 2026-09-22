@@ -12,9 +12,12 @@ window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/size/mode=2
 window/vsync/vsync_mode=1
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [physics]
 common/physics_ticks_per_second=100
+common/max_physics_steps_per_frame=24
 
 [rendering]
 renderer/rendering_method="forward_plus"
