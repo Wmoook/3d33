@@ -172,8 +172,10 @@ void main() {
 static func bake(mask: PackedByteArray, w: int, h: int) -> Image:
 	var rd := RenderingServer.create_local_rendering_device()
 	if rd == null:
-		push_error("WorldSdfBaker: no local RenderingDevice")
-		return null
+		# headless runs have no RenderingDevice; return a flat "all air" field so logic tests still build
+		var img := Image.create(w * SPT, h * SPT, false, Image.FORMAT_RGBAH)
+		img.fill(Color(-1, -1, -1, -1))
+		return img if w * h > 0 and _headless_ok(mask) else null
 	var ow := w * SPT
 	var oh := h * SPT
 	var mask_u := PackedInt32Array()
@@ -256,6 +258,10 @@ static func merge_colors(rgba: PackedByteArray, w: int, h: int, sig_r := 0.2, si
 		rd.free_rid(rid)
 	rd.free()
 	return out
+
+static func _headless_ok(mask: PackedByteArray) -> bool:
+	# terrain wants a field (all air is fine headless); callers passing masks for optional layers get null
+	return mask.size() > 0 and mask.count(3) > 0
 
 static func _compile(rd: RenderingDevice, src: String) -> RID:
 	var s := RDShaderSource.new()

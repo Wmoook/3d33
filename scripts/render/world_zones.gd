@@ -25,18 +25,18 @@ const TABLE := [
 ## Forgotten Veil (daytime ruins). Same row layout; visual preset is decided per tile (sky -> Z_DAY).
 const TABLE_FV := [
 	[&"winners", "THE WINNERS' SCROLL", "Names carved for the ages", "day surface sky", WorldPalette.Z_DAY, 0.1, Rect2i(350, 0, 50, 75)],
-	[&"elder_grove", "THE ELDER GROVE", "Where the old trees keep watch", "day surface forest", WorldPalette.Z_DAY, 0.1, Rect2i(0, 8, 84, 55)],
-	[&"sunken_aqueducts", "THE SUNKEN AQUEDUCTS", "Still water remembers", "lake water", WorldPalette.Z_WATERWAY, 0.8, Rect2i(125, 170, 275, 30)],
-	[&"veiled_falls", "THE VEILED FALLS", "Behind the water, a door", "lake water falls", WorldPalette.Z_WATERWAY, 0.5, Rect2i(122, 100, 54, 70)],
-	[&"great_spire", "THE GREAT SPIRE", "It reached for the gods", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(175, 20, 44, 150)],
+	[&"elder_grove", "THE ELDER GROVE", "Where the old trees keep watch", "forest day surface", WorldPalette.Z_DAY, 0.1, Rect2i(0, 8, 84, 55)],
+	[&"sunken_aqueducts", "THE SUNKEN AQUEDUCTS", "Still water remembers", "channel underground", WorldPalette.Z_WATERWAY, 0.8, Rect2i(125, 170, 275, 30)],
+	[&"veiled_falls", "THE VEILED FALLS", "Behind the water, a door", "falls waterfall pool", WorldPalette.Z_WATERWAY, 0.5, Rect2i(122, 100, 54, 70)],
+	[&"great_spire", "THE GREAT SPIRE", "It reached for the gods", "temple hall ruin", WorldPalette.Z_RUINS, 0.7, Rect2i(175, 20, 44, 150)],
 	[&"hanging_gardens", "THE HANGING GARDENS", "Vines where bridges once stood", "day surface garden", WorldPalette.Z_DAY, 0.2, Rect2i(219, 55, 12, 115)],
-	[&"twin_spire", "THE TWIN SPIRE", "Its sister never fell", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(231, 45, 42, 125)],
-	[&"ruined_keep", "THE RUINED KEEP", "The last watch was never relieved", "cave tunnel keep", WorldPalette.Z_RUINS, 0.6, Rect2i(273, 70, 127, 55)],
-	[&"lower_sanctum", "THE LOWER SANCTUM", "Deeper than the roots go", "cave tunnel", WorldPalette.Z_RUINS, 0.8, Rect2i(273, 125, 127, 45)],
-	[&"hollow_halls", "THE HOLLOW HALLS", "Stone halls beneath the grove", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(0, 63, 122, 97)],
-	[&"rooted_vaults", "THE ROOTED VAULTS", "The mountain's buried heart", "cave tunnel", WorldPalette.Z_RUINS, 0.8, Rect2i(0, 160, 125, 40)],
-	[&"open_sky", "THE FORGOTTEN VEIL", "Where the journey begins", "day surface sky", WorldPalette.Z_DAY, 0.05, Rect2i()],
-	[&"underhalls", "THE UNDERHALLS", "Forgotten by all but stone", "cave tunnel", WorldPalette.Z_RUINS, 0.7, Rect2i()],
+	[&"twin_spire", "THE TWIN SPIRE", "Its sister never fell", "temple hall ruin", WorldPalette.Z_RUINS, 0.7, Rect2i(231, 45, 42, 125)],
+	[&"ruined_keep", "THE RUINED KEEP", "The last watch was never relieved", "keep day", WorldPalette.Z_RUINS, 0.6, Rect2i(273, 70, 127, 55)],
+	[&"lower_sanctum", "THE LOWER SANCTUM", "Deeper than the roots go", "temple underground", WorldPalette.Z_RUINS, 0.8, Rect2i(273, 125, 127, 45)],
+	[&"hollow_halls", "THE HOLLOW HALLS", "Stone halls beneath the grove", "hall temple underground", WorldPalette.Z_RUINS, 0.7, Rect2i(0, 63, 122, 97)],
+	[&"rooted_vaults", "THE ROOTED VAULTS", "The mountain's buried heart", "cave underground", WorldPalette.Z_RUINS, 0.8, Rect2i(0, 160, 125, 40)],
+	[&"open_sky", "THE FORGOTTEN VEIL", "Where the journey begins", "day sky surface", WorldPalette.Z_DAY, 0.05, Rect2i()],
+	[&"underhalls", "THE UNDERHALLS", "Forgotten by all but stone", "corridor underground", WorldPalette.Z_RUINS, 0.7, Rect2i()],
 ]
 
 var table: Array = TABLE

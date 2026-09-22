@@ -32,7 +32,10 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		any = true
 	if not any:
 		return
-	sdf_tex = ImageTexture.create_from_image(WorldSdfBaker.bake(mask, W, H))
+	var sdf_img := WorldSdfBaker.bake(mask, W, H)
+	if sdf_img == null:
+		return   # headless (no RenderingDevice): nothing to draw
+	sdf_tex = ImageTexture.create_from_image(sdf_img)
 	var mats := {}
 	var seen := PackedByteArray()
 	seen.resize(W * H)

@@ -52,7 +52,8 @@ func build(level: EELevel, s) -> void:
 	_build_boosts()
 	_build_piano()
 	_build_invisible()
-	_build_ripples()
+	if not (_switches.is_empty() and _boost_tiles.is_empty() and _chime_index.is_empty()):
+		_build_ripples()
 
 func _number(t: Vector2i) -> int:
 	if sim != null and sim.has_method("get_tile_number"):
@@ -304,6 +305,8 @@ func _build_ripples() -> void:
 
 ## An expanding ring (size = final diameter in tiles, life in seconds, n = 1..3 concentric rings).
 func spawn_ripple(pos: Vector3, col: Color, size: float, life: float, n := 1) -> void:
+	if _ripple_mm == null:
+		return
 	if _ripples.size() >= MAX_RIPPLES:
 		_ripples.pop_front()
 	_ripples.append({"pos": pos, "age": 0.0, "life": life, "size": size, "col": col, "n": n})

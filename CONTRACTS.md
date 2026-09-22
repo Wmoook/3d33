@@ -209,3 +209,10 @@ the right plateau, underground temple corridors and water channels along the bot
 (switch id in extra.rotation), speed boost 115, piano 77 (sound, decoration), magenta key 409 + magenta door 1006,
 pink one-way 1004, coin door 43 (needs 16 coins; there are 16 gold coins 100 and 8 blue 101), invisible gravity
 412/414, 187 portals + 22 invisible portals, halloween blocks 68/69 and 223/224, pirate 272, scifi 85-90.
+
+### Physics API additions (phase 2, physics2)
+Events: `&"switch"` {kind: &"purple"|&"orange", id, on}; `&"door_state"` {kind: &"purple"|&"orange", id, open};
+`&"piano"` {tile, note} (+ `&"drum"` 83, `&"guitar"` 1520); `&"blink"` {tile, id} for invisible arrows/dots.
+Queries: `is_switch_on(id)`, `is_orange_switch_on(id)`, `get_tile_number(tx, ty)` (switch/door id, coins needed,
+piano note, one-way rotation). Note: `is_tile_solid_now` reports one-ways (incl. 1004) as solid; use
+`is_tile_one_way` to distinguish. FV finish 121 (394,74) needs all 16 gold coins (coin door #16 at (349,109)).
