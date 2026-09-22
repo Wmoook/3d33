@@ -41,6 +41,16 @@ var _vig_mat: ShaderMaterial
 var accept_input := false
 var attract := false          # attract-mode demo: big title recedes, a small caption shows
 var _attract_k := 0.0
+## Level select: configs from LevelCatalog (id, title, eyebrow, subtitle, credit, ref_dir...).
+var levels: Array = []
+var current_index := 0          # the level that is loaded
+var selected_index := 0         # the highlighted card
+var _cards: Array[TextureRect] = []
+var _card_mats: Array[ShaderMaterial] = []
+var _sel_k: Array[float] = []
+var _sel_flash := 0.0
+const CARD := Vector2(300, 150)
+const CARD_GAP := 48.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -61,6 +71,61 @@ func _ready() -> void:
 	_title_ctl.material = _title_mat
 	_title_ctl.draw.connect(_draw_title)
 	add_child(_title_ctl)
+
+## Builds one framed minimap card per level (each level's canonical minimap art from its ref_dir).
+func set_levels(cfgs: Array, current_id: String) -> void:
+	levels = cfgs
+	for c in _cards:
+		c.queue_free()
+	_cards.clear()
+	_card_mats.clear()
+	_sel_k.clear()
+	current_index = 0
+	for i in levels.size():
+		if str(levels[i].get("id", "")) == current_id:
+			current_index = i
+		var art := Minimap.load_art(str(levels[i].get("ref_dir", "res://assets/ee_ref")))
+		var tr := TextureRect.new()
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_SCALE
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader(Minimap.MAP_SHADER)
+		if art:
+			art.generate_mipmaps()
+			var tex := ImageTexture.create_from_image(art)
+			tr.texture = tex
+			mat.set_shader_parameter("map_tex", tex)
+			mat.set_shader_parameter("tex_size", Vector2(art.get_width(), art.get_height()))
+		mat.set_shader_parameter("radius", 12.0)
+		mat.set_shader_parameter("glow", 0.45)
+		tr.material = mat
+		tr.size = CARD
+		add_child(tr)
+		_cards.append(tr)
+		_card_mats.append(mat)
+		_sel_k.append(0.0)
+	selected_index = current_index
+
+func current_cfg() -> Dictionary:
+	return levels[current_index] if current_index < levels.size() else {}
+
+func selected_cfg() -> Dictionary:
+	return levels[selected_index] if selected_index < levels.size() else {}
+
+## Move the highlight; returns true if it moved.
+func select_delta(d: int) -> bool:
+	if levels.size() < 2:
+		return false
+	var n := clampi(selected_index + d, 0, levels.size() - 1)
+	if n == selected_index:
+		return false
+	selected_index = n
+	_sel_flash = 1.0
+	return true
+
+static func _spaced_caps(t: String) -> String:
+	return t.to_upper().replace(" ", "  ")
 
 static func _shader(code: String) -> Shader:
 	var s := Shader.new()
@@ -93,10 +158,31 @@ func _process(delta: float) -> void:
 			visible = false
 			dismissed.emit()
 	_attract_k = move_toward(_attract_k, 1.0 if attract else 0.0, delta * 1.2)
+	_sel_flash = maxf(0.0, _sel_flash - delta * 2.5)
+	_layout_cards(delta)
 	_title_mat.set_shader_parameter("sheen", fmod(_t * 0.16, 1.6) - 0.3)
 	_vig_mat.set_shader_parameter("amount", _k(0.0, 1.5) * _outk())
 	queue_redraw()
 	_title_ctl.queue_redraw()
+
+func _layout_cards(delta: float) -> void:
+	var n := _cards.size()
+	if n == 0:
+		return
+	var W := size.x
+	var H := size.y
+	var total := n * CARD.x + (n - 1) * CARD_GAP
+	var ca := _k(4.0, 1.2) * _outk() * (1.0 - _attract_k) * (1.0 if n > 1 else 0.0)
+	for i in n:
+		_sel_k[i] = lerpf(_sel_k[i], 1.0 if i == selected_index else 0.0, 1.0 - exp(-10.0 * delta))
+		var sc := 1.0 + 0.1 * _sel_k[i]
+		var sz := CARD * sc
+		var cxy := Vector2(W * 0.5 - total * 0.5 + i * (CARD.x + CARD_GAP) + CARD.x * 0.5, H - 96.0 - 34.0 - CARD.y * 0.5)
+		_cards[i].size = sz
+		_cards[i].position = cxy - sz * 0.5 + Vector2(0, (1.0 - ca) * 30.0)
+		_cards[i].modulate = Color(1, 1, 1, ca * lerpf(0.55, 1.0, _sel_k[i]))
+		_card_mats[i].set_shader_parameter("rect_size", sz)
+		_card_mats[i].set_shader_parameter("time", _t)
 
 func _k(start: float, dur: float) -> float:
 	var x := clampf((_t - start) / dur, 0.0, 1.0)
@@ -117,7 +203,8 @@ func _draw() -> void:
 	var cy := H * 0.47
 	var a := o * (1.0 - _attract_k)
 	# eyebrow
-	var eb := "A  REIMAGINING  OF  EX  CREW  ODYSSEY"
+	var cfg := current_cfg()
+	var eb := _spaced_caps(str(cfg.get("eyebrow", "")))
 	var ef := UITheme.hud_medium(9)
 	draw_string(ef, Vector2(0, cy - 150), eb, HORIZONTAL_ALIGNMENT_CENTER, W, 20, Color(1, 1, 1, 0.55 * _k(0.7, 1.6) * a))
 	# rule + diamond
@@ -131,21 +218,44 @@ func _draw() -> void:
 	if ds > 0.5:
 		draw_colored_polygon(PackedVector2Array([Vector2(cx, ry - ds), Vector2(cx + ds, ry), Vector2(cx, ry + ds), Vector2(cx - ds, ry)]), Color(gold, rk * a))
 	# subtitle (the level's own text)
-	var sub := "The Devil hath taken thy Soul...  Go, and Return!"
+	var sub := str(cfg.get("subtitle", ""))
 	draw_string(UITheme.serif_italic(500), Vector2(0, cy + 96), sub, HORIZONTAL_ALIGNMENT_CENTER, W, 42, Color(0.96, 0.9, 0.82, 0.92 * _k(3.0, 1.6) * a))
 	# attract-mode caption
 	if _attract_k > 0.01:
 		var ak := _attract_k * o
-		UITheme.draw_spaced(self, UITheme.title(0, 800), Vector2(52, 176), "EX ODYSSEY", 44, 8.0, Color(UITheme.GOLD, 0.9 * ak))
-		draw_string(UITheme.serif_italic(500), Vector2(54, 214), "the descent  -  a recorded run", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1, 0.93, 0.85, 0.7 * ak))
-	# press any key
+		UITheme.draw_spaced(self, UITheme.title(0, 800), Vector2(52, 176), str(cfg.get("title", "")), 44, 8.0, Color(UITheme.GOLD, 0.9 * ak))
+		draw_string(UITheme.serif_italic(500), Vector2(54, 214), "a recorded run", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1, 0.93, 0.85, 0.7 * ak))
+	# level select cards: frame + label for each (the map art itself is a child TextureRect)
+	var multi := _cards.size() > 1
+	if multi:
+		var ca := _k(4.0, 1.2) * o * (1.0 - _attract_k)
+		for i in _cards.size():
+			var r := Rect2(_cards[i].position, _cards[i].size)
+			var sk := _sel_k[i]
+			var sb := UITheme.glass_box(16, 0.55 * ca)
+			sb.border_color = Color(UITheme.GOLD, (0.15 + 0.7 * sk) * ca)
+			sb.set_border_width_all(1 if sk < 0.5 else 2)
+			draw_style_box(sb, r.grow(8))
+			var nm := str(levels[i].get("title", ""))
+			var lf := UITheme.hud(4)
+			draw_string(lf, Vector2(r.position.x, r.end.y + 32), nm, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 20,
+				Color(1, 1, 1, lerpf(0.45, 1.0, sk) * ca))
+			if i == current_index:
+				draw_circle(Vector2(r.position.x + 16, r.position.y + 16), 4.0, Color(UITheme.GOLD, ca))
+	# prompt
 	if _t > 4.2:
 		var pk := _k(4.2, 1.0) * (0.55 + 0.45 * sin((_t - 4.2) * 2.6)) * o
 		var pf := UITheme.hud(10)
-		draw_string(pf, Vector2(0, H * 0.8), "PRESS  ANY  KEY", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(1, 1, 1, pk))
+		var py := (H - 96.0 - 34.0 - CARD.y * 0.5 - CARD.y * 0.55 - 40.0) if multi else H * 0.8
+		var prompt := "PRESS  ANY  KEY"
+		if multi and selected_index != current_index:
+			prompt = "ENTER   TRAVEL  TO  " + _spaced_caps(str(selected_cfg().get("title", "")))
+		elif multi:
+			prompt = "ENTER   PLAY          LEFT / RIGHT   CHOOSE  LEVEL"
+		draw_string(pf, Vector2(0, py), prompt, HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(1, 1, 1, pk * (1.0 - _attract_k * 0.0)))
 	# footer in letterbox
 	var fa := _k(1.2, 1.5) * o * 0.45
-	draw_string(UITheme.hud_medium(3), Vector2(48, H - 38), "Based on  \"EX Crew Odyssey\"  -  Everybody Edits", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(1, 1, 1, fa))
+	draw_string(UITheme.hud_medium(3), Vector2(48, H - 38), str(cfg.get("credit", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(1, 1, 1, fa))
 	draw_string(UITheme.hud_medium(3), Vector2(W - 548, H - 38), "ARROWS / WASD   SPACE   G   M   ESC", HORIZONTAL_ALIGNMENT_RIGHT, 500, 17, Color(1, 1, 1, fa))
 
 func _draw_title() -> void:
@@ -156,9 +266,14 @@ func _draw_title() -> void:
 	var o := _outk()
 	var spacing := lerpf(70.0, 22.0, k) + (1.0 - o) * 30.0
 	var f := UITheme.title(0, 800)
+	var text := str(current_cfg().get("title", ""))
 	var fs := 164
-	var text := "EX ODYSSEY"
 	var tw := UITheme.spaced_width(f, text, fs, spacing)
+	var fit := W * 0.84
+	if tw > fit and tw > 0.0:     # long titles (FORGOTTEN VEIL) scale down to fit
+		fs = int(fs * fit / tw)
+		spacing *= fit / tw
+		tw = UITheme.spaced_width(f, text, fs, spacing)
 	var p := Vector2(W * 0.5 - tw * 0.5, cy)
 	var a := k * o * (1.0 - _attract_k)
 	_title_mat.set_shader_parameter("y0", (cy - fs * 0.72) / H)

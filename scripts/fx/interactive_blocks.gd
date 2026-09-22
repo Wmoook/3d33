@@ -22,8 +22,9 @@ const KEY_COLORS := {
 	&"red": Color("#ff3b3b"),
 	&"green": Color("#3bff5a"),
 	&"blue": Color("#3b7bff"),
+	&"magenta": Color("#ff3bf0"),
 }
-const KEY_IDS := {6: &"red", 7: &"green", 8: &"blue"}
+const KEY_IDS := {6: &"red", 7: &"green", 8: &"blue", 409: &"magenta"}
 ## Exact EE minimap colours (assets/ee_ref/minimap_colors.json): these tiles ARE the painting's dither.
 const ART_COLORS := {5: Color("#43391f"), 6: Color("#2c1a1a"), 7: Color("#1a2c1a"), 8: Color("#1a1a2c")}
 const CROWN_GLOW := Color(1.0, 0.72, 0.25)
@@ -35,6 +36,8 @@ const BARRIERS := {
 var lvl: EELevel
 var sim
 var bursts: FxBursts
+## false on levels other than Odyssey: coin doors also show their required coin count.
+var odyssey := true
 
 var _art_mats := {}       # id -> ShaderMaterial (art pebbles: keys + crowns)
 var _flares := {}         # id -> Array of Vector4(x, y, age, strength) (ring buffer of 4)
@@ -141,7 +144,7 @@ func _build_glyphs() -> void:
 # ============================================================================ keys
 
 func _build_keys() -> void:
-	for id in [6, 7, 8, 5]:
+	for id in [6, 7, 8, 5, 409]:
 		var tiles := lvl.find_all(id)
 		if tiles.is_empty():
 			continue
@@ -225,48 +228,95 @@ static func _tile_hash(t: Vector2i) -> Vector3:
 
 func _build_barriers() -> void:
 	for id in BARRIERS:
-		var tiles := lvl.find_all(id)
-		if tiles.is_empty():
-			continue
-		var spec: Array = BARRIERS[id]
-		var style: int = spec[0]
-		var front: float = [0.5, 0.42, -0.12][style]
-		var back := -0.85
-		var mask := {}
-		for t in tiles:
-			mask[t] = true
-		var mesh := _slab_mesh(tiles, mask, front, back)
-		var m := ShaderMaterial.new()
-		m.shader = BARRIER_SHADER
-		m.set_shader_parameter("sdf", _sdf_texture(tiles, mask))
-		m.set_shader_parameter("level_size", Vector2(lvl.width, lvl.height))
-		m.set_shader_parameter("color", spec[1])
-		m.set_shader_parameter("style", style)
-		m.set_shader_parameter("front_z", front)
-		var mi := MeshInstance3D.new()
-		mi.name = "Barrier_%d" % id
-		mi.mesh = mesh
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mi)
-		# Representative tiles: coin doors can have different coin counts (stored in extra.rotation).
-		var reps: Array[Vector2i] = []
-		var seen := {}
-		for t in tiles:
+		# one barrier per required count (coin doors store it in extra.rotation), so each opens on its own
+		var groups := {}
+		for t in lvl.find_all(id):
 			var num := int(lvl.get_extra(t.x, t.y).get("rotation", 0))
-			if not seen.has(num):
-				seen[num] = true
-				reps.append(t)
-		var solid0 := _query_solid(reps[0], style)
-		var o := 0.0 if solid0 else 1.0
-		m.set_shader_parameter("openness", o)
-		var mats: Array[ShaderMaterial] = [m]
-		if style == 2:
-			mats.append(_build_coin_bars(tiles, mask))
-		for mm in mats:
-			mm.set_shader_parameter("openness", o)
-		_barriers.append({"id": id, "mats": mats, "reps": reps, "open": o, "target": o, "style": style,
-			"center": _centroid(tiles), "color": spec[1], "flash": 0.0})
+			if not groups.has(num):
+				groups[num] = [] as Array[Vector2i]
+			groups[num].append(t)
+		for num in groups:
+			_build_barrier(id, groups[num])
+
+func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
+	var spec: Array = BARRIERS[id]
+	var style: int = spec[0]
+	var front: float = [0.5, 0.42, -0.12][style]
+	var back := -0.85
+	var mask := {}
+	for t in tiles:
+		mask[t] = true
+	var mesh := _slab_mesh(tiles, mask, front, back)
+	var m := ShaderMaterial.new()
+	m.shader = BARRIER_SHADER
+	m.set_shader_parameter("sdf", _sdf_texture(tiles, mask))
+	m.set_shader_parameter("level_size", Vector2(lvl.width, lvl.height))
+	m.set_shader_parameter("color", spec[1])
+	m.set_shader_parameter("style", style)
+	m.set_shader_parameter("front_z", front)
+	var mi := MeshInstance3D.new()
+	mi.name = "Barrier_%d" % id
+	mi.mesh = mesh
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	# Representative tiles: coin doors can have different coin counts (stored in extra.rotation).
+	var reps: Array[Vector2i] = []
+	var seen := {}
+	for t in tiles:
+		var num := int(lvl.get_extra(t.x, t.y).get("rotation", 0))
+		if not seen.has(num):
+			seen[num] = true
+			reps.append(t)
+	var solid0 := _query_solid(reps[0], style)
+	var o := 0.0 if solid0 else 1.0
+	m.set_shader_parameter("openness", o)
+	var mats: Array[ShaderMaterial] = [m]
+	if style == 2:
+		mats.append(_build_coin_bars(tiles, mask))
+	for mm in mats:
+		mm.set_shader_parameter("openness", o)
+	var labels: Array[Label3D] = []
+	if not odyssey and style == 2:
+		labels = _coin_labels(tiles, mask, int(lvl.get_extra(tiles[0].x, tiles[0].y).get("rotation", 0)), front)
+	_barriers.append({"id": id, "mats": mats, "reps": reps, "open": o, "target": o, "style": style,
+		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels})
+
+## Readability: the number of coins a coin door needs, once per connected piece (EE prints it on the door).
+func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, front: float) -> Array[Label3D]:
+	var out: Array[Label3D] = []
+	var seen := {}
+	for t in tiles:
+		if seen.has(t):
+			continue
+		var comp: Array[Vector2i] = []
+		var stack: Array[Vector2i] = [t]
+		seen[t] = true
+		while not stack.is_empty():
+			var c: Vector2i = stack.pop_back()
+			comp.append(c)
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = c + d
+				if mask.has(n) and not seen.has(n):
+					seen[n] = true
+					stack.append(n)
+		var l := Label3D.new()
+		l.text = str(need)
+		l.font_size = 64
+		l.outline_size = 18
+		l.pixel_size = 0.0068
+		l.modulate = Color(1.0, 0.93, 0.62)
+		l.outline_modulate = Color(0.08, 0.04, 0.0)
+		l.shaded = false
+		l.double_sided = false
+		l.no_depth_test = false
+		l.render_priority = 2
+		var c := _centroid(comp)
+		l.position = Vector3(c.x, c.y, front + 0.12)
+		l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(l)
+		out.append(l)
+	return out
 
 ## Three round gold bars per coin-door tile + a rail capping each column's top and bottom.
 func _build_coin_bars(tiles: Array[Vector2i], mask: Dictionary) -> ShaderMaterial:
@@ -676,6 +726,10 @@ func _process(delta: float) -> void:
 		for m: ShaderMaterial in b.mats:
 			m.set_shader_parameter("openness", b.open)
 			m.set_shader_parameter("flash", b.flash)
+		for l: Label3D in b.labels:
+			l.modulate.a = 1.0 - b.open
+			l.outline_modulate.a = 1.0 - b.open
+			l.visible = b.open < 0.99
 	# coins
 	for c in _coins:
 		if c.collected:

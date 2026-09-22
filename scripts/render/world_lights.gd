@@ -24,6 +24,9 @@ var _shadow_timer := 0.0
 ## Multiplier from the atmosphere (e.g. dim the fill light on the surface).
 var focus_fill_energy := 0.6
 var moon_energy := 1.0
+## Daytime level: the directional light is the sun.
+var day := false
+var sun_scale := 1.0
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	moon = DirectionalLight3D.new()
@@ -67,8 +70,17 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	key_light.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 	add_child(key_light)
 
+	if day:
+		# the sun: warm, higher, stronger, soft shadows; god rays through the ruins via volumetric fog
+		moon.name = "Sun"
+		moon.light_color = Color(1.0, 0.93, 0.8)
+		moon.rotation_degrees = Vector3(-42.0, -24.0, 0.0)
+		moon.light_angular_distance = 1.5
+		moon.light_volumetric_fog_energy = 2.2
+		sun_scale = 1.45
 	_make_cluster_lights(lvl, terrain)
-	_make_demon()
+	if WorldPalette.is_odyssey():
+		_make_demon()
 
 ## Groups emissive tiles into BIN x BIN bins and places one light per sufficiently lit bin.
 func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
@@ -229,7 +241,7 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	key_light.look_at(world_pos + Vector3(2.0, -2.0, -2.0), Vector3.UP)
 	key_light.light_energy = key_energy
 	key_light.light_color = key_color
-	moon.light_energy = 2.2 * moon_energy
+	moon.light_energy = 2.2 * moon_energy * sun_scale
 	moon.visible = moon_energy > 0.01
 	_shadow_timer -= delta
 	if _shadow_timer <= 0.0:

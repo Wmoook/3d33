@@ -15,6 +15,7 @@ var quality := 3        # 0..3
 var fullscreen := false
 var show_hints := true
 var show_collision := false
+var level_id := "odyssey"   # last chosen level (LevelCatalog id)
 var high_contrast := false
 var tutorial := {}       # first-run hints already learned (id -> true)
 var persist := true      # tests turn this off
@@ -32,6 +33,7 @@ func load_settings() -> void:
 	show_hints = cf.get_value("ui", "show_hints", show_hints)
 	tutorial = cf.get_value("ui", "tutorial", tutorial)
 	show_collision = cf.get_value("video", "show_collision", show_collision)
+	level_id = cf.get_value("game", "level_id", level_id)
 	high_contrast = cf.get_value("video", "high_contrast", high_contrast)
 
 func save_settings() -> void:
@@ -47,6 +49,7 @@ func save_settings() -> void:
 	cf.set_value("ui", "show_hints", show_hints)
 	cf.set_value("ui", "tutorial", tutorial)
 	cf.set_value("video", "show_collision", show_collision)
+	cf.set_value("game", "level_id", level_id)
 	cf.set_value("video", "high_contrast", high_contrast)
 	cf.save(PATH)
 

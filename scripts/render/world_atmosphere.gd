@@ -16,6 +16,8 @@ var _terrain: WorldTerrain
 var _zones: WorldZones
 var _lights: WorldLights
 var _first := true
+## Daytime level (config time_of_day == "day"): painted day sky instead of the night sky.
+var day := false
 var _sky_cave := -1.0
 var _sky_amb := Vector3(-1, -1, -1)
 
@@ -49,6 +51,16 @@ var PRESETS := {
 	WorldPalette.Z_DEEP: {"key": 2.80, "key_col": Color(1.0, 0.75, 0.68), "ambient": Color(0.82, 0.65, 0.66), "amb_e": 1.00, "exposure": 1.56, "glow": 1.0,
 		"sat": 1.12, "contrast": 1.12, "sky": 0.0, "moon": 0.0, "fill": 1.87, "fill_col": Color(1.0, 0.7, 0.62),
 		"parts": {"dust": 0.8}},
+	# --- daytime ruins (Forgotten Veil) ---
+	WorldPalette.Z_DAY: {"key": 0.9, "key_col": Color(1.0, 0.95, 0.86), "ambient": Color(0.78, 0.85, 1.0), "amb_e": 1.0,
+		"exposure": 0.95, "glow": 0.45, "sat": 1.06, "contrast": 1.05, "sky": 1.0, "moon": 1.0, "fill": 0.3,
+		"fill_col": Color(1.0, 0.95, 0.85), "parts": {"dust": 0.35}},
+	WorldPalette.Z_RUINS: {"key": 2.2, "key_col": Color(0.9, 0.95, 1.0), "ambient": Color(0.66, 0.72, 0.8), "amb_e": 0.85,
+		"exposure": 1.35, "glow": 0.6, "sat": 1.0, "contrast": 1.08, "sky": 0.0, "moon": 1.0, "fill": 1.6,
+		"fill_col": Color(0.85, 0.92, 1.0), "parts": {"dust": 1.0}},
+	WorldPalette.Z_WATERWAY: {"key": 2.0, "key_col": Color(0.8, 0.92, 1.0), "ambient": Color(0.6, 0.75, 0.85), "amb_e": 0.9,
+		"exposure": 1.3, "glow": 0.8, "sat": 1.05, "contrast": 1.08, "sky": 0.0, "moon": 1.0, "fill": 1.5,
+		"fill_col": Color(0.75, 0.9, 1.0), "parts": {"dust": 0.5}},
 }
 
 ## Fog per zone: albedo, density, emission, mist
@@ -62,6 +74,9 @@ var FOG := {
 	WorldPalette.Z_TORNADO: [Color(0.8, 0.82, 0.9), 0.07, Color(0.01, 0.01, 0.014), 0.06],
 	WorldPalette.Z_BONES: [Color(0.85, 0.7, 0.5), 0.05, Color(0.012, 0.007, 0.003), 0.05],
 	WorldPalette.Z_DEEP: [Color(0.9, 0.45, 0.45), 0.055, Color(0.02, 0.004, 0.004), 0.05],
+	WorldPalette.Z_DAY: [Color(0.85, 0.9, 1.0), 0.012, Color(0.0, 0.0, 0.0), 0.0],
+	WorldPalette.Z_RUINS: [Color(0.75, 0.78, 0.82), 0.035, Color(0.0, 0.0, 0.0), 0.03],
+	WorldPalette.Z_WATERWAY: [Color(0.7, 0.85, 0.95), 0.045, Color(0.004, 0.01, 0.014), 0.12],
 }
 
 func build(lvl: EELevel, terrain: WorldTerrain, lights: WorldLights, zones: WorldZones) -> void:
@@ -78,8 +93,16 @@ func _make_environment() -> void:
 	environment = Environment.new()
 	var sky := Sky.new()
 	sky_mat = ShaderMaterial.new()
-	sky_mat.shader = load("res://shaders/world/night_sky.gdshader")
-	sky_mat.set_shader_parameter("moon_dir", Vector3(0.24, 0.13, -1.0).normalized())
+	if day:
+		sky_mat.shader = load("res://shaders/world/day_sky.gdshader")
+		var paint := _terrain.sky_paint_image()
+		if paint:
+			sky_mat.set_shader_parameter("paint", ImageTexture.create_from_image(paint))
+		sky_mat.set_shader_parameter("level_size", Vector2(_terrain.W, _terrain.H))
+		sky_mat.set_shader_parameter("sun_dir", _lights.moon.transform.basis.z.normalized())
+	else:
+		sky_mat.shader = load("res://shaders/world/night_sky.gdshader")
+		sky_mat.set_shader_parameter("moon_dir", Vector3(0.24, 0.13, -1.0).normalized())
 	sky.sky_material = sky_mat
 	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL   # radiance refresh spread over frames (no per-frame cubemap)
 	sky.radiance_size = Sky.RADIANCE_SIZE_128

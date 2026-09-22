@@ -8,7 +8,10 @@ const SFX_DIR := "res://assets/audio/sfx/"
 const MUSIC_DIR := "res://assets/audio/music/"
 const SFX_NAMES := ["jump", "land", "coin", "blue_coin", "key", "key_expired", "portal", "death", "respawn",
 	"crown", "gravity", "ui_move", "ui_select", "title_hit", "zone"]
-const BEDS := ["title", "surface", "cave", "hell", "corruption", "ice", "lake"]
+const BEDS := ["title", "surface", "cave", "hell", "corruption", "ice", "lake", "veil_title", "day", "falls", "temple"]
+## Per-bed trim (dB) so beds sit at similar loudness.
+const BED_GAIN := {&"temple": -3.5, &"falls": -1.0}
+const PIANO_DIR := "res://assets/audio/piano/"
 const CROSSFADE := 3.5
 const POOL := 14
 
@@ -26,6 +29,7 @@ var _lowpass: AudioEffectLowPassFilter
 var _reverb_target := 0.3
 var _lp_target := 20000.0
 var _last_play := {}
+var _piano := {}   # midi -> AudioStream (every 3 semitones from 21)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -44,6 +48,10 @@ func _ready() -> void:
 				w.loop_begin = 0
 				w.loop_end = int(w.get_length() * w.mix_rate)
 			_beds[StringName(b)] = s
+	for m in range(21, 109, 3):
+		var pp := PIANO_DIR + "piano_%d.wav" % m
+		if ResourceLoader.exists(pp):
+			_piano[m] = load(pp)
 	for i in POOL:
 		var a := AudioStreamPlayer.new()
 		a.bus = &"SFX"
@@ -117,14 +125,31 @@ func set_bed(bed: StringName, instant: bool = false) -> void:
 	var nw := _music[_active]
 	nw.stream = _beds[bed]
 	nw.volume_db = -80.0 if not instant else 0.0
+	var trim: float = BED_GAIN.get(bed, 0.0)
 	nw.play(randf() * 20.0)
 	var tw := create_tween().set_parallel(true)
 	var t := 0.05 if instant else CROSSFADE
-	tw.tween_method(func(v: float): nw.volume_db = linear_to_db(maxf(v, 0.0001)), 0.0001 if not instant else 1.0, 1.0, t)
+	tw.tween_method(func(v: float): nw.volume_db = linear_to_db(maxf(v, 0.0001)) + trim, 0.0001 if not instant else 1.0, 1.0, t)
 	if old.playing:
 		var start := db_to_linear(old.volume_db)
 		tw.tween_method(func(v: float): old.volume_db = linear_to_db(maxf(v, 0.0001)), start, 0.0001, t)
 		tw.chain().tween_callback(old.stop)
+
+## EE piano block 77: note index n (block rotation) -> MIDI 48 + n (EE's C3 = note 0, like
+## SoundManager.playPianoSound(id) = pianoSounds[id + 27] with pianoSounds[0] = A0). Nearest sample, pitch-shifted.
+func play_piano(note: int, vol: float = -6.0) -> void:
+	if _piano.is_empty():
+		return
+	var m := clampi(48 + note, 21, 108)
+	var base := clampi(21 + int(round((m - 21) / 3.0)) * 3, 21, 108)
+	if not _piano.has(base):
+		return
+	var a := _pool[_pool_i]
+	_pool_i = (_pool_i + 1) % _pool.size()
+	a.stream = _piano[base]
+	a.volume_db = vol
+	a.pitch_scale = pow(2.0, (m - base) / 12.0)
+	a.play()
 
 func set_room(reverb: float) -> void:
 	_reverb_target = reverb

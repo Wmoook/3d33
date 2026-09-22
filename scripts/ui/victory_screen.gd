@@ -5,6 +5,8 @@ extends Control
 
 signal closed
 
+var title_text := "ODYSSEY COMPLETE"
+var eyebrow_text := "THE  SOUL  RETURNS"
 var stats := {"time": 0.0, "coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "deaths": 0}
 var _t := -1.0
 var _out := -1.0
@@ -56,9 +58,9 @@ func _draw() -> void:
 	var a := _k(0.3, 1.4) * o
 	var sp := lerpf(60.0, 20.0, _k(0.3, 2.0))
 	var f := UITheme.title(0, 800)
-	var vt := "ODYSSEY COMPLETE"
+	var vt := title_text
 	var vp := Vector2(W * 0.5 - UITheme.spaced_width(f, vt, 96, sp) * 0.5, c.y)
-	draw_string(UITheme.hud_medium(9), Vector2(0, c.y - 110), "THE  SOUL  RETURNS", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.6 * _k(0.1, 1.0) * o))
+	draw_string(UITheme.hud_medium(9), Vector2(0, c.y - 110), eyebrow_text, HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, 0.6 * _k(0.1, 1.0) * o))
 	UITheme.draw_spaced(self, f, vp, vt, 96, sp, Color(1, 0.7, 0.3, 0.1 * a), 14)
 	UITheme.draw_spaced(self, f, vp, vt, 96, sp, Color(1.0, 0.88, 0.6, a))
 	if stats.get("new_best", false):

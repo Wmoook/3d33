@@ -1,15 +1,32 @@
 class_name WorldPalette
 extends RefCounted
-## Block id -> material class + base colour, and the hand-authored ZONE map of EX Crew Odyssey.
-## Everything is in EE tile coordinates (x right, y DOWN).
+## Block id -> material class + base colour, and the hand-authored visual ZONE maps per level
+## (EX Crew Odyssey = the original tuning; other levels keyed on `level_id`, set by WorldView from the
+## level config before building). Everything is in EE tile coordinates (x right, y DOWN).
+
+## Current level id (LevelCatalog config "id"). "odyssey" keeps every original rule byte-for-byte.
+static var level_id := "odyssey"
+
+static func is_odyssey() -> bool:
+	return level_id == "odyssey"
+
 
 # --- Material classes (index into the terrain shader's material tables) ---
 enum { M_AIR, M_EARTH, M_STONE, M_MARBLE, M_ICE, M_WATER, M_CORRUPT, M_FIRE, M_OBSIDIAN, M_GLASS,
-	M_GRASS, M_FOLIAGE, M_FLESH, M_WOOD, M_METAL, M_CLOUD, M_SAND, M_GEM, M_SNOW, M_BONE, M_COUNT }
+	M_GRASS, M_FOLIAGE, M_FLESH, M_WOOD, M_METAL, M_CLOUD, M_SAND, M_GEM, M_SNOW, M_BONE, M_RUIN, M_COUNT }
 
 # --- Atmosphere zones ---
-enum { Z_SURFACE, Z_EARTH, Z_HELL, Z_CORRUPT, Z_ICE, Z_LAKE, Z_TORNADO, Z_BONES, Z_DEEP, Z_COUNT }
-const ZONE_NAMES := ["surface", "earth", "hell", "corrupt", "ice", "lake", "tornado", "bones", "deep"]
+enum { Z_SURFACE, Z_EARTH, Z_HELL, Z_CORRUPT, Z_ICE, Z_LAKE, Z_TORNADO, Z_BONES, Z_DEEP,
+	Z_DAY, Z_RUINS, Z_WATERWAY, Z_COUNT }
+const ZONE_NAMES := ["surface", "earth", "hell", "corrupt", "ice", "lake", "tornado", "bones", "deep",
+	"day", "ruins", "waterway"]
+
+## Forgotten Veil: water-dominated regions (the falls + pool, the sunken aqueducts along the bottom).
+const FV_WATER_RECTS := [Rect2i(125, 100, 53, 100), Rect2i(178, 172, 222, 28)]
+## Forgotten Veil: the WINNERS parchment scroll (top right).
+const FV_RECT_SCROLL := Rect2i(350, 0, 50, 75)
+## Forgotten Veil sky backdrop bg ids (pastel blue sky, painted clouds / snowy mountains).
+const FV_SKY_BG := [530, 531, 540]
 
 ## Priority-ordered zone rectangles (x0, y0, x1, y1), inclusive-exclusive. First match wins.
 const ZONE_RECTS := [
@@ -54,32 +71,39 @@ const BG_COLORS := {
 ## True for STATIC foreground solids baked into the terrain height field (EE ItemId.isSolid, minus the
 ## dynamic key doors/gates, which WorldDoors renders, and the coin door 43, which actors render).
 static func is_world_solid(id: int) -> bool:
-	if id < 9 or id > 97:
+	if is_key_door(id) or id == 43 or id == 77 or id == 83:
 		return false
-	if id >= 23 and id <= 28:
-		return false
-	if id == 43 or id == 77 or id == 83:
-		return false
-	return true
+	if id >= 9 and id <= 97:
+		return true
+	# EE ItemId.isSolid also covers 122-217 and 1001-1499 (unused by Odyssey)
+	return (id >= 122 and id <= 217) or (id >= 1001 and id <= 1499)
 
 ## Non-solid decorations the world renders as props.
 ## Key doors (solid until their key is active) and key gates (the inverse).
+## Also purple switch doors/gates (184/185) and the magenta key door (1006).
 static func is_key_door(id: int) -> bool:
-	return id == 23 or id == 24 or id == 25 or id == 26 or id == 28
+	return (id >= 23 and id <= 28) or id == 184 or id == 185 or id == 1006
 
 static func is_gate(id: int) -> bool:
-	return id == 26 or id == 27 or id == 28
+	return id == 26 or id == 27 or id == 28 or id == 185
 
 static func key_color_of(id: int) -> StringName:
 	match id:
 		23, 26: return &"red"
 		24, 27: return &"green"
+		184, 185: return &"purple"
+		1006: return &"magenta"
 	return &"blue"
 
 static func is_world_deco(id: int) -> bool:
 	return id >= 227 and id <= 254 and id != 241 and id != 242 and id != 243
 
 static func zone_at(x: int, y: int) -> int:
+	if not is_odyssey():
+		for r: Rect2i in FV_WATER_RECTS:
+			if r.has_point(Vector2i(x, y)):
+				return Z_WATERWAY
+		return Z_RUINS
 	for r in ZONE_RECTS:
 		if x >= r[1] and y >= r[2] and x < r[3] and y < r[4]:
 			return r[0]
@@ -94,6 +118,8 @@ static func base_color(id: int) -> Color:
 
 ## Material class for a solid world id at tile (x, y) inside zone z.
 static func material_for(id: int, x: int, y: int, z: int) -> int:
+	if not is_odyssey():
+		return _material_for_day(id, x, y, z)
 	var p := Vector2i(x, y)
 	if RECT_LOGO.has_point(p) and id != 20 and id != 16 and id != 12:
 		return M_GEM
@@ -156,3 +182,26 @@ static func material_for(id: int, x: int, y: int, z: int) -> int:
 		62:
 			return M_GEM
 	return M_EARTH
+
+## Forgotten Veil (daytime overgrown temple ruins).
+static func _material_for_day(id: int, x: int, y: int, _z: int) -> int:
+	if FV_RECT_SCROLL.has_point(Vector2i(x, y)) and (id == 45 or id == 47 or id == 48 or id == 88):
+		return M_SAND
+	match id:
+		9, 42, 46, 86, 68, 69, 29, 87, 49:
+			return M_RUIN
+		44, 33:
+			return M_OBSIDIAN
+		45, 47, 48, 88, 21:
+			return M_EARTH
+		14, 19, 17, 13:
+			return M_FOLIAGE
+		34, 35, 36:
+			return M_GRASS
+		10, 39, 54, 85, 90, 15, 55:
+			return M_WATER
+		16, 22:
+			return M_WOOD
+		1004:
+			return M_GEM
+	return M_RUIN if id >= 1001 else M_EARTH

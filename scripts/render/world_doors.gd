@@ -6,7 +6,8 @@ extends Node3D
 ## translucent "passable" ghost. Without a sim: doors closed, gates open (EE initial state).
 
 const VPT := 12
-const KEY_RGB := {&"red": Color(1.0, 0.18, 0.22), &"green": Color(0.25, 1.0, 0.3), &"blue": Color(0.25, 0.45, 1.0)}
+const KEY_RGB := {&"red": Color(1.0, 0.18, 0.22), &"green": Color(0.25, 1.0, 0.3), &"blue": Color(0.25, 0.45, 1.0),
+	&"purple": Color(0.7, 0.35, 1.0), &"magenta": Color(1.0, 0.25, 0.9)}
 
 var sim: Object
 var regions: Array = []      # [{node, tile: Vector2i, id, solid_mat, ghost_mat, solid: bool}]
@@ -82,6 +83,8 @@ func _materials(id: int, terrain: WorldTerrain) -> Array:
 	match id:
 		24: col = Color8(55, 156, 48)
 		25, 28: col = Color8(45, 68, 156)
+		184, 185: col = Color8(100, 65, 154)
+		1006: col = Color8(145, 45, 153)
 	var kc: Color = KEY_RGB[WorldPalette.key_color_of(id)]
 	var out := []
 	for sh in ["res://shaders/world/door.gdshader", "res://shaders/world/door_ghost.gdshader"]:

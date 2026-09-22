@@ -44,6 +44,10 @@ var _fg: Control
 var _map: TextureRect
 var _map_mat: ShaderMaterial
 var _reveal := 0.0
+var level_title := "EX ODYSSEY"
+var map_caption := "the map of the odyssey"
+var quote := "\"The Devil hath taken thy Soul...  Go, and Return!\""
+var ref_dir := "res://assets/ee_ref"
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -58,7 +62,7 @@ func _ready() -> void:
 	_bg.material = _bg_mat
 	add_child(_bg)
 	# "Map of the Odyssey": the level's canonical EE-minimap art paints itself in as the world builds.
-	var art := Minimap.load_art()
+	var art := Minimap.load_art(ref_dir)
 	if art:
 		art.generate_mipmaps()
 		var tex := ImageTexture.create_from_image(art)
@@ -126,9 +130,9 @@ func _draw_fg() -> void:
 	var H := size.y
 	var a := _shown
 	var f := UITheme.title(20, 700)
-	_fg.draw_string_outline(f, Vector2(0, 118), "EX ODYSSEY", HORIZONTAL_ALIGNMENT_CENTER, W, 58, 10, Color(1, 0.7, 0.3, 0.06 * a))
-	_fg.draw_string(f, Vector2(0, 118), "EX ODYSSEY", HORIZONTAL_ALIGNMENT_CENTER, W, 58, Color(UITheme.GOLD, 0.92 * a))
-	_fg.draw_string(UITheme.serif_italic(500), Vector2(0, 162), "the map of the odyssey", HORIZONTAL_ALIGNMENT_CENTER, W, 28, Color(0.95, 0.9, 0.82, 0.6 * a))
+	_fg.draw_string_outline(f, Vector2(0, 118), level_title, HORIZONTAL_ALIGNMENT_CENTER, W, 58, 10, Color(1, 0.7, 0.3, 0.06 * a))
+	_fg.draw_string(f, Vector2(0, 118), level_title, HORIZONTAL_ALIGNMENT_CENTER, W, 58, Color(UITheme.GOLD, 0.92 * a))
+	_fg.draw_string(UITheme.serif_italic(500), Vector2(0, 162), map_caption, HORIZONTAL_ALIGNMENT_CENTER, W, 28, Color(0.95, 0.9, 0.82, 0.6 * a))
 	var mr := _map_rect() if _map else Rect2(0, H * 0.4, W, 0)
 	if _map:
 		var frame := mr.grow(10)
@@ -148,5 +152,5 @@ func _draw_fg() -> void:
 	var dots := ".".repeat(int(_t * 2.5) % 4)
 	_fg.draw_string(UITheme.hud_medium(6), Vector2(0, ly + 40), status.to_upper() + dots, HORIZONTAL_ALIGNMENT_CENTER, W, 18, Color(1, 1, 1, 0.55 * a))
 	_fg.draw_string(UITheme.hud(2), Vector2(x0 + lw + 18, ly + 7), "%d%%" % int(round(_disp * 100.0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.4 * a))
-	var q := "\"The Devil hath taken thy Soul...  Go, and Return!\""
+	var q := quote
 	_fg.draw_string(UITheme.serif_italic(500), Vector2(0, H - 36), q, HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(0.95, 0.88, 0.8, 0.4 * a))

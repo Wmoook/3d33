@@ -28,6 +28,7 @@ const int M_AIR = 0; const int M_EARTH = 1; const int M_STONE = 2; const int M_M
 const int M_WATER = 5; const int M_CORRUPT = 6; const int M_FIRE = 7; const int M_OBSIDIAN = 8; const int M_GLASS = 9;
 const int M_GRASS = 10; const int M_FOLIAGE = 11; const int M_FLESH = 12; const int M_WOOD = 13; const int M_METAL = 14;
 const int M_CLOUD = 15; const int M_SAND = 16; const int M_GEM = 17; const int M_SNOW = 18; const int M_BONE = 19;
+const int M_RUIN = 20;
 
 vec2 huv(vec2 p) {
 	return (p + height_margin) / (level_size + 2.0 * height_margin);
@@ -433,6 +434,28 @@ void fragment() {
 		emit += albedo * 0.06;
 		rough = 0.95;
 		n = normalize(gn + vec3(0.0, (streak - 0.5) * 0.35, 0.0));
+	} else if (mat == M_RUIN) {
+		// weathered temple ashlar: big irregular world-space blocks (warped running bond, not the tile grid),
+		// darker mortar joints, chipped lighter edges, moss and lichen in joints and on ledges, rain streaks
+		vec2 q = p + vec2(fbm2(p * 0.4), fbm2(p * 0.4 + 3.0)) * 0.3;
+		float row = floor(q.y * 0.8);
+		vec2 bq = vec2(q.x * 0.5 + hash12(vec2(row, 1.7)) * 3.0, q.y * 0.8);
+		vec2 bi = floor(bq);
+		vec2 bf = bq - bi;
+		float joint = min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y));
+		float jl = 1.0 - smoothstep(0.02, 0.08, joint);
+		float tone = hash12(bi + 7.0);
+		albedo *= mix(0.8, 1.12, tone) * mix(0.82, 1.08, dh) * (1.0 - jl * 0.5);
+		float chip = 1.0 - smoothstep(0.0, 0.14, max(s.x, 0.0));
+		albedo *= 1.0 + chip * 0.18;
+		float mossn = fbm3(p * 0.33 + 5.0) * 0.5 + 0.5;
+		float moss = smoothstep(0.45, 0.85, mossn + up * 0.45 + jl * 0.12 - 0.2) * smoothstep(-1.5, -0.2, wp.z + 0.8);
+		albedo = mix(albedo, vec3(0.13, 0.24, 0.06) * mix(0.8, 1.3, dh), moss * 0.8);
+		float streak = smoothstep(0.62, 0.95, fbm2(vec2(p.x * 2.6, p.y * 0.15))) * (1.0 - up);
+		albedo *= 1.0 - streak * 0.22;
+		rough = mix(0.72, 0.95, moss);
+		spec = 0.4;
+		n = normalize(mix(gn, triplanar_normal(detail_nrm2, wp, gn, 0.5), 0.75) - vec3(0.0, 0.0, jl * 0.25));
 	} else if (mat == M_BONE) {
 		// pale polished bone: bright ivory, porous micro-pits, a warm subsurface lift
 		albedo = mix(albedo, vec3(0.92, 0.88, 0.78), 0.6) * mix(0.82, 1.05, dh);

@@ -84,6 +84,7 @@ func _init() -> void:
 	test_key_door_stay_inside()
 	test_key_gate_deferred()
 	test_key_door_real_level()
+	load("res://tests/physics_test_fv.gd").new(self).run_all()
 	# break signal->lambda->sim reference cycles so nothing leaks at exit
 	for s in _sims:
 		for c in s.sim_event.get_connections():

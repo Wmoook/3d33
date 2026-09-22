@@ -35,13 +35,16 @@ func _ready() -> void:
 	game.press_start()
 	await game.ready_to_play
 	game.input_provider = func(_t: int) -> Dictionary: return {}
-	var only := ""
+	var only: PackedStringArray = []
+	var tag := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("only="):
-			only = a.substr(5)
+			only = a.substr(5).split(",")
+		if a.begins_with("tag="):
+			tag = "_" + a.substr(4)
 	game.sim.set_god_mode(true)
 	for s in SPOTS:
-		if only != "" and only != s[0]:
+		if not only.is_empty() and not only.has(s[0]):
 			continue
 		var t: Vector2 = s[1]
 		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
@@ -69,7 +72,7 @@ func _ready() -> void:
 				await get_tree().process_frame
 				await RenderingServer.frame_post_draw
 			print("ball light shadow=", L.shadow_enabled, " energy=", L.light_energy, " range=", L.omni_range, " mask=", L.shadow_caster_mask, " cull=", L.light_cull_mask)
-		get_viewport().get_texture().get_image().save_png("user://fx_game_%s.png" % s[0])
+		get_viewport().get_texture().get_image().save_png("user://fx_game_%s%s.png" % [s[0], tag])
 		print("saved fx_game_", s[0])
 	get_tree().quit()
 func _process(delta: float) -> void:

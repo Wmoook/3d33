@@ -39,7 +39,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var above_air := y > 0 and not terrain.solid[i - W]
 			if terrain.solid[i]:
 				var m: int = terrain.mat_ids[i]
-				if above_air and (m == WorldPalette.M_GRASS or (m == WorldPalette.M_FOLIAGE and y < 22)):
+				if above_air and (m == WorldPalette.M_GRASS or (m == WorldPalette.M_FOLIAGE and _leafy(terrain, x, y, W, H))):
 					var base := WorldPalette.base_color(id)
 					var cnt := 5 if m == WorldPalette.M_GRASS else 3
 					for k in cnt:
@@ -49,7 +49,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 						var b := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s * _rng.randf_range(0.8, 1.3), s))
 						grass_x.append(Transform3D(b, Vector3(px, -y + 0.02, pz)))
 						grass_c.append(_vary(base.lightened(0.1), 0.12))
-				if m == WorldPalette.M_FOLIAGE and y < 22:
+				if m == WorldPalette.M_FOLIAGE and _leafy(terrain, x, y, W, H):
 					# fluffy leaf clusters around exposed canopy edges
 					var exposed := 0
 					for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -210,7 +210,7 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 			if not terrain.solid[i] or terrain.sky[i - W] or terrain.sky[i + W]:
 				continue
 			var m: int = terrain.mat_ids[i]
-			if m != WorldPalette.M_EARTH and m != WorldPalette.M_STONE and m != WorldPalette.M_WOOD and m != WorldPalette.M_BONE:
+			if m != WorldPalette.M_EARTH and m != WorldPalette.M_STONE and m != WorldPalette.M_WOOD and m != WorldPalette.M_BONE and m != WorldPalette.M_RUIN:
 				continue
 			var top := not terrain.solid[i - W]
 			var under := not terrain.solid[i + W]
@@ -301,6 +301,12 @@ func _build_near_silhouettes(lvl: EELevel, terrain: WorldTerrain) -> void:
 	card.size = Vector2(1, 1)
 	_add_mm("NearSilhouettes", _vertex_white(card), _near_mat, cone_x, cone_c, false, false, true)
 	near_silhouette_count = cone_x.size()
+
+## Leaf clusters / canopy grass: Odyssey's trees are the surface band; other levels' foliage anywhere near sky.
+func _leafy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
+	if WorldPalette.is_odyssey():
+		return y < 22
+	return _near_sky(terrain, x, y, W, H)
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):

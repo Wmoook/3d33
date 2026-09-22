@@ -5,7 +5,20 @@ extends Node
 ## Engine.get_physics_interpolation_fraction(). Integrates EESim / WorldView / ActorsView from CONTRACTS.md,
 ## falling back to placeholders in scripts/game/fallback/ while those modules don't exist yet.
 
-const LEVEL_PATH := "res://levels/ex_crew_odyssey.eelvl"
+## Fallback config if LevelCatalog is unavailable (Odyssey, exactly as shipped).
+const ODYSSEY_CFG := {"id": "odyssey", "title": "EX ODYSSEY", "eyebrow": "A REIMAGINING OF EX CREW ODYSSEY",
+	"subtitle": "The Devil hath taken thy Soul...  Go, and Return!", "credit": "Based on  \"EX Crew Odyssey\"  -  Everybody Edits",
+	"level_file": "res://levels/ex_crew_odyssey.eelvl", "ref_dir": "res://assets/ee_ref", "time_of_day": "night",
+	"route_waypoints": "res://scripts/physics/route_waypoints.json", "attract_replay": "res://scripts/physics/route_descent.eerp",
+	"best_run_file": "user://best.eerp"}
+## Per-level shell texts (cfg keys of the same name override): victory eyebrow/title, map captions.
+const LEVEL_TEXT := {
+	"odyssey": {"victory_eyebrow": "THE  SOUL  RETURNS", "victory_title": "ODYSSEY COMPLETE", "map_title": "EX CREW ODYSSEY",
+		"map_caption": "the map of the odyssey", "quote": "\"The Devil hath taken thy Soul...  Go, and Return!\""},
+	"forgotten_veil": {"victory_eyebrow": "THE  VEIL  IS  LIFTED", "victory_title": "VEIL UNCOVERED", "map_title": "FORGOTTEN VEIL",
+		"map_caption": "the map of the forgotten veil", "quote": "\"Beyond the falls, the old temple still waits.\""},
+}
+var cfg: Dictionary = ODYSSEY_CFG
 const SIM_PATH := "res://scripts/physics/ee_sim.gd"
 const INPUT_PATH := "res://scripts/physics/ee_input.gd"
 const WORLD_PATH := "res://scripts/render/world_view.gd"
@@ -84,6 +97,9 @@ func _ready() -> void:
 		settings.quality = int(boot_options.quality)
 	if "--skip-title" in OS.get_cmdline_user_args():
 		boot_options["skip_title"] = true
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--level="):
+			boot_options["level"] = arg.trim_prefix("--level=")
 	# Packaged-build self test: `EX_Odyssey.exe --headless --audio-driver Dummy -- --smoke-test`
 	if "--smoke-test" in OS.get_cmdline_user_args():
 		boot_options["skip_title"] = true
@@ -98,6 +114,7 @@ func _ready() -> void:
 			print("[smoke-test] OK modules=%s ticks=%d pos=(%.1f,%.1f) zone=%s" % [modules, _play_ticks, sim.px, sim.py, _zone_info.name])
 			get_tree().quit(0), CONNECT_ONE_SHOT)
 	settings.persist = not boot_options.get("no_save", false)
+	_select_level_config()
 	Engine.max_physics_steps_per_frame = maxi(Engine.max_physics_steps_per_frame, 24)
 	_world_root = Node3D.new()
 	_world_root.name = "World"
@@ -115,6 +132,27 @@ func _ready() -> void:
 	_boot()
 
 # ======================================================================= boot
+func _select_level_config() -> void:
+	var want: String = str(boot_options.get("level", settings.level_id))
+	var c: Dictionary = {}
+	if ResourceLoader.exists("res://scripts/core/level_catalog.gd"):
+		LevelCatalog.current_id = want
+		c = LevelCatalog.current()
+		if c.is_empty():
+			LevelCatalog.current_id = "odyssey"
+			c = LevelCatalog.current()
+	cfg = c if not c.is_empty() else ODYSSEY_CFG
+	print("[game] level: %s" % cfg.get("id", "?"))
+
+func _level_text(key: String, fallback: String) -> String:
+	if cfg.has(key):
+		return str(cfg[key])
+	var t: Dictionary = LEVEL_TEXT.get(str(cfg.get("id", "")), {})
+	return str(t.get(key, fallback))
+
+func _is_day() -> bool:
+	return str(cfg.get("time_of_day", "night")) == "day"
+
 func _build_ui() -> void:
 	_ui = CanvasLayer.new()
 	_ui.name = "UI"
@@ -126,11 +164,16 @@ func _build_ui() -> void:
 	zone_card = ZoneCard.new()
 	_ui.add_child(zone_card)
 	minimap = Minimap.new()
+	minimap.ref_dir = str(cfg.get("ref_dir", "res://assets/ee_ref"))
+	minimap.level_title = _level_text("map_title", str(cfg.get("title", "")))
 	_ui.add_child(minimap)
 	title = TitleScreen.new()
 	title.visible = false
 	_ui.add_child(title)
+	title.set_levels(LevelCatalog.all() if ResourceLoader.exists("res://scripts/core/level_catalog.gd") else [cfg], str(cfg.id))
 	victory = VictoryScript.new()
+	victory.title_text = _level_text("victory_title", str(cfg.get("title", "")) + " COMPLETE")
+	victory.eyebrow_text = _level_text("victory_eyebrow", "THE  END")
 	tutorial = TutorialScript.new()
 	tutorial.done = settings.tutorial.duplicate()
 	tutorial.completed.connect(func(id: String):
@@ -142,6 +185,10 @@ func _build_ui() -> void:
 	pause_menu.settings = settings
 	_ui.add_child(pause_menu)
 	loading = LoadingScreen.new()
+	loading.ref_dir = str(cfg.get("ref_dir", "res://assets/ee_ref"))
+	loading.level_title = str(cfg.get("title", ""))
+	loading.map_caption = _level_text("map_caption", "the map")
+	loading.quote = _level_text("quote", str(cfg.get("credit", "")))
 	_ui.add_child(loading)
 	_fade = ColorRect.new()
 	_fade.color = Color.BLACK
@@ -161,6 +208,9 @@ func _build_ui() -> void:
 		_resume()
 		restart_run())
 	pause_menu.quit_title_requested.connect(_quit_to_title)
+	pause_menu.change_level_requested.connect(func():
+		_quit_to_title()
+		title.selected_index = (title.current_index + 1) % maxi(title.levels.size(), 1))
 	pause_menu.quit_requested.connect(func():
 		settings.save_settings()
 		get_tree().quit())
@@ -170,7 +220,7 @@ func _build_ui() -> void:
 func _boot() -> void:
 	loading.set_progress(0.02, "Awakening")
 	await _frames(2)
-	level = EELevel.load_file(LEVEL_PATH)
+	level = EELevel.load_file(str(cfg.get("level_file", ODYSSEY_CFG.level_file)))
 	if level == null:
 		loading.set_progress(0.0, "Level file missing")
 		return
@@ -181,12 +231,16 @@ func _boot() -> void:
 	await _frames(1)
 	sim = _instance(SIM_PATH, FB_SIM, "sim", [level])
 	input = _instance(INPUT_PATH, FB_INPUT, "", [])
+	if sim.has_method(&"set_level_config"):
+		sim.set_level_config(cfg)
 	if sim.has_signal(&"sim_event"):
 		sim.sim_event.connect(_on_sim_event)
 	loading.set_progress(0.1, "Raising the world")
 	await _frames(1)
 	world = _instance(WORLD_PATH, FB_WORLD, "world", [])
 	world.name = "WorldView"
+	if world.has_method(&"set_level_config"):
+		world.set_level_config(cfg)
 	_world_root.add_child(world)
 	var t0 := Time.get_ticks_msec()
 	if world.has_method(&"build_progressive"):
@@ -203,6 +257,8 @@ func _boot() -> void:
 	await _frames(1)
 	actors = _instance(ACTORS_PATH, FB_ACTORS, "actors", [])
 	actors.name = "ActorsView"
+	if actors.has_method(&"set_level_config"):
+		actors.set_level_config(cfg)
 	_world_root.add_child(actors)
 	actors.build(level, sim)
 	loading.set_progress(0.9, "Charting the depths")
@@ -212,6 +268,7 @@ func _boot() -> void:
 	ghost.name = "GhostRuns"
 	add_child(ghost)
 	ghost.best_changed.connect(func(t: int): hud.set_state({"best": t * 0.01 if t >= 0 else -1.0}))
+	ghost.best_path = str(cfg.get("best_run_file", "user://best_%s.eerp" % cfg.get("id", "level")))
 	ghost.setup(level, sim, actors, _world_root)
 	collision_overlay = CollisionOverlayScript.new()
 	collision_overlay.name = "CollisionOverlay"
@@ -285,8 +342,6 @@ func _frames(n: int) -> void:
 		await get_tree().process_frame
 
 # ======================================================================= title / intro
-const ROUTE_PATH := "res://scripts/physics/route_waypoints.json"
-const ATTRACT_REPLAY := "res://scripts/physics/route_descent.eerp"
 const ATTRACT_IDLE := 20.0
 var _attract := false
 var _attract_rep
@@ -296,7 +351,7 @@ func _setup_cinematic() -> void:
 	var route := _route_keys()
 	if route.size() >= 4:
 		rig.set_cinematic_path(route)
-		print("[game] title flyover follows %s (%d keys)" % [ROUTE_PATH, route.size()])
+		print("[game] title flyover follows %s (%d keys)" % [cfg.get("route_waypoints", ""), route.size()])
 		return
 	_setup_cinematic_default()
 
@@ -304,9 +359,10 @@ func _setup_cinematic() -> void:
 ## Accepts [[x,y],...], [{x,y},...] or {"waypoints": [...]}, in tiles or EE pixels (auto-detected);
 ## resampled to evenly spaced keyframes (~24 tiles apart) with a gentle zoom breathing.
 func _route_keys() -> Array:
-	if not FileAccess.file_exists(ROUTE_PATH):
+	var route_path := str(cfg.get("route_waypoints", ""))
+	if route_path == "" or not FileAccess.file_exists(route_path):
 		return []
-	var d = JSON.parse_string(FileAccess.get_file_as_string(ROUTE_PATH))
+	var d = JSON.parse_string(FileAccess.get_file_as_string(route_path))
 	if d is Dictionary:
 		for k in ["waypoints", "route", "points", "path"]:
 			if d.has(k):
@@ -360,6 +416,9 @@ func _route_zoom(k: int) -> float:
 	return 44.0 + 10.0 * sin(k * 0.9)
 
 func _setup_cinematic_default() -> void:
+	if str(cfg.get("id", "")) != "odyssey":
+		_setup_cinematic_auto()
+		return
 	# Tile-space keyframes (y down) touring the painting: surface -> sign -> inferno -> corruption ->
 	# brimstone -> ice -> demon -> drowned forge -> bones -> maelstrom -> back.
 	rig.set_cinematic_path([
@@ -377,6 +436,23 @@ func _setup_cinematic_default() -> void:
 		{"pos": Vector2(60, 50), "zoom": 58.0},
 	])
 
+## Generic flyover for levels without a route file: a slow serpentine over the whole painting.
+func _setup_cinematic_auto() -> void:
+	var keys := []
+	var W := float(level.width)
+	var H := float(level.height)
+	var sp: Array = level.find_all(255)
+	if sp.size() > 0:
+		keys.append({"pos": Vector2(sp[0]) + Vector2(8, -2), "zoom": 42.0})
+	var rows := [0.3, 0.55, 0.8]
+	for r in rows.size():
+		var xs := [0.12, 0.37, 0.63, 0.88]
+		if r % 2 == 1:
+			xs.reverse()
+		for x in xs:
+			keys.append({"pos": Vector2(W * x, H * rows[r]), "zoom": 50.0 + 6.0 * sin(keys.size() * 0.8)})
+	rig.set_cinematic_path(keys)
+
 func _enter_title() -> void:
 	state = State.TITLE
 	_title_idle = 0.0
@@ -387,7 +463,7 @@ func _enter_title() -> void:
 	title.restart_intro()
 	hud.set_state({"visible": false})
 	minimap.set_shown(false)
-	audio.set_bed(&"title")
+	audio.set_bed(_title_bed())
 	audio.set_room(0.5)
 	get_tree().create_timer(1.2).timeout.connect(func():
 		if state == State.TITLE:
@@ -397,10 +473,11 @@ func _enter_title() -> void:
 ## (scripts/physics/route_descent.eerp) with the camera following it; any key starts a fresh game.
 func _start_attract() -> bool:
 	if _attract_rep == null:
-		if not (ResourceLoader.exists("res://scripts/physics/ee_replay.gd") and FileAccess.file_exists(ATTRACT_REPLAY)):
+		var ar := str(cfg.get("attract_replay", ""))
+		if ar == "" or not (ResourceLoader.exists("res://scripts/physics/ee_replay.gd") and FileAccess.file_exists(ar)):
 			_title_idle = -1e9   # nothing to play; don't retry
 			return false
-		_attract_rep = load("res://scripts/physics/ee_replay.gd").load_file(ATTRACT_REPLAY)
+		_attract_rep = load("res://scripts/physics/ee_replay.gd").load_file(str(cfg.attract_replay))
 		if _attract_rep == null:
 			_title_idle = -1e9
 			return false
@@ -426,6 +503,9 @@ func _stop_attract() -> void:
 func _fade_flash(t: float) -> void:
 	_fade.modulate.a = 1.0
 	create_tween().tween_property(_fade, "modulate:a", 0.0, t)
+
+func _title_bed() -> StringName:
+	return StringName(cfg.get("title_music", "veil_title" if _is_day() else "title"))
 
 func _start_play(swoop: bool) -> void:
 	state = State.INTRO if swoop else State.PLAYING
@@ -461,6 +541,8 @@ func _physics_process(_delta: float) -> void:
 	if state == State.TITLE and _attract:
 		if not _attract_rep.step(sim):
 			_stop_attract()
+		else:
+			_check_piano()
 		return
 	if state != State.PLAYING or get_tree().paused or sim == null or victory.visible:
 		return
@@ -471,6 +553,7 @@ func _physics_process(_delta: float) -> void:
 	ghost.record(input)
 	sim.tick(input)
 	ghost.tick_ghost()
+	_check_piano()
 	_play_ticks += 1
 	if not _tut_moved and absf(sim.px - _tut_spawn.x) > 48.0:
 		_tut_moved = true
@@ -480,6 +563,18 @@ func _physics_process(_delta: float) -> void:
 		_snap_render = sim.teleported
 	else:
 		_snap_render = absf(sim.px - sim.prev_px) > 40.0 or absf(sim.py - sim.prev_py) > 40.0
+
+## EE piano (77): plays when the player's center enters a piano tile; note = the block's rotation value
+## (EE Me.as: `if (pastx != cx || pasty != cy) ... case PIANO: playPianoSound(lookup.getInt(cx, cy))`).
+var _piano_cell := Vector2i(-1, -1)
+func _check_piano() -> void:
+	var c := Vector2i(floori((sim.px + 8.0) / 16.0), floori((sim.py + 8.0) / 16.0))
+	if c == _piano_cell:
+		return
+	_piano_cell = c
+	var id: int = sim.get_tile(c.x, c.y) if sim.has_method(&"get_tile") else level.get_fg(c.x, c.y)
+	if id == 77:
+		audio.play_piano(int(level.get_extra(c.x, c.y).get("rotation", 0)))
 
 func _fill_input() -> void:
 	if "god_toggle" in input:
@@ -607,18 +702,32 @@ static func _same(a: Variant, b: Variant) -> bool:
 func _zone_key_at(tile: Vector2i) -> Variant:
 	if world and world.has_method(&"get_zone_at"):
 		return world.get_zone_at(tile)
-	return Zones.index_at(tile)
+	return Zones.index_at(tile) if str(cfg.get("id", "")) == "odyssey" else -1
 
 func _zone_info_for(z: Variant) -> Dictionary:
 	if z is StringName or z is String:
 		var d: Dictionary = world.get_zone_info(z) if world.has_method(&"get_zone_info") else {}
 		var mood := str(d.get("music_mood", z)).to_lower()
-		var fb := Zones.get_zone(Zones.index_at(EECoords.world_to_tile(_render_pos)))
+		var fb: Dictionary = Zones.get_zone(Zones.index_at(EECoords.world_to_tile(_render_pos))) if str(cfg.get("id", "")) == "odyssey" \
+			else {"name": "", "bed": &"day" if _is_day() else &"cave"}
 		var title := str(d.get("title", fb.name))
-		return {"name": title.to_upper(), "sub": str(d.get("subtitle", "")), "bed": _bed_for_mood(mood, fb.bed),
+		var bed: StringName = _day_bed_for_mood(mood) if _is_day() else _bed_for_mood(mood, fb.bed)
+		return {"name": title.to_upper(), "sub": str(d.get("subtitle", "")), "bed": bed,
 			"reverb": float(d.get("reverb", _reverb_for_mood(mood)))}
+	if str(cfg.get("id", "")) != "odyssey":
+		return {"name": "", "sub": "", "bed": &"day" if _is_day() else &"cave", "reverb": 0.3}
 	var info := Zones.get_zone(int(z))
 	return {"name": info.name, "sub": info.sub, "bed": info.bed, "reverb": info.reverb}
+
+## Daytime levels (Forgotten Veil): falls / temple interiors / open day.
+static func _day_bed_for_mood(mood: String) -> StringName:
+	for k in ["falls", "waterfall", "pool", "water"]:
+		if mood.contains(k):
+			return &"falls"
+	for k in ["temple", "hall", "ruin", "corridor", "channel", "cave", "underground", "tunnel", "crypt"]:
+		if mood.contains(k):
+			return &"temple"
+	return &"day"
 
 static func _bed_for_mood(mood: String, fallback: StringName) -> StringName:
 	for pair in [["surface", &"surface"], ["night", &"surface"], ["sky", &"surface"], ["inferno", &"hell"],
@@ -717,7 +826,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"complete":
 			audio.play("crown", 0.0, 0.0)
 			hud.flash(UITheme.GOLD, 0.8)
-			audio.set_bed(&"title")
+			audio.set_bed(_title_bed())
 			hud.set_state({"visible": false})
 			_victory_zoom = rig.target_zoom
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
@@ -732,9 +841,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match state:
 		State.TITLE:
-			if title.accept_input and _is_any_press(event):
+			if title.accept_input and title.levels.size() > 1 and not _attract and \
+					(event.is_action_pressed(&"ee_left") or event.is_action_pressed(&"ee_right")):
+				get_viewport().set_input_as_handled()
+				_title_idle = 0.0
+				if title.select_delta(-1 if event.is_action_pressed(&"ee_left") else 1):
+					audio.play("ui_move", -6.0, 0.0)
+				return
+			if title.accept_input and _is_any_press(event) and not _is_nav_only(event):
 				get_viewport().set_input_as_handled()
 				audio.play("ui_select", -2.0, 0.0)
+				if not _attract and title.selected_index != title.current_index:
+					switch_level(str(title.selected_cfg().get("id", "odyssey")))
+					return
 				if _attract:
 					_stop_attract()
 					rig.snap_to(_player_world_pos(1.0))
@@ -779,6 +898,33 @@ func _unhandled_input(event: InputEvent) -> void:
 					_zoom(-0.5)
 				elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 					_zoom(0.5)
+
+## Up/down etc. shouldn't start the game from the level select; left/right navigate.
+func _is_nav_only(e: InputEvent) -> bool:
+	return title.levels.size() > 1 and (e.is_action_pressed(&"ee_up") or e.is_action_pressed(&"ee_down") \
+		or e.is_action_pressed(&"ee_left") or e.is_action_pressed(&"ee_right"))
+
+## Level select / pause "Change level": remember the choice and reboot the whole game scene for that level
+## (the loading screen paints the new level's minimap).
+func switch_level(id: String) -> void:
+	settings.level_id = id
+	var keep := settings.persist
+	settings.persist = true if not boot_options.get("no_save", false) else keep
+	settings.save_settings()
+	settings.persist = keep
+	boot_options["level"] = id
+	boot_options.erase("skip_title")
+	get_tree().paused = false
+	_fade.modulate.a = 1.0
+	await get_tree().process_frame
+	if get_tree().current_scene == self:
+		get_tree().reload_current_scene()
+	else:
+		# embedded (tests): rebuild in place
+		var parent := get_parent()
+		var fresh: Node = load(scene_file_path).instantiate() if scene_file_path != "" else load("res://scenes/main.tscn").instantiate()
+		parent.add_child(fresh)
+		queue_free()
 
 func _is_any_press(e: InputEvent) -> bool:
 	if e is InputEventKey:

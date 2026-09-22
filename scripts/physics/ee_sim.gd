@@ -84,6 +84,11 @@ const EFFECT_MULTIJUMP := 461
 const EFFECT_GRAVITY := 1517
 const EFFECT_POISON := 1584
 const EFFECT_RESET := 1618
+const PIANO := 77
+const DRUMS := 83
+const GUITAR := 1520
+## Invisible arrows/dots that blink visible when touched (Me.touchBlock: lookup.setBlink(-100)).
+const BLINK_IDS := [411, 412, 413, 414, 460, 1519]
 const SPIKE_IDS := [361, 1580, 1625, 1626, 1627, 1628, 1629, 1630, 1631, 1632, 1633, 1634, 1635, 1636]
 const CLIMBABLE_IDS := [120, 118, 98, 99, 424, 459, 460, 472, 1534, 1146, 1563, 1602]
 const JUMP_THROUGH_IDS := [61, 62, 63, 64, 89, 90, 91, 96, 97, 122, 123, 124, 125, 126, 127, 146, 154, 158,
@@ -221,6 +226,9 @@ var _ev_coins := 0
 var _ev_bcoins := 0
 var _ev_timedoor := false
 var _ev_grav := Vector2i(0, 1)
+var _ev_switches := {}
+var _ev_orange_switches := {}
+var _switch_dirty := false         # a purple/orange switch dict was written this tick (diff needed)
 
 
 func _init(lvl: EELevel) -> void:
@@ -277,6 +285,7 @@ func reset() -> void:
 	_hide_timedoor_offset = 0.0
 	_show_coin_gate = 0; _show_blue_coin_gate = 0; _show_death_gate = 0
 	_orange_switches.clear(); _switches.clear()
+	_ev_switches.clear(); _ev_orange_switches.clear(); _switch_dirty = false
 	_state_queue.clear(); _keys_queue.clear(); _tile_queue.clear()
 	_rng.seed = 0x5EED
 	# Player constructor + PlayState constructor
@@ -315,6 +324,24 @@ func ticks() -> int:
 
 func is_key_active(color: StringName) -> bool:
 	return _keys.get(color, false)
+
+
+## Purple switch state of the local player (Player.switches[id]): true = purple doors 184 with
+## that id are open and purple gates 185 closed. Switches survive death; only a level reset clears them.
+func is_switch_on(id: int) -> bool:
+	return _switches.get(id, false)
+
+
+## Orange switch state (World.orangeSwitches[id]): true = orange doors 1079 open, gates 1080 closed.
+func is_orange_switch_on(id: int) -> bool:
+	return _orange_switches.get(id, false)
+
+
+## The number stored with a tile (Lookup.getInt): switch/door id for 113/184/185/467/1079/1080,
+## coins needed for 43/165/213/214, piano note for 77, one-way rotation for 1001-1004 ...
+## Portals keep theirs in get_portal(). 0 when none / out of bounds.
+func get_tile_number(tx: int, ty: int) -> int:
+	return _lookup_at(tx, ty)
 
 
 ## Seconds until the key expires (EE keys last 5 s: (offset - timer)/30 >= 5).
@@ -424,7 +451,8 @@ const _SNAP_PROPS: Array[StringName] = [&"px", &"py", &"prev_px", &"prev_py", &"
 	&"_pastx", &"_pasty", &"_ox", &"_oy", &"overlapa", &"overlapb", &"overlapc", &"overlapd",
 	&"_last_portal_set", &"_last_portal", &"_dead_offset", &"_fire_time_start", &"_fire_duration",
 	&"_horizontal", &"_vertical", &"_spacedown", &"_spacejustdown", &"_prev_jump_held", &"_mx", &"_my",
-	&"_current", &"_ev_keys", &"_ev_coins", &"_ev_bcoins", &"_ev_timedoor", &"_ev_grav"]
+	&"_current", &"_ev_keys", &"_ev_coins", &"_ev_bcoins", &"_ev_timedoor", &"_ev_grav",
+	&"_ev_switches", &"_ev_orange_switches"]
 
 
 ## Full state snapshot. restore() makes the sim continue bit-identically from that point, any
@@ -451,6 +479,7 @@ func restore(s: Array) -> void:
 		set(_SNAP_PROPS[i], v)
 	_queue = (s[_SNAP_PROPS.find(&"_queue")] as PackedInt32Array).duplicate()
 	_rng.state = s[_SNAP_PROPS.size()]
+	_switch_dirty = true
 
 
 ## Hash of the whole simulation state (for determinism checks).
@@ -1155,7 +1184,13 @@ func _touch_block(cx: int, cy: int, isgodmode: bool) -> void:
 		# RESET_POINT (466) needs the "risky" key: not reachable here.
 
 	if _pastx != cx or _pasty != cy:
+		# Me.touchBlock: music blocks play regardless of god mode (sound only, not solid).
+		if current == PIANO or current == DRUMS or current == GUITAR:
+			sim_event.emit(&"piano" if current == PIANO else (&"drum" if current == DRUMS else &"guitar"),
+				{"tile": Vector2i(cx, cy), "note": _lookup_at(cx, cy)})
 		if not isgodmode:
+			if BLINK_IDS.has(current):
+				sim_event.emit(&"blink", {"tile": Vector2i(cx, cy), "id": current})
 			match current:
 				CROWN:
 					if not has_crown:
@@ -1286,6 +1321,7 @@ func _press_purple_switch(sid: int, enabled: bool) -> void:
 	if sid == 1000:
 		for i in 1000:
 			_press_purple_switch(i, enabled)
+	_switch_dirty = true
 	_switches[sid] = enabled
 	if _overlaps() != 0:
 		_switches[sid] = not enabled
@@ -1296,6 +1332,7 @@ func _press_orange_switch(sid: int, enabled: bool) -> void:
 	if sid == 1000:
 		for i in 1000:
 			_press_orange_switch(i, enabled)
+	_switch_dirty = true
 	_orange_switches[sid] = enabled
 	if _overlaps() != 0:
 		_orange_switches[sid] = not enabled
@@ -1411,9 +1448,27 @@ func _emit_diffs() -> void:
 		_ev_timedoor = _timedoor_state
 		if _has_time_doors:
 			sim_event.emit(&"door_state", {"kind": &"time", "open": _timedoor_state})
+	if _switch_dirty:
+		_switch_dirty = false
+		_diff_switches(_switches, _ev_switches, &"purple")
+		_diff_switches(_orange_switches, _ev_orange_switches, &"orange")
 	var g := Vector2i(int(signf(mox)), int(signf(moy)))
 	if not in_god_mode and g != gravity_dir:
 		gravity_dir = g
 	if gravity_dir != _ev_grav:
 		_ev_grav = gravity_dir
 		sim_event.emit(&"gravity_changed", {"dir": gravity_dir})
+
+
+## `switch` {kind, id, on} + `door_state` {kind, id, open} for every switch id whose effective
+## state changed since the last emitted one (deferred presses only count once they apply).
+func _diff_switches(cur: Dictionary, seen: Dictionary, kind: StringName) -> void:
+	for id: int in cur:
+		var on: bool = cur[id]
+		if on != seen.get(id, false):
+			if on:
+				seen[id] = true
+			else:
+				seen.erase(id)
+			sim_event.emit(&"switch", {"kind": kind, "id": id, "on": on})
+			sim_event.emit(&"door_state", {"kind": kind, "id": id, "open": on})

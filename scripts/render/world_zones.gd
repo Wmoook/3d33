@@ -22,6 +22,24 @@ const TABLE := [
 	[&"underworld", "THE UNDERWORLD", "Deeper than any map", "cave", WorldPalette.Z_BONES, 0.6, Rect2i()],
 ]
 
+## Forgotten Veil (daytime ruins). Same row layout; visual preset is decided per tile (sky -> Z_DAY).
+const TABLE_FV := [
+	[&"winners", "THE WINNERS' SCROLL", "Names carved for the ages", "day surface sky", WorldPalette.Z_DAY, 0.1, Rect2i(350, 0, 50, 75)],
+	[&"elder_grove", "THE ELDER GROVE", "Where the old trees keep watch", "day surface forest", WorldPalette.Z_DAY, 0.1, Rect2i(0, 8, 84, 55)],
+	[&"sunken_aqueducts", "THE SUNKEN AQUEDUCTS", "Still water remembers", "lake water", WorldPalette.Z_WATERWAY, 0.8, Rect2i(125, 170, 275, 30)],
+	[&"veiled_falls", "THE VEILED FALLS", "Behind the water, a door", "lake water falls", WorldPalette.Z_WATERWAY, 0.5, Rect2i(122, 100, 54, 70)],
+	[&"great_spire", "THE GREAT SPIRE", "It reached for the gods", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(175, 20, 44, 150)],
+	[&"hanging_gardens", "THE HANGING GARDENS", "Vines where bridges once stood", "day surface garden", WorldPalette.Z_DAY, 0.2, Rect2i(219, 55, 12, 115)],
+	[&"twin_spire", "THE TWIN SPIRE", "Its sister never fell", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(231, 45, 42, 125)],
+	[&"ruined_keep", "THE RUINED KEEP", "The last watch was never relieved", "cave tunnel keep", WorldPalette.Z_RUINS, 0.6, Rect2i(273, 70, 127, 55)],
+	[&"lower_sanctum", "THE LOWER SANCTUM", "Deeper than the roots go", "cave tunnel", WorldPalette.Z_RUINS, 0.8, Rect2i(273, 125, 127, 45)],
+	[&"hollow_halls", "THE HOLLOW HALLS", "Stone halls beneath the grove", "cave tunnel temple", WorldPalette.Z_RUINS, 0.7, Rect2i(0, 63, 122, 97)],
+	[&"rooted_vaults", "THE ROOTED VAULTS", "The mountain's buried heart", "cave tunnel", WorldPalette.Z_RUINS, 0.8, Rect2i(0, 160, 125, 40)],
+	[&"open_sky", "THE FORGOTTEN VEIL", "Where the journey begins", "day surface sky", WorldPalette.Z_DAY, 0.05, Rect2i()],
+	[&"underhalls", "THE UNDERHALLS", "Forgotten by all but stone", "cave tunnel", WorldPalette.Z_RUINS, 0.7, Rect2i()],
+]
+
+var table: Array = TABLE
 var W := 0
 var H := 0
 var tile_zone := PackedByteArray()     # index into TABLE
@@ -33,6 +51,10 @@ func build(terrain: WorldTerrain) -> void:
 	H = terrain.H
 	tile_zone.resize(W * H)
 	visual.resize(W * H)
+	if not WorldPalette.is_odyssey():
+		_build_day(terrain)
+		return
+	table = TABLE
 	for k in TABLE.size():
 		_by_name[TABLE[k][0]] = k
 	var fallback := TABLE.size() - 1
@@ -55,6 +77,26 @@ func build(terrain: WorldTerrain) -> void:
 			tile_zone[i] = z
 			visual[i] = TABLE[z][4]
 
+func _build_day(terrain: WorldTerrain) -> void:
+	table = TABLE_FV
+	for k in table.size():
+		_by_name[table[k][0]] = k
+	var sky_z: int = _by_name[&"open_sky"]
+	var under_z: int = _by_name[&"underhalls"]
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			var z := -1
+			for k in table.size() - 2:
+				if (table[k][6] as Rect2i).has_point(Vector2i(x, y)):
+					z = k
+					break
+			if z < 0:
+				z = sky_z if terrain.sky[i] else under_z
+			tile_zone[i] = z
+			# the look follows the tile itself: open sky is daylight, enclosed stone is the ruins' shade
+			visual[i] = WorldPalette.Z_DAY if terrain.sky[i] else WorldPalette.zone_at(x, y)
+
 func _by_colour(c: Color) -> int:
 	var h := c.h
 	if c.s > 0.35 and (h < 0.13 or h > 0.97) and c.v > 0.6:
@@ -70,10 +112,10 @@ func _by_colour(c: Color) -> int:
 func zone_at(tile: Vector2i) -> StringName:
 	var x := clampi(tile.x, 0, W - 1)
 	var y := clampi(tile.y, 0, H - 1)
-	return TABLE[tile_zone[y * W + x]][0]
+	return table[tile_zone[y * W + x]][0]
 
 func info(zone: StringName) -> Dictionary:
-	var k: int = _by_name.get(zone, TABLE.size() - 1)
-	var e: Array = TABLE[k]
+	var k: int = _by_name.get(zone, table.size() - 1)
+	var e: Array = table[k]
 	return {"name": e[0], "title": e[1], "subtitle": e[2], "music_mood": e[3], "reverb": e[5],
 		"visual": WorldPalette.ZONE_NAMES[e[4]]}

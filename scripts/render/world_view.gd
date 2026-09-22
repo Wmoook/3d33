@@ -24,9 +24,18 @@ var zones: WorldZones
 var is_built := false
 var build_ms := 0
 var timings := {}
+## Level config (LevelCatalog, levels/config/<id>.json). Defaults = EX Crew Odyssey.
+var config := {"id": "odyssey", "ref_dir": "res://assets/ee_ref", "time_of_day": "night"}
 var current_zone: StringName = &""
 var _cand_zone: StringName = &""
 var _cand_time := 0.0
+
+## Call BEFORE build(): selects the level's reference art, zones, atmosphere and special tuning.
+func set_level_config(cfg: Dictionary) -> void:
+	config.merge(cfg, true)
+
+func is_day() -> bool:
+	return str(config.get("time_of_day", "night")) == "day"
 
 func build(lvl: EELevel) -> void:
 	for step in _steps(lvl):
@@ -47,6 +56,7 @@ func build_progressive(lvl: EELevel, progress: Callable) -> void:
 
 func _steps(lvl: EELevel) -> Array:
 	level = lvl
+	WorldPalette.level_id = str(config.get("id", "odyssey"))
 	build_ms = Time.get_ticks_msec()
 	return [
 		["Sculpting stone and earth", _step_terrain],
@@ -59,7 +69,10 @@ func _steps(lvl: EELevel) -> Array:
 	]
 
 func _step_terrain() -> void:
-	terrain = _add(WorldTerrain.new(), "Terrain")
+	terrain = WorldTerrain.new()
+	terrain.ref_dir = str(config.get("ref_dir", "res://assets/ee_ref"))
+	terrain.day = is_day()
+	_add(terrain, "Terrain")
 	terrain.build(level)
 	timings.merge(terrain.timings)
 
@@ -91,13 +104,17 @@ func _step_decor() -> void:
 
 func _step_lights() -> void:
 	var t := Time.get_ticks_msec()
-	lights = _add(WorldLights.new(), "Lights")
+	lights = WorldLights.new()
+	lights.day = is_day()
+	_add(lights, "Lights")
 	lights.build(level, terrain)
 	timings["lights"] = Time.get_ticks_msec() - t
 
 func _step_atmosphere() -> void:
 	var t := Time.get_ticks_msec()
-	atmosphere = _add(WorldAtmosphere.new(), "Atmosphere")
+	atmosphere = WorldAtmosphere.new()
+	atmosphere.day = is_day()
+	_add(atmosphere, "Atmosphere")
 	atmosphere.build(level, terrain, lights, zones)
 	timings["atmosphere"] = Time.get_ticks_msec() - t
 

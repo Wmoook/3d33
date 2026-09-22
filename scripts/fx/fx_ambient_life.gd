@@ -25,6 +25,14 @@ var ball := Vector2(-1000, 0)      # tile space (y down)
 var ball_vel := Vector2.ZERO
 var _prev_ball := Vector2(-1000, 0)
 
+## Odyssey keeps its hand-placed life (bats in cave zones, surface fireflies, corruption wisps).
+## Other levels: fireflies only in shaded interiors (roofed open air), fish in the art's water; no bats/wisps.
+var odyssey := true
+## Optional world zone lookup (WorldView.get_zone_at): tiles whose zone is listed in no_firefly_zones
+## never get fireflies (e.g. sunlit surface zones).
+var zone_fn: Callable
+var no_firefly_zones: Array[StringName] = []
+
 var _open := PackedByteArray()
 var _sky_top := PackedInt32Array()
 
@@ -113,11 +121,14 @@ func _find_sites() -> void:
 		for x in range(1, W - 1):
 			var i := y * W + x
 			var h := FxInteractiveBlocks._tile_hash(Vector2i(x, y))
-			var z := WorldPalette.zone_at(x, y)
-			if _open[i] == 1 and _open[i - W] == 0 and y > _sky_top[x] and z != WorldPalette.Z_SURFACE \
+			var z := WorldPalette.zone_at(x, y) if odyssey else -1
+			if not odyssey:
+				if _open[i] == 1 and y > _sky_top[x] and h.y < 0.3 and not _water(x, y) and _shaded(x, y):
+					_add_site(_ff_sites, _ff_bucket, Vector2i(x, y))
+			elif _open[i] == 1 and _open[i - W] == 0 and y > _sky_top[x] and z != WorldPalette.Z_SURFACE \
 					and z != WorldPalette.Z_LAKE and h.x < 0.2 and not _water(x, y) 					and lvl.fg[i] == 0 and open_at(x, y + 1) and open_at(x, y + 2):
 				_add_site(_roosts, _roost_bucket, Vector2i(x, y))
-			if _open[i] == 1 and y < _sky_top[x] and y < 30 and h.y < 0.35:
+			if odyssey and _open[i] == 1 and y < _sky_top[x] and y < 30 and h.y < 0.35:
 				var ground := false
 				for k in range(1, 5):
 					if not open_at(x, y + k):
@@ -127,6 +138,26 @@ func _find_sites() -> void:
 					_add_site(_ff_sites, _ff_bucket, Vector2i(x, y))
 			if _deep_at(x, y) and _deep_at(x, y - 1) and _deep_at(x - 1, y) and _deep_at(x + 1, y) and h.z < 0.3:
 				_add_site(_fish_sites, _fish_bucket, Vector2i(x, y))
+
+## Non-Odyssey firefly site: roofed within 6 tiles above, ground within 4 below, not in a sunlit zone.
+func _shaded(x: int, y: int) -> bool:
+	var roof := false
+	for k in range(1, 7):
+		if not open_at(x, y - k):
+			roof = true
+			break
+	if not roof:
+		return false
+	var ground := false
+	for k in range(1, 5):
+		if not open_at(x, y + k):
+			ground = true
+			break
+	if not ground:
+		return false
+	if zone_fn.is_valid() and not no_firefly_zones.is_empty():
+		return not no_firefly_zones.has(StringName(zone_fn.call(Vector2i(x, y))))
+	return true
 
 func _add_site(arr: Array[Vector2i], bucket: Dictionary, t: Vector2i) -> void:
 	var k := Vector2i(t.x / BUCKET, t.y / BUCKET)
@@ -470,7 +501,7 @@ func _update_glows(delta: float) -> void:
 				"ph": randf() * TAU, "col": Color(1.0, 0.72, 0.42), "home": top, "r": randf_range(0.5, 1.3)})
 	# corruption wisps orbit the ball for a moment
 	_wisp_cd -= delta
-	if _wisp_cd <= 0.0 and WorldPalette.zone_at(int(ball.x), int(ball.y)) == WorldPalette.Z_CORRUPT:
+	if odyssey and _wisp_cd <= 0.0 and WorldPalette.zone_at(int(ball.x), int(ball.y)) == WorldPalette.Z_CORRUPT:
 		_wisp_cd = randf_range(7.0, 11.0)
 		for k in 5:
 			_glows.append({"kind": 2, "pos": ball + Vector2.from_angle(TAU * k / 5.0) * 2.0, "vel": Vector2.ZERO,

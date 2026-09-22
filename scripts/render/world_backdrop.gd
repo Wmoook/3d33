@@ -26,8 +26,11 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		for dx in range(-8, 9):
 			g = maxf(g, raw[clampi(x + dx, 0, W - 1)])
 		ground_top[x] = g
-	_make_hills(W)
-	_make_moon_occluder(W, H)
+	if WorldPalette.is_odyssey():
+		_make_hills(W)
+		_make_moon_occluder(W, H)
+	else:
+		_make_interior_occluder(terrain)
 
 func _ridge_mesh(x0: float, x1: float, base_y: float, amp: float, freq: float, seed_v: int, z: float, trees: bool) -> ArrayMesh:
 	var fn := FastNoiseLite.new()
@@ -126,6 +129,71 @@ func _make_moon_occluder(W: int, H: int) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	mi.layers = OCCLUDER_LAYER   # only the moon's shadow sees it (see WorldLights shadow_caster_mask)
+	add_child(mi)
+
+## Day levels: shadow-only slabs in front of every tile deep inside the mass (more than DEPTH tiles from
+## open sky), so the sun lights the outside of the ruins but the halls inside stay in cool shade; sun
+## shafts leak in around the edges (and show in the volumetric fog as god rays).
+const INTERIOR_DEPTH := 5
+
+func _make_interior_occluder(terrain: WorldTerrain) -> void:
+	var W := terrain.W
+	var H := terrain.H
+	var dist := PackedInt32Array()
+	dist.resize(W * H)
+	dist.fill(1 << 20)
+	var q := PackedInt32Array()
+	for i in W * H:
+		if terrain.sky[i]:
+			dist[i] = 0
+			q.append(i)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if dist[j] <= dist[i] + 1:
+				continue
+			dist[j] = dist[i] + 1
+			q.append(j)
+	var verts := PackedVector3Array()
+	var idx := PackedInt32Array()
+	var z := 1.3
+	for y in H:
+		var x := 0
+		while x < W:
+			if dist[y * W + x] <= INTERIOR_DEPTH:
+				x += 1
+				continue
+			var x0 := x
+			while x < W and dist[y * W + x] > INTERIOR_DEPTH:
+				x += 1
+			var b := verts.size()
+			verts.append_array([Vector3(x0, -y, z), Vector3(x, -y, z), Vector3(x, -y - 1, z), Vector3(x0, -y - 1, z)])
+			idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
+	if verts.is_empty():
+		return
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.name = "SunOccluder"
+	mi.mesh = m
+	var mat := StandardMaterial3D.new()
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	mi.layers = OCCLUDER_LAYER
 	add_child(mi)
 
 func update_focus(world_pos: Vector3, _delta: float) -> void:

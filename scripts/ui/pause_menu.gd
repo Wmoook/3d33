@@ -7,6 +7,7 @@ extends Control
 signal resume_requested
 signal restart_requested
 signal quit_title_requested
+signal change_level_requested
 signal quit_requested
 signal setting_changed(key: String, value: Variant)
 signal ui_sound(name: String)
@@ -82,7 +83,7 @@ func _ready() -> void:
 	_left.add_theme_constant_override(&"separation", 6)
 	_root.add_child(_left)
 	for pair in [["RESUME", _on_resume], ["RESTART", _on_restart], ["SETTINGS", _on_settings],
-			["QUIT TO TITLE", _on_quit_title], ["QUIT GAME", _on_quit]]:
+			["CHANGE LEVEL", _on_change_level], ["QUIT TO TITLE", _on_quit_title], ["QUIT GAME", _on_quit]]:
 		var b := Button.new()
 		b.text = pair[0]
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -274,7 +275,7 @@ func _draw_info() -> void:
 	var it := UITheme.serif_italic(500)
 	_info.draw_string(it, Vector2(154, 400), _title_case(info_zone), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1, 0.92, 0.82, 0.8))
 	var hud := UITheme.hud_medium(3)
-	_info.draw_string(hud, Vector2(154, _left.position.y + 5 * 60 + 60), "%s     %s" % [info_time, info_coins], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.5))
+	_info.draw_string(hud, Vector2(154, _left.position.y + 6 * 60 + 60), "%s     %s" % [info_time, info_coins], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.5))
 
 func _on_resume() -> void:
 	ui_sound.emit("ui_select")
@@ -289,6 +290,10 @@ func _on_settings() -> void:
 	_settings_panel.visible = not _settings_panel.visible
 	if _settings_panel.visible:
 		(_settings_panel.find_child("master", true, false) as Control).grab_focus()
+
+func _on_change_level() -> void:
+	ui_sound.emit("ui_select")
+	change_level_requested.emit()
 
 func _on_quit_title() -> void:
 	ui_sound.emit("ui_select")

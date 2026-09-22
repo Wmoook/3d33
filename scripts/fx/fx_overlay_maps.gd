@@ -1,10 +1,15 @@
 class_name FxOverlayMaps
 extends RefCounted
-## Analyses the canonical EE minimap (assets/ee_ref/minimap_ee.png, 1 px per tile) plus the level grid to
+## Analyses the canonical EE minimap (<ref_dir>/minimap_ee.png, 1 px per tile) plus the level grid to
 ## find where hero FX belong: painted fire, water bodies and their surfaces, splash streams, ice glints.
-## All coordinates are EE tiles (y down).
+## All coordinates are EE tiles (y down). Odyssey keeps its hand-tuned regions (level_id == "odyssey");
+## other levels derive water from the art alone (blue minimap pixels, wide runs = pools/channels,
+## tall narrow runs = falling streams).
 
 const MINIMAP := "res://assets/ee_ref/minimap_ee.png"
+## Dynamic barriers (world/actors render them): never water, never open art.
+const DOOR_IDS := [23, 24, 25, 26, 27, 28, 43, 184, 185, 1006, 1009]
+const PORTAL_IDS := [242, 381]
 const FIRE_Y := Color8(240, 169, 39)
 const FIRE_O := Color8(223, 122, 65)
 const WATER := [Color8(77, 132, 198), Color8(53, 82, 168), Color8(45, 68, 156), Color8(126, 153, 246),
@@ -24,16 +29,28 @@ var fire_tops: Array[Vector2i] = []            # fire tiles with open air above 
 var fire_chunks: Array = []                    # [{center: Vector2, count, tiles: Array[Vector2i], min, max}]
 var water_surface: Array[Vector2i] = []        # water tiles with open air above
 var stream_tiles: Array[Vector2i] = []
+var level_id := "odyssey"
+var ref_dir := "res://assets/ee_ref"
+
+func is_odyssey() -> bool:
+	return level_id == "odyssey"
+
+func set_level_config(cfg: Dictionary) -> void:
+	level_id = String(cfg.get("id", "odyssey"))
+	ref_dir = String(cfg.get("ref_dir", "res://assets/ee_ref"))
 
 func build(lvl: EELevel) -> void:
 	W = lvl.width
 	H = lvl.height
-	var tex := load(MINIMAP) as Texture2D
+	var path := MINIMAP if is_odyssey() else ref_dir.path_join("minimap_ee.png")
+	var tex := load(path) as Texture2D
 	img = tex.get_image() if tex else Image.create(W, H, false, Image.FORMAT_RGB8)
 	if img.is_compressed():
 		img.decompress()
 	img.convert(Image.FORMAT_RGB8)
 	fire.resize(W * H); water.resize(W * H); stream.resize(W * H)
+	if not is_odyssey():
+		_classify_generic(lvl)
 	for y in H:
 		for x in W:
 			var c := img.get_pixel(x, y)
@@ -42,7 +59,7 @@ func build(lvl: EELevel) -> void:
 				fire[i] = 2
 			elif _same(c, FIRE_O):
 				fire[i] = 1
-			elif _is_water(c):
+			elif is_odyssey() and _is_water(c):
 				var id := lvl.get_fg(x, y)
 				# key doors/gates are painted blue too (the upper "lake" is door 25): water FX there would hide
 				# whether the door is open, so doors never count as water
@@ -75,11 +92,47 @@ func _classify_water(x: int, y: int, i: int) -> void:
 	elif y > 185 and x > 180 and x < 200:
 		water[i] = 1    # little pool under the ship's wheel
 
+## Any level: blue minimap pixels (not doors/portals) are water. Per tile, the horizontal run of water in
+## its row vs the vertical run in its column decides pool/channel (wide) or falling stream (tall, narrow).
+func _classify_generic(lvl: EELevel) -> void:
+	var wet := PackedByteArray()
+	wet.resize(W * H)
+	for y in H:
+		for x in W:
+			var id := lvl.get_fg(x, y)
+			if DOOR_IDS.has(id) or PORTAL_IDS.has(id):
+				continue
+			var c := img.get_pixel(x, y)
+			if c.s > 0.4 and c.h > 0.55 and c.h < 0.7 and c.v > 0.4:
+				wet[y * W + x] = 1
+	for y in H:
+		var x := 0
+		while x < W:
+			if wet[y * W + x] == 0:
+				x += 1
+				continue
+			var x0 := x
+			while x < W and wet[y * W + x] == 1:
+				x += 1
+			for xx in range(x0, x):
+				var i := y * W + xx
+				var vr := 1
+				var k := y - 1
+				while k >= 0 and wet[k * W + xx] == 1 and vr < 8:
+					vr += 1; k -= 1
+				k = y + 1
+				while k < H and wet[k * W + xx] == 1 and vr < 8:
+					vr += 1; k += 1
+				if x - x0 >= 6 or vr < 4:
+					water[i] = 1
+				else:
+					stream[i] = 1
+
 static func is_open(lvl: EELevel, x: int, y: int) -> bool:
 	var id := lvl.get_fg(x, y)
 	if id < 0:
 		return false
-	if (id >= 23 and id <= 28) or id == 43:
+	if (id >= 23 and id <= 28) or id == 43 or id == 184 or id == 185 or id == 1006 or id == 1009:
 		return false
 	return not WorldPalette.is_world_solid(id)
 

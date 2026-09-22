@@ -33,6 +33,12 @@ var pocket := PackedByteArray()
 ## Tiny solid islands (<= 3 tiles, 8-connected): sculpted as organic pebbles / crystals / embers.
 var speck := PackedByteArray()
 var timings := {}
+## Per-level reference art directory (minimap_ee.png, minimap_colors.json) and time of day.
+var ref_dir := "res://assets/ee_ref"
+var day := false
+## Day levels: air tiles whose back wall is decided after the sky flood (sky-painted bg, minimap-coloured air).
+var _deferred := PackedByteArray()
+var _deferred_col := PackedColorArray()
 
 func build(lvl: EELevel) -> void:
 	level = lvl
@@ -170,7 +176,7 @@ func _fg_has_minimap_colour(id: int) -> bool:
 	if id <= 0:
 		return false
 	if _mm_ids.is_empty():
-		var j = JSON.parse_string(FileAccess.get_file_as_string("res://assets/ee_ref/minimap_colors.json"))
+		var j = JSON.parse_string(FileAccess.get_file_as_string(ref_dir + "/minimap_colors.json"))
 		if j is Dictionary:
 			for k in j:
 				if j[k] != null:
@@ -179,7 +185,7 @@ func _fg_has_minimap_colour(id: int) -> bool:
 	return _mm_ids.has(id)
 
 func _load_minimap() -> Image:
-	var buf := FileAccess.get_file_as_bytes("res://assets/ee_ref/minimap_ee.png")
+	var buf := FileAccess.get_file_as_bytes(ref_dir + "/minimap_ee.png")
 	if buf.is_empty():
 		return null
 	var img := Image.new()
@@ -208,7 +214,7 @@ func _compute_sky() -> void:
 		for k in 4:
 			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
 			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
-			if nx < 0 or ny < 1 or nx >= W or ny > SKY_MAX_Y:
+			if nx < 0 or ny < 1 or nx >= W or ny > (H - 1 if day else SKY_MAX_Y):
 				continue
 			var j := ny * W + nx
 			if sky[j] or not _sky_passable(j):
@@ -250,6 +256,26 @@ func _find_specks() -> void:
 			for i in comp:
 				speck[i] = 1
 
+## Day levels: the painting's sky (minimap colours of every sky tile) extended behind the terrain by
+## nearest-colour fill and softened, for the far sky backdrop.
+func sky_paint_image() -> Image:
+	var mm := _load_minimap()
+	if mm == null or mm.get_width() != W:
+		return null
+	var src := mm.get_data()
+	var buf := PackedByteArray()
+	buf.resize(W * H * 4)
+	var filled := PackedByteArray()
+	filled.resize(W * H)
+	for i in W * H:
+		if sky[i]:
+			buf[i * 4] = src[i * 3]; buf[i * 4 + 1] = src[i * 3 + 1]; buf[i * 4 + 2] = src[i * 3 + 2]; buf[i * 4 + 3] = 255
+			filled[i] = 1
+	_dilate(buf, filled)
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
+	img.resize(W * 4, H * 4, Image.INTERPOLATE_CUBIC)
+	return img
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
@@ -261,6 +287,8 @@ var art_door := PackedByteArray()
 func _find_art_doors() -> void:
 	art_door.resize(W * H)
 	art_door.fill(0)
+	if not WorldPalette.is_odyssey():
+		return
 	var seen := PackedByteArray()
 	seen.resize(W * H)
 	for start in W * H:
@@ -299,6 +327,8 @@ func _classify() -> void:
 	var n := W * H
 	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n); backwall.resize(n)
 	solid.fill(0); sky.fill(0); backwall.fill(0)
+	_deferred.resize(n); _deferred.fill(0)
+	_deferred_col.resize(n)
 	fgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
 	bgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
 	info_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
@@ -323,6 +353,8 @@ func _classify() -> void:
 				var inner: int = level.fg[clampi(y, 1, H - 2) * W + clampi(x, 1, W - 2)]
 				if y == 0 and not WorldPalette.is_world_solid(inner):
 					continue
+				if day and not WorldPalette.is_world_solid(inner):
+					continue   # day levels: no border slab beside/under open air either (the sky continues)
 				if WorldPalette.is_world_solid(inner):
 					id = inner
 				else:
@@ -360,6 +392,12 @@ func _classify() -> void:
 				has_fg[i] = 1
 				continue
 			var b: int = level.bg[i]
+			if day and (b == 0 or b in WorldPalette.FV_SKY_BG or (_fg_has_minimap_colour(id) and not _has_bg(b))):
+				# day level: the painted sky (and anything floating in it) is decided by the sky flood
+				if b != 0 or (mm_ok and _fg_has_minimap_colour(id)):
+					_deferred[i] = 1
+					_deferred_col[i] = mc
+				continue
 			if _has_bg(b) or (mm_ok and _fg_has_minimap_colour(id) and not WorldPalette.is_key_door(id)):
 				# bg block, or minimap-coloured air (key dither, crowns, portals): recessed back wall
 				var bc: Color = mc if mm_ok else WorldPalette.BG_COLORS.get(b, Color8(40, 40, 40))
@@ -370,6 +408,16 @@ func _classify() -> void:
 	for x in W:
 		if not solid[x] and sky[W + x]:
 			sky[x] = 1
+	if day:
+		for i in n:
+			if sky[i]:
+				zones[i] = WorldPalette.Z_DAY
+			elif _deferred[i]:
+				# sky-painted bg sealed inside the ruins (windows...): a recessed painted wall
+				var bc := _deferred_col[i]
+				bgb[i * 4] = bc.r8; bgb[i * 4 + 1] = bc.g8; bgb[i * 4 + 2] = bc.b8; bgb[i * 4 + 3] = 255
+				has_bgc[i] = 1
+				backwall[i] = 1
 	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
 	_dilate(fgb, has_fg)
@@ -443,7 +491,7 @@ const RELIEF := {
 	WorldPalette.M_GRASS: [0.06, 0.15], WorldPalette.M_FOLIAGE: [0.2, 2.0], WorldPalette.M_FLESH: [0.2, 0.7],
 	WorldPalette.M_WOOD: [0.05, 0.5], WorldPalette.M_METAL: [0.05, 0.2], WorldPalette.M_CLOUD: [0.1, 0.25],
 	WorldPalette.M_SAND: [0.0, 0.6], WorldPalette.M_GEM: [0.2, 0.08], WorldPalette.M_SNOW: [0.05, 0.9],
-	WorldPalette.M_BONE: [0.1, 0.9],
+	WorldPalette.M_BONE: [0.1, 0.9], WorldPalette.M_RUIN: [0.04, 1.1],
 }
 
 ## Surface pattern weights per material: [cobbles, domes, grain, strata].
@@ -457,7 +505,7 @@ const PATTERN := {
 	WorldPalette.M_MARBLE: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_GEM: [0.0, 0.0, 0.0, 0.0],
 	WorldPalette.M_GLASS: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_WATER: [0.0, 0.0, 0.0, 0.0],
 	WorldPalette.M_METAL: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_OBSIDIAN: [0.2, 0.0, 0.0, 0.0],
-	WorldPalette.M_ICE: [0.3, 0.3, 0.0, 0.0],
+	WorldPalette.M_ICE: [0.3, 0.3, 0.0, 0.0], WorldPalette.M_RUIN: [0.9, 0.0, 0.0, 0.25],
 }
 
 func _pattern_image() -> Image:
@@ -487,7 +535,8 @@ func _tint_image() -> Image:
 	small.resize(W / 8, H / 8, Image.INTERPOLATE_CUBIC)
 	small.resize(W / 4, H / 4, Image.INTERPOLATE_BILINEAR)
 	var zone_tint := [Color(0.5, 0.55, 0.7), Color(0.9, 0.6, 0.5), Color(1.0, 0.45, 0.25), Color(0.75, 0.45, 1.0),
-		Color(0.6, 0.8, 1.0), Color(0.45, 0.6, 1.0), Color(0.7, 0.7, 0.8), Color(0.85, 0.7, 0.55), Color(0.9, 0.5, 0.5)]
+		Color(0.6, 0.8, 1.0), Color(0.45, 0.6, 1.0), Color(0.7, 0.7, 0.8), Color(0.85, 0.7, 0.55), Color(0.9, 0.5, 0.5),
+		Color(0.85, 0.9, 1.0), Color(0.75, 0.8, 0.8), Color(0.6, 0.75, 0.85)]
 	for y in small.get_height():
 		for x in small.get_width():
 			var c := small.get_pixel(x, y)
@@ -523,6 +572,8 @@ func _make_material() -> void:
 	material.set_shader_parameter("level_size", Vector2(W, H))
 	material.set_shader_parameter("fgcol_tex", ImageTexture.create_from_image(fgcol_img))
 	material.set_shader_parameter("orig_tex", ImageTexture.create_from_image(orig_img))
+	if day:
+		material.set_shader_parameter("mottle", 0.12)
 	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))

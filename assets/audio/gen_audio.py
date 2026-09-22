@@ -603,5 +603,170 @@ def main():
         write_loop(name, fn(DUR + XF), XF)
 
 
+# ---------------------------------------------------------------- Forgotten Veil (daytime) + piano
+def birds(dur, rate, gain):
+    """Synthesized birdsong: short FM chirps and trills, scattered in stereo."""
+    n = int(dur * SR)
+    out = np.zeros((n, 2))
+    k = int(dur * rate)
+    for _ in range(k):
+        st = int(rng.uniform(0, dur - 1.5) * SR)
+        kind = rng.integers(0, 3)
+        notes = int(rng.integers(2, 7))
+        base = rng.uniform(2600, 4800)
+        p = rng.uniform(-0.9, 0.9)
+        g = rng.uniform(0.3, 1.0)
+        pos = st
+        for j in range(notes):
+            ln = int(rng.uniform(0.04, 0.12) * SR)
+            t = np.arange(ln) / SR
+            if kind == 0:     # rising chirp
+                f = base * (1 + 0.5 * t / t[-1])
+            elif kind == 1:   # falling whistle
+                f = base * (1.3 - 0.4 * t / t[-1])
+            else:             # warble
+                f = base * (1 + 0.08 * np.sin(2 * np.pi * 38 * t))
+            ph = 2 * np.pi * np.cumsum(f) / SR
+            e = np.sin(np.pi * np.arange(ln) / ln) ** 2
+            c = np.sin(ph) * e * g
+            if pos + ln < n:
+                out[pos:pos + ln] += pan(c, p)
+            pos += ln + int(rng.uniform(0.02, 0.09) * SR)
+    return out * gain
+
+
+def leaves(dur, gain):
+    n = int(dur * SR)
+    t = t_axis(dur)
+    chans = []
+    for c in range(2):
+        w = bp(pink(n), 900, 7000)
+        gust = (0.35 + 0.65 * (0.5 + 0.5 * np.sin(2 * np.pi * 0.06 * t + c + rng.random() * 6)) ** 3)
+        rustle = 1.0 + 0.6 * lp(noise(n), 6) * 8
+        chans.append(w * gust * np.clip(rustle, 0.2, 2.0))
+    out = np.stack(chans, 1)
+    return out / (np.max(np.abs(out)) + 1e-9) * gain
+
+
+def harp_note(freq, dur, gain):
+    return bell(freq, dur, 1.4, ((1, 1), (2.0, 0.35), (3.0, 0.12), (4.0, 0.05))) * gain
+
+
+def music_day(dur):
+    t = t_axis(dur)
+    n = len(t)
+    # C - Am - F - G, warm and open (major 7/9 colours)
+    chords = [[48, 55, 64, 67, 71], [45, 52, 60, 64, 71], [41, 53, 60, 64, 69], [43, 50, 59, 62, 67]] * 2
+    seg = dur / len(chords)
+    pad = chord_track(dur, chords, seg, 1800, 0.06, detune=(-7, -2, 3, 8), wobble=0.08)
+    mel = np.zeros(n)
+    scale = [72, 74, 76, 79, 81, 84]
+    tt = 1.5
+    while tt < dur - 3:
+        m = scale[int(rng.integers(0, len(scale)))]
+        s = harp_note(midi(m), 3.0, 0.12)
+        st = int(tt * SR)
+        e = min(n, st + len(s))
+        mel[st:e] += s[: e - st]
+        tt += float(rng.choice([0.75, 1.0, 1.5, 2.25]))
+    x = stereoize(pad) + stereoize(mel, 0.02) + birds(dur, 0.6, 0.05) + leaves(dur, 0.07)
+    return reverb(x, 3.5, 1.3, 0.35, 7000)[:n]
+
+
+def music_falls(dur):
+    t = t_axis(dur)
+    n = len(t)
+    roar = np.stack([lp(pink(n), 1400) + 0.5 * lp(brown(n), 300), lp(pink(n), 1400) + 0.5 * lp(brown(n), 300)], 1)
+    roar *= (0.85 + 0.15 * np.sin(2 * np.pi * np.array([0.11, 0.13]) * t[:, None]))
+    roar = roar / (np.max(np.abs(roar)) + 1e-9) * 0.35
+    spray = np.stack([hp(noise(n), 5000), hp(noise(n), 5000)], 1) * 0.02
+    chords = [[50, 57, 62, 66], [47, 54, 62, 64], [43, 50, 59, 62], [45, 52, 61, 64]]
+    pad = chord_track(dur, chords, dur / 4, 1500, 0.035, detune=(-6, -2, 2, 6), wobble=0.06)
+    x = roar + spray + stereoize(pad) + birds(dur, 0.35, 0.035)
+    return reverb(x, 2.5, 0.9, 0.2, 6000)[:n]
+
+
+def music_temple(dur):
+    t = t_axis(dur)
+    n = len(t)
+    drone = (sine(midi(38), t) + 0.6 * sine(midi(45), t) + 0.3 * sine(midi(50), t) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.05 * t)))
+    drone = lp(drone, 500) * 0.12
+    air = np.stack([bp(pink(n), 200, 1200), bp(pink(n), 200, 1200)], 1) * 0.05
+    chime = np.zeros(n)
+    for i in range(5):
+        st = int(rng.uniform(1, dur - 5) * SR)
+        s = bell(midi(float(rng.choice([69, 74, 76, 81]))), 5.0, 2.4, ((1, 1), (2.76, 0.3), (5.4, 0.1))) * 0.05
+        chime[st:st + len(s)] += s[: max(0, min(len(s), n - st))]
+    x = stereoize(drone) + air + drips(dur, 0.8, 1100, 3000, 0.22) + stereoize(chime, 0.03)
+    return reverb(x, 6.5, 2.8, 0.55, 5000)[:n]
+
+
+def music_veil_title(dur):
+    t = t_axis(dur)
+    n = len(t)
+    # D - Bm - G - A - D - F#m - G - A: hopeful, warm
+    chords = [[50, 57, 62, 66, 69], [47, 54, 62, 66, 71], [43, 50, 59, 62, 67], [45, 52, 61, 64, 69],
+              [50, 57, 62, 66, 69], [42, 54, 61, 66, 69], [43, 55, 59, 62, 71], [45, 57, 61, 64, 69]]
+    seg = dur / len(chords)
+    pad = chord_track(dur, chords, seg, 1700, 0.075, detune=(-9, -3, 3, 9), wobble=0.07)
+    arp = np.zeros(n)
+    for i, ch in enumerate(chords):
+        for j in range(8):
+            m = ch[1:][j % 4] + 12
+            st = int((i * seg + j * seg / 8) * SR)
+            s = harp_note(midi(m), 2.5, 0.09 * (1.0 if j % 4 == 0 else 0.7))
+            e = min(n, st + len(s))
+            arp[st:e] += s[: e - st]
+    mel = np.zeros(n)
+    melody = [78, 76, 74, 76, 78, 81, 79, 78, 76, 74, 73, 74]
+    step = dur / len(melody)
+    for i, m in enumerate(melody):
+        s = bell(midi(m), 4.0, 1.8, ((1, 1), (2, 0.2), (3, 0.08))) * 0.13
+        st = int(i * step * SR)
+        e = min(n, st + len(s))
+        mel[st:e] += s[: e - st]
+    x = stereoize(pad) + stereoize(arp, 0.015) + stereoize(mel, 0.02) + birds(dur, 0.25, 0.03) + leaves(dur, 0.035)
+    return reverb(x, 4.5, 1.8, 0.4, 7000)[:n]
+
+
+def piano_note(m, dur=3.2):
+    """Soft grand-piano-ish tone: inharmonic partials, 3 slightly detuned strings, hammer thump."""
+    f0 = midi(m)
+    t = t_axis(dur)
+    n = len(t)
+    B = 0.0004 * (1.0 + max(0, m - 60) / 30.0)
+    base_decay = float(np.interp(m, [21, 60, 108], [5.0, 2.6, 0.7]))
+    bright = float(np.interp(m, [21, 60, 108], [0.6, 1.0, 1.4]))
+    out = np.zeros(n)
+    for k in range(1, 14):
+        fk = f0 * k * np.sqrt(1 + B * k * k)
+        if fk > SR * 0.45:
+            break
+        amp = (1.0 / k ** (1.35 / bright)) * (1.0 if k > 1 else 1.2)
+        dec = base_decay / (1 + 0.45 * (k - 1))
+        for cents in (-0.7, 0.0, 0.8):
+            ff = fk * 2 ** (cents / 1200)
+            out += amp * np.sin(2 * np.pi * ff * t + rng.random() * 6.28) * (np.exp(-t / dec) * 0.8 + 0.2 * np.exp(-t / (dec * 0.12)))
+    out /= 3.0
+    hammer = lp(noise(n), 1800 * bright) * env_exp(n, 0.008, 0.0005) * 0.25
+    x = out * env_adsr(n, 0.003, 0.0, 1.0, 0.25, 1.0) + hammer
+    return lp(x, 9000)
+
+
+def gen_veil():
+    DUR, XF = 48.0, 4.0
+    for name, fn in [("veil_title", music_veil_title), ("day", music_day), ("falls", music_falls), ("temple", music_temple)]:
+        write_loop(name, fn(DUR + XF), XF)
+    # EE piano (block 77): note index n -> MIDI 48 + n (EE's C3 = note 0; range -27..60).
+    # Sampled every 3 semitones; the game pitch-shifts to the exact note.
+    for m in range(21, 109, 3):
+        x = reverb(piano_note(m), 1.6, 0.5, 0.18, 8000)
+        write(os.path.join(ROOT, "piano", "piano_%d.wav" % m), x, 0.8)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--veil" in sys.argv:
+        gen_veil()   # only the Forgotten Veil set (keeps the Odyssey files byte-identical)
+    else:
+        main()

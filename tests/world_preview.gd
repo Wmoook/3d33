@@ -39,6 +39,25 @@ const SPOTS := {
 	"tunnel2": Vector2(150, 55),
 }
 
+const FV_SPOTS := {
+	"overview": Vector2(200, 97),
+	"spawn": Vector2(14, 52),
+	"grove": Vector2(40, 36),
+	"halls": Vector2(55, 100),
+	"falls": Vector2(142, 150),
+	"spire_top": Vector2(197, 42),
+	"spire_mid": Vector2(197, 115),
+	"gardens": Vector2(224, 100),
+	"twin_spire": Vector2(252, 92),
+	"keep": Vector2(322, 95),
+	"scroll": Vector2(372, 35),
+	"logo": Vector2(328, 28),
+	"sanctum": Vector2(330, 152),
+	"aqueducts": Vector2(262, 188),
+	"vaults": Vector2(60, 182),
+}
+
+var level_id := "odyssey"
 var world: WorldView
 var cam: Camera3D
 var _names: Array = []
@@ -48,6 +67,7 @@ var _grid := false
 var _yaw := 0.0
 var _fps_samples := []
 var _perf := false
+var _spots := {}
 var _mode := 0
 var _suffix := ""
 var _redkey := false
@@ -60,7 +80,9 @@ func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	var only := []
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("only="):
+		if a.begins_with("level="):
+			level_id = a.substr(6)
+		elif a.begins_with("only="):
 			only = a.substr(5).split(",")
 		elif a == "perf":
 			_perf = true
@@ -83,7 +105,9 @@ func _ready() -> void:
 			_yaw = float(a.substr(4))
 		elif a.begins_with("settle="):
 			_settle = int(a.substr(7))
-	for k in SPOTS:
+	var spots: Dictionary = SPOTS if level_id == "odyssey" else FV_SPOTS
+	_spots = spots
+	for k in spots:
 		if only.is_empty() or k in only:
 			_names.append(k)
 	cam = Camera3D.new()
@@ -92,9 +116,11 @@ func _ready() -> void:
 	cam.far = 3000.0
 	add_child(cam)
 	cam.current = true
-	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
+	var cfg := LevelCatalog.get_config(level_id)
+	var lvl := EELevel.load_file(str(cfg.get("level_file", "res://levels/ex_crew_odyssey.eelvl")))
 	world = WorldView.new()
 	add_child(world)
+	world.set_level_config(cfg)
 	world.build(lvl)
 	sim = EESim.new(lvl)
 	world.set_sim(sim)
@@ -134,7 +160,7 @@ func _measure(focus: Vector3, frames: int) -> float:
 func _run_perf() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
-	var focus := _place(SPOTS[_names[0]])
+	var focus := _place(_spots[_names[0]])
 	var env := world.get_environment()
 	print("viewport ", get_viewport().get_visible_rect().size)
 	var base_ms: float = await _measure(focus, 120)
@@ -170,7 +196,7 @@ func _run() -> void:
 		await _run_perf()
 		return
 	for nm in _names:
-		var focus := _place(SPOTS[nm])
+		var focus := _place(_spots[nm])
 		world.update_focus(focus, 10.0)   # snap the atmosphere blend to this spot
 		var t0 := Time.get_ticks_usec()
 		for f in _settle:
@@ -179,7 +205,7 @@ func _run() -> void:
 		var frame_us := float(Time.get_ticks_usec() - t0) / _settle
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
-		var path := "user://world_%s%s.png" % [nm, _suffix]
+		var path := "user://world_%s%s%s.png" % ["" if level_id == "odyssey" else "fv_", nm, _suffix]
 		img.save_png(path)
 		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
 	get_tree().quit()

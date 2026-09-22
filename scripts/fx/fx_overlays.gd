@@ -39,6 +39,9 @@ var _spores: GPUParticles3D
 var _ash: GPUParticles3D
 var _refract_mat: ShaderMaterial
 
+func set_level_config(cfg: Dictionary) -> void:
+	maps.set_level_config(cfg)
+
 func set_ball(p: Vector3) -> void:
 	if _refract_mat:
 		_refract_mat.set_shader_parameter("ball_pos", p)
@@ -388,6 +391,8 @@ func _splash() -> GPUParticles3D:
 # ----------------------------------------------------------------------------- tornado / snow / spores
 
 func _build_ambient() -> void:
+	if not maps.is_odyssey():
+		return   # Odyssey's tornado / snow / spores / ash; other levels bring their own (FxVeil)
 	_tornado = _tornado_system(2600, false)
 	_tornado_dust = _tornado_system(700, true)
 
@@ -470,6 +475,9 @@ func _process(delta: float) -> void:
 		_cull_t = CULL_PERIOD
 		_cull(ftile)
 	_update_lights(delta)
+	if _tornado == null:
+		_update_splashes(f, delta)
+		return
 	# ambient zone emitters follow the camera and fade in with the zone around it
 	_zone_w["ice"] = move_toward(_zone_w.get("ice", 0.0), _zone_frac(ftile, WorldPalette.Z_ICE), delta)
 	_zone_w["corrupt"] = move_toward(_zone_w.get("corrupt", 0.0), _zone_frac(ftile, WorldPalette.Z_CORRUPT), delta)
@@ -480,7 +488,10 @@ func _process(delta: float) -> void:
 	var tv := ftile.x < 46.0 + ACTIVE_RADIUS and ftile.y > 75.0 - 25.0 and ftile.y < 150.0 + 25.0
 	_tornado.visible = tv
 	_tornado_dust.visible = tv
-	# random splashes near the camera
+	_update_splashes(f, delta)
+
+## Random splashes near the camera.
+func _update_splashes(f: Vector3, delta: float) -> void:
 	_splash_t -= delta
 	if _splash_t <= 0.0 and not _splash_sites.is_empty():
 		_splash_t = randf_range(0.15, 0.5)

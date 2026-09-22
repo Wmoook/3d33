@@ -61,7 +61,7 @@ void fragment() {
 }
 """
 
-const DOOR_IDS := [23, 24, 25, 26, 27, 28, 43]
+const DOOR_IDS := [23, 24, 25, 26, 27, 28, 43, 184, 185, 1006]
 const ZOOM_MAX := 10.0
 
 var level
@@ -98,9 +98,12 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
-## Loads the canonical minimap image (works before the level is parsed: used by the loading reveal too).
-static func load_art() -> Image:
-	var p := "res://assets/ee_ref/minimap_ee.png"
+var ref_dir := "res://assets/ee_ref"
+var level_title := "EX CREW ODYSSEY"
+
+## Loads the canonical minimap image of a level (ref_dir/minimap_ee.png; used by the loading reveal too).
+static func load_art(dir: String = "res://assets/ee_ref") -> Image:
+	var p := dir.path_join("minimap_ee.png")
 	var img: Image = null
 	if ResourceLoader.exists(p):
 		var t: Texture2D = load(p)
@@ -116,10 +119,10 @@ static func load_art() -> Image:
 func build(lvl, s) -> void:
 	level = lvl
 	sim = s
-	_img = load_art()
+	_img = load_art(ref_dir)
 	if _img == null:
 		_img = Image.create(lvl.width, lvl.height, false, Image.FORMAT_RGBA8)
-	var colors := _load_colors()
+	var colors := _load_colors(ref_dir)
 	var bg_default := Color(0, 0, 0)
 	for y in lvl.height:
 		for x in lvl.width:
@@ -156,9 +159,9 @@ func build(lvl, s) -> void:
 	refresh_doors()
 	modulate.a = 0.0
 
-static func _load_colors() -> Dictionary:
+static func _load_colors(dir: String) -> Dictionary:
 	var out := {}
-	var f := FileAccess.open("res://assets/ee_ref/minimap_colors.json", FileAccess.READ)
+	var f := FileAccess.open(dir.path_join("minimap_colors.json"), FileAccess.READ)
 	if f:
 		var d = JSON.parse_string(f.get_as_text())
 		if d is Dictionary:
@@ -338,7 +341,7 @@ func _draw() -> void:
 	var frame := Rect2(o - Vector2(12, 44), _map.size + Vector2(24, 56))
 	draw_style_box(UITheme.glass_box(22, 0.62), frame)
 	var fs := 26 if _full_a > 0.5 else 17   # two fixed sizes (no per-frame glyph rasterization)
-	var title := "MAP OF THE ODYSSEY" if _full_a > 0.5 else "EX CREW ODYSSEY"
+	var title := ("MAP OF " + level_title) if _full_a > 0.5 else level_title
 	draw_string(UITheme.title(4, 700), o + Vector2(4, -14), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(UITheme.GOLD, 0.9))
 	var right := zone_name if _full_a > 0.5 else "M  expand"
 	draw_string(UITheme.hud_medium(2), o + Vector2(0, -14), right, HORIZONTAL_ALIGNMENT_RIGHT, _map.size.x - 4, fs - 1, UITheme.INK_DIM)
