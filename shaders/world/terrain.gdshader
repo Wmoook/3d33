@@ -215,8 +215,8 @@ void fragment() {
 			vec3 rock; int rm; float rb;
 			region_sample(fgcol_tex, p, 8.0, rock, rm, rb);
 			float depth_in = smoothstep(0.0, 0.5, -s.x);
-			albedo = mix(rock * 0.7, c * 0.6, 0.3);
-			ao = mix(0.85, 0.42, depth_in);
+			albedo = mix(rock * 0.55, c * 0.5, 0.35);
+			ao = mix(0.7, 0.22, depth_in);
 			float crumb = step(0.93, hash12(floor(p * 9.0))) * (1.0 - depth_in * 0.6);
 			albedo = mix(albedo, rock * 0.9, crumb);
 		}
@@ -466,6 +466,15 @@ void fragment() {
 		rough = mix(rough, 0.6, cap);
 		vec3 vd2 = normalize(CAMERA_POSITION_WORLD - wp);
 		emit += vec3(0.8, 0.9, 1.0) * cap * step(0.996, hash12(floor(wp.xy * 40.0 + vd2.xy * 6.0))) * 2.5;
+	}
+	// opening readability: a crisp thin dark contact line where the recess meets the solid, and a
+	// subtle lighter lip on the solid's rim bevel, around every non-solid tile
+	if (layer != 0) {
+		float contact = 1.0 - smoothstep(0.07, 0.16, -s.x);
+		ao *= mix(1.0, 0.25, contact);
+	} else {
+		float lip = smoothstep(0.02, 0.06, s.x) * (1.0 - smoothstep(0.06, 0.16, s.x)) * smoothstep(-0.3, 0.2, wp.z);
+		albedo *= 1.0 + lip * 0.45;
 	}
 	if (layer == 0) {
 		// the sides of the solid mass lose emission and detail as they recede

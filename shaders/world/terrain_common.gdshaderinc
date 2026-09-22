@@ -163,7 +163,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		return zf;
 	}
 	// background wall (tiny enclosed pockets sit much shallower: pits in the rock)
-	float zbase = mix(Z_BG, -1.05, fld.g);   // non-solid tiles always stay below z = -0.8
+	float zbase = mix(Z_BG, -1.5, fld.g);   // non-solid tiles always stay below z = -0.8
 	float zb = zbase + 0.42 * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10) * smoothstep(0.0, 0.6, sw);
 	float back;
 	if (sw >= 0.0) {
