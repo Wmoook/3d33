@@ -932,7 +932,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
 			var vf: Array = LEVEL_TEXT.get(str(cfg.get("id", "")), {}).get("victory_frame", [])
 			if not vf.is_empty():
-				rig.override_target = EECoords.tile_center(vf[0], vf[1]) + Vector3(-3.0, 5.5, 0.0)
+				rig.override_target = EECoords.tile_center(vf[0], vf[1]) + Vector3(0.5, 4.0, 0.0)
 				rig.override_on = true
 				rig.begin_follow(true)
 				rig.target_zoom = minf(CameraRig.ZOOM_MAX, _victory_zoom * 1.5)

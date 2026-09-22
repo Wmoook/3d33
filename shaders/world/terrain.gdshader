@@ -324,6 +324,10 @@ void fragment() {
 		albedo = albedo * mix(0.9, 1.05, cloud) * mix(1.0, 0.8, vein);
 		rough = 0.42;
 		spec = 0.4;
+		// crisp bevel highlight + faint sun glint on the top faces
+		float bevm = 1.0 - smoothstep(0.0, 0.12, max(s.x, 0.0));
+		albedo *= (1.0 + bevm * 0.15) * 0.82;
+		emit += vec3(1.0, 0.95, 0.85) * smoothstep(0.6, 0.95, gn.y) * 0.06;
 		n = normalize(mix(gn, dn, 0.25));
 	} else if (mat == M_SNOW) {
 		albedo = mix(albedo, vec3(0.85, 0.9, 1.0), 0.35) * mix(0.85, 1.05, dh);

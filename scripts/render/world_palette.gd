@@ -191,7 +191,9 @@ static func _material_for_day(id: int, x: int, y: int, _z: int) -> int:
 	if FV_RECT_SCROLL.has_point(Vector2i(x, y)) and (id == 45 or id == 47 or id == 48 or id == 88):
 		return M_SAND
 	match id:
-		9, 42, 46, 86, 68, 69, 29, 87, 49:
+		87:
+			return M_MARBLE   # the white V birds: floating pale-marble bird sculptures (solid stepping stones)
+		9, 42, 46, 86, 68, 69, 29, 49:
 			return M_RUIN
 		44, 33:
 			return M_OBSIDIAN

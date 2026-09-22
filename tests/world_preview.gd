@@ -47,6 +47,7 @@ const FV_SPOTS := {
 	"falls": Vector2(142, 150),
 	"spire_top": Vector2(197, 42),
 	"skybar": Vector2(195, 25),
+	"birds": Vector2(20, 8),
 	"spire_mid": Vector2(197, 115),
 	"gardens": Vector2(224, 100),
 	"twin_spire": Vector2(252, 92),
