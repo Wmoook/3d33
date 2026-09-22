@@ -53,6 +53,9 @@ var _dead := 0.0
 var _look := Vector2.ZERO
 var _god := 0.0
 var _crown_k := 0.0
+## Crowning (FV finish): keep the silver crown off the head until the flying relic arrives, then snap it on.
+var hold_silver_crown := false
+var silver_snap := false
 var _silver_k := 0.0
 # death / respawn
 var _dying := false
@@ -394,7 +397,9 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	var has_crown := bool(_sget(sim, "has_crown", false))
 	var has_silver := bool(_sget(sim, "has_silver_crown", false))
 	_crown_k = move_toward(_crown_k, 1.0 if has_crown else 0.0, delta * 5.0)
-	_silver_k = move_toward(_silver_k, 1.0 if (has_silver and not has_crown) else 0.0, delta * 5.0)
+	if hold_silver_crown:
+		has_silver = false   # the crowning animation is still carrying the crown in (ActorsView)
+	_silver_k = move_toward(_silver_k, 1.0 if (has_silver and not has_crown) else 0.0, delta * (40.0 if silver_snap else 5.0))
 	_place_crown(_crown, _crown_k, head_y, delta)
 	_place_crown(_silver_crown, _silver_k, head_y, delta)
 
