@@ -44,10 +44,17 @@ var minimap: Minimap
 var title: TitleScreen
 var loading: LoadingScreen
 var pause_menu: PauseMenu
-var victory: VictoryScreen
+var victory: Control   # victory_screen.gd
 var collision_overlay: Node3D   # CollisionOverlay (preloaded so a stale class cache can't break boot)
 const CollisionOverlayScript := preload("res://scripts/game/collision_overlay.gd")
 const GhostRunsScript := preload("res://scripts/game/ghost_runs.gd")
+const TutorialScript := preload("res://scripts/ui/tutorial_hints.gd")
+const VictoryScript := preload("res://scripts/ui/victory_screen.gd")
+var tutorial: Control   # tutorial_hints.gd
+var _tut_moved := false
+var _tut_jumped := false
+var _victory_zoom := -1.0
+var _tut_spawn := Vector2.ZERO
 var ghost: Node   # ghost_runs.gd: run recording + best-run ghost
 var _fade: ColorRect
 
@@ -110,7 +117,13 @@ func _build_ui() -> void:
 	title = TitleScreen.new()
 	title.visible = false
 	_ui.add_child(title)
-	victory = VictoryScreen.new()
+	victory = VictoryScript.new()
+	tutorial = TutorialScript.new()
+	tutorial.done = settings.tutorial.duplicate()
+	tutorial.completed.connect(func(id: String):
+		settings.tutorial[id] = true
+		settings.save_settings())
+	_ui.add_child(tutorial)
 	_ui.add_child(victory)
 	pause_menu = PauseMenu.new()
 	pause_menu.settings = settings
@@ -125,6 +138,11 @@ func _build_ui() -> void:
 	_ui.add_child(_fade)
 	hud.set_state({"visible": false})
 	pause_menu.resume_requested.connect(_resume)
+	victory.closed.connect(func():
+		audio.set_bed(_zone_info.bed)
+		if _victory_zoom > 0.0:
+			rig.target_zoom = _victory_zoom
+			_victory_zoom = -1.0)
 	pause_menu.restart_requested.connect(func():
 		_resume()
 		restart_run())
@@ -354,6 +372,10 @@ func _go_live() -> void:
 	_zone = -2
 	hud.set_state({"visible": true})
 	hud.reset_hints()
+	_tut_moved = false
+	_tut_jumped = false
+	_tut_spawn = Vector2(sim.px, sim.py)
+	tutorial.offer("move")
 	ready_to_play.emit()
 
 func _quit_to_title() -> void:
@@ -363,7 +385,7 @@ func _quit_to_title() -> void:
 
 # ======================================================================= loop
 func _physics_process(_delta: float) -> void:
-	if state != State.PLAYING or get_tree().paused or sim == null:
+	if state != State.PLAYING or get_tree().paused or sim == null or victory.visible:
 		return
 	_fill_input()
 	if _god_request:
@@ -373,6 +395,10 @@ func _physics_process(_delta: float) -> void:
 	sim.tick(input)
 	ghost.tick_ghost()
 	_play_ticks += 1
+	if not _tut_moved and absf(sim.px - _tut_spawn.x) > 48.0:
+		_tut_moved = true
+		if _tut_jumped:
+			tutorial.complete("move")
 	if "teleported" in sim:
 		_snap_render = sim.teleported
 	else:
@@ -552,9 +578,12 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			if data.has("tile"):
 				minimap.erase_tile(data.tile)
 		&"door_state", &"god_mode":
+			if kind == &"god_mode" and data.get("on", false):
+				tutorial.offer("god")
 			minimap.refresh_doors()
 			collision_overlay.mark_dirty()
 		&"key":
+			tutorial.offer("keys")
 			audio.play("key", -3.0, 0.0)
 			hud.flash(UITheme.KEY_COLORS.get(StringName(data.get("color", &"red")), Color.WHITE), 0.35)
 		&"key_expired":
@@ -575,6 +604,9 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				audio.play("respawn", -6.0, 0.0)
 			_snap_render = true
 		&"jump":
+			_tut_jumped = true
+			if _tut_moved:
+				tutorial.complete("move")
 			audio.play("jump", -13.0, 0.08)
 		&"land":
 			var imp := float(data.get("impact_speed", 0.0))
@@ -582,6 +614,9 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				audio.play("land", lerpf(-20.0, -4.0, clampf(imp / 16.0, 0.0, 1.0)), 0.08)
 			rig.add_trauma(clampf((imp - 7.0) / 10.0, 0.0, 1.0) * 0.45)
 		&"gravity_changed":
+			var gdir = data.get("dir", Vector2i(0, 1))
+			if gdir != Vector2i(0, 1) and not sim.in_god_mode:
+				tutorial.offer("arrows")
 			audio.play("gravity", -14.0, 0.1)
 		&"checkpoint":
 			audio.play("ui_select", -6.0, 0.0)
@@ -590,6 +625,9 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"complete":
 			audio.play("crown", 0.0, 0.0)
 			hud.flash(UITheme.GOLD, 0.8)
+			audio.set_bed(&"title")
+			_victory_zoom = rig.target_zoom
+			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
 			victory.show_stats({"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
 				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0})
@@ -612,7 +650,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if victory.is_open():
 				if _is_any_press(event):
 					get_viewport().set_input_as_handled()
-					victory.dismiss()
+					if victory.dismiss() and event is InputEventKey and event.physical_keycode == KEY_R:
+						restart_run()
 				return
 			if event.is_action_pressed(&"ee_pause"):
 				get_viewport().set_input_as_handled()

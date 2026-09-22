@@ -26,6 +26,8 @@ const SPOTS := {
 	"forge": Vector2(160, 185),
 	"tree_back": Vector2(80, 5),
 	"flame_skull": Vector2(172, 105),
+	"slow1": Vector2(119, 45),
+	"slow2": Vector2(135, 122),
 	"walk1": Vector2(100, 11),
 	"walk2": Vector2(115, 11),
 	"walk3": Vector2(130, 11),

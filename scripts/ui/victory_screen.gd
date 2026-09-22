@@ -23,9 +23,12 @@ func show_stats(s: Dictionary) -> void:
 func is_open() -> bool:
 	return visible and _out < 0.0
 
-func dismiss() -> void:
+## Returns true if the dismissal was accepted (after the stats have landed).
+func dismiss() -> bool:
 	if _t > 1.5 and _out < 0.0:
 		_out = 0.0
+		return true
+	return false
 
 func _process(delta: float) -> void:
 	if not visible:
@@ -78,4 +81,6 @@ func _draw() -> void:
 		draw_string(UITheme.hud(), Vector2(x, c.y + 160), cols[i][1], HORIZONTAL_ALIGNMENT_CENTER, cw, 44, Color(1, 0.95, 0.85, ka))
 	if _t > 2.5:
 		var pk := (0.55 + 0.45 * sin(_t * 2.6)) * o
-		draw_string(UITheme.hud(10), Vector2(0, H * 0.82), "PRESS  ANY  KEY  TO  CONTINUE", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, pk))
+		draw_string(UITheme.hud(8), Vector2(0, H * 0.82), "ANY KEY   continue exploring          R   new run", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, pk))
+		if stats.get("new_best", false):
+			draw_string(UITheme.hud_medium(3), Vector2(0, H * 0.82 + 38), "your ghost will race you next time  -  H toggles it", HORIZONTAL_ALIGNMENT_CENTER, W, 18, Color(1, 1, 1, 0.45 * o))

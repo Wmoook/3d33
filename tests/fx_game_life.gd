@@ -89,6 +89,8 @@ func _strip(name: String, start: Vector2, goal: Vector2) -> void:
 	for g in life._glows:
 		kinds[g.kind] += 1
 	print("glows ff/moth/wisp ", kinds, " focus ", life.focus, " ball ", life.ball)
+	for g in life._glows.slice(0, 4):
+		print("  glow ", g.kind, " ", g.pos, " life ", g.life)
 	print("saved fx_life_", name)
 
 func _grab() -> Image:

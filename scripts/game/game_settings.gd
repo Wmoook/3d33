@@ -14,6 +14,7 @@ var zoom := 30.0        # tiles visible horizontally (lead: ~30 default, 20-60 r
 var quality := 3        # 0..3
 var fullscreen := false
 var show_hints := true
+var tutorial := {}       # first-run hints already learned (id -> true)
 var persist := true      # tests turn this off
 
 func load_settings() -> void:
@@ -27,6 +28,7 @@ func load_settings() -> void:
 	quality = cf.get_value("video", "quality", quality)
 	fullscreen = cf.get_value("video", "fullscreen", fullscreen)
 	show_hints = cf.get_value("ui", "show_hints", show_hints)
+	tutorial = cf.get_value("ui", "tutorial", tutorial)
 
 func save_settings() -> void:
 	if not persist:
@@ -39,6 +41,7 @@ func save_settings() -> void:
 	cf.set_value("video", "quality", quality)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("ui", "show_hints", show_hints)
+	cf.set_value("ui", "tutorial", tutorial)
 	cf.save(PATH)
 
 func set_value(key: String, v: Variant) -> void:

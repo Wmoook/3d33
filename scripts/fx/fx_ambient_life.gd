@@ -435,11 +435,11 @@ func _update_glows(delta: float) -> void:
 	if _count(1) < 18 and maps.fire_chunks.size() > 0 and randf() < 0.5:
 		var cands: Array = []
 		for ch in maps.fire_chunks:
-			if (ch.center as Vector2).distance_to(focus) < NEAR:
+			if (ch.center as Vector2).distance_to(focus) < 14.0:
 				cands.append(ch)
 		if not cands.is_empty():
 			var best: Dictionary = cands[randi() % cands.size()]
-			var top := Vector2(randf_range(best.min.x, best.max.x + 1.0), float(best.min.y) - 0.9)
+			var top := Vector2(randf_range(best.min.x, best.max.x + 1.0), float(best.min.y) - 1.8)
 			_glows.append({"kind": 1, "pos": top, "vel": Vector2.ZERO, "life": 0.0, "max": randf_range(6.0, 12.0),
 				"ph": randf() * TAU, "col": Color(1.0, 0.92, 0.75), "home": top, "r": randf_range(0.5, 1.3)})
 	# corruption wisps orbit the ball for a moment
@@ -479,8 +479,8 @@ func _update_glows(delta: float) -> void:
 				if db.length() < 1.5:
 					target += db.normalized() * 2.0
 				g.vel = (target - g.pos) * 6.0
-				bright = 0.9 + 0.3 * sin(t_now * 30.0 + g.ph)
-				size = 0.4
+				bright = 1.5 + 0.6 * sin(t_now * 30.0 + g.ph)
+				size = 0.6
 			2:
 				var orbit: bool = g.life < g.max - 1.3
 				var ang: float = g.ph + g.life * 3.2
