@@ -19,7 +19,9 @@ const LEVEL_TEXT := {
 		"map_caption": "the map of the forgotten veil", "quote": "\"Sixteen trials. Only the worthy return.\"",
 		"tagline": "Sixteen trials.  Only the worthy return.", "trials": "1",
 		# sunlit exteriors to open the title flyover on (tile space): twin spires + vine bridges, falls, grove canopy
-		"intro_keys": [[204, 68, 46.0], [248, 72, 50.0], [152, 146, 44.0], [48, 26, 52.0]]},
+		"intro_keys": [[130, 140, 44.0], [200, 35, 46.0], [345, 35, 48.0], [390, 78, 42.0]],
+		# the finish trophy on the east peak: victory camera rises and widens to frame its light pillar
+		"victory_frame": [394, 74], "shrine_rect": [385, 68, 16, 18]},
 }
 var cfg: Dictionary = ODYSSEY_CFG
 const SIM_PATH := "res://scripts/physics/ee_sim.gd"
@@ -70,6 +72,8 @@ var tutorial: Control   # tutorial_hints.gd
 var _tut_moved := false
 var _tut_jumped := false
 var _victory_zoom := -1.0
+var _victory_delay := 0.0   # seconds before the victory card appears (shrine framing on FV)
+var _victory_pending := false
 var _tut_spawn := Vector2.ZERO
 var ghost: Node   # ghost_runs.gd: run recording + best-run ghost
 var _fade: ColorRect
@@ -225,6 +229,7 @@ func _build_ui() -> void:
 	victory.closed.connect(func():
 		audio.set_bed(_zone_info.bed)
 		hud.set_state({"visible": state == State.PLAYING})
+		rig.override_on = false
 		if _victory_zoom > 0.0:
 			rig.target_zoom = _victory_zoom
 			_victory_zoom = -1.0)
@@ -539,6 +544,13 @@ func _fade_flash(t: float) -> void:
 	_fade.modulate.a = 1.0
 	create_tween().tween_property(_fade, "modulate:a", 0.0, t)
 
+func _in_shrine() -> bool:
+	var r: Array = LEVEL_TEXT.get(str(cfg.get("id", "")), {}).get("shrine_rect", [])
+	if r.is_empty():
+		return false
+	var t := EECoords.world_to_tile(_render_pos)
+	return Rect2i(r[0], r[1], r[2], r[3]).has_point(t)
+
 func _title_bed() -> StringName:
 	return StringName(cfg.get("title_music", "veil_title" if _is_day() else "title"))
 
@@ -579,7 +591,7 @@ func _physics_process(_delta: float) -> void:
 		else:
 			_check_piano()
 		return
-	if state != State.PLAYING or get_tree().paused or sim == null or victory.visible:
+	if state != State.PLAYING or get_tree().paused or sim == null or victory.visible or _victory_pending:
 		return
 	_fill_input()
 	if _god_request:
@@ -783,6 +795,8 @@ func _zone_info_for(z: Variant) -> Dictionary:
 			else {"name": "", "bed": &"day" if _is_day() else &"cave"}
 		var title := str(d.get("title", fb.name))
 		var bed: StringName = _day_bed_for_mood(mood) if _is_day() else _bed_for_mood(mood, fb.bed)
+		if _in_shrine() or mood.contains("shrine") or str(z).contains("shrine") or str(z).contains("summit"):
+			bed = _title_bed()
 		return {"name": title.to_upper(), "sub": str(d.get("subtitle", "")), "bed": bed,
 			"reverb": float(d.get("reverb", _reverb_for_mood(mood)))}
 	if str(cfg.get("id", "")) != "odyssey":
@@ -910,16 +924,31 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			audio.play("blue_coin", -12.0, 0.0, 0.5)
 		&"complete":
 			audio.play("crown", 0.0, 0.0)
+			_victory_delay = 0.0
 			hud.flash(UITheme.GOLD, 0.8)
 			audio.set_bed(_title_bed())
 			hud.set_state({"visible": false})
 			_victory_zoom = rig.target_zoom
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
+			var vf: Array = LEVEL_TEXT.get(str(cfg.get("id", "")), {}).get("victory_frame", [])
+			if not vf.is_empty():
+				rig.override_target = EECoords.tile_center(vf[0], vf[1]) + Vector3(-3.0, 5.5, 0.0)
+				rig.override_on = true
+				rig.begin_follow(true)
+				rig.target_zoom = minf(CameraRig.ZOOM_MAX, _victory_zoom * 1.5)
+				_victory_delay = 2.2
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
 			if _trials():
 				victory.subline = ("All %d trials conquered" % _coins_total) if int(sim.coins) >= _coins_total else ("%d of %d %s conquered" % [int(sim.coins), _coins_total, "trial" if _coins_total == 1 else "trials"])
-			victory.show_stats({"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
-				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0})
+			var vstats := {"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
+				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0}
+			if _victory_delay > 0.0:
+				_victory_pending = true   # freeze the run while the camera frames the shrine
+				get_tree().create_timer(_victory_delay).timeout.connect(func():
+					_victory_pending = false
+					victory.show_stats(vstats))
+			else:
+				victory.show_stats(vstats)
 
 # ======================================================================= input / menus
 func _unhandled_input(event: InputEvent) -> void:

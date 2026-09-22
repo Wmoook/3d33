@@ -40,6 +40,9 @@ var _grav := Vector2(0, -1)          # smoothed gravity direction (world axes, y
 var _fall_look := Vector2.ZERO
 var _lag_comp := Vector2.ZERO
 var _smooth_boost := 0.0             # extra smoothing during intro swoop (decays)
+## Cinematic override while following (e.g. FV victory: frame the Summit Shrine's light pillar).
+var override_on := false
+var override_target := Vector3.ZERO
 var _noise := FastNoiseLite.new()
 var _t := 0.0
 var _cine_keys: Array = []           # [{pos: Vector2 (tile space, y down), zoom: float}]
@@ -102,7 +105,10 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 	_t += delta
 	zoom = _damp(zoom, target_zoom, 7.0, delta)
 	var target := Vector3(world_pos.x - 0.5, world_pos.y + 0.5, 0.0)
-	if _smooth_boost > 0.0:
+	if override_on:
+		# cinematic ease toward a framed shot (victory), outside the EE follow
+		focus = _smooth_damp(focus, override_target, 0.9, delta)
+	elif _smooth_boost > 0.0:
 		# title -> gameplay swoop: glide in, then hand over to the EE follow
 		_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
 		focus = _smooth_damp(focus, target, 0.14 + _smooth_boost * _smooth_boost * 1.1, delta)

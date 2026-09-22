@@ -24,6 +24,7 @@ uniform vec4 rune_pos[16];
 uniform vec4 rune_col[16];
 uniform float rune_state[16];
 uniform float rune_size = 4.6;
+uniform vec4 scroll_rect = vec4(-1.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -284,7 +285,20 @@ void fragment() {
 	float up = clamp(gn.y, 0.0, 1.0);
 	float front = clamp(gn.z, 0.0, 1.0);
 
-	if (mat == M_EARTH || mat == M_SAND) {
+	bool parchment = mat == M_SAND && p.x >= scroll_rect.x && p.y >= scroll_rect.y && p.x <= scroll_rect.z && p.y <= scroll_rect.w;
+	if (parchment) {
+		// illuminated parchment: warm vellum with fibres, soft wrinkles, age blotches and burnt, darker edges
+		vec3 vellum = srgb_to_lin(vec3(0.86, 0.72, 0.5));
+		float fib = fbm2(vec2(p.x * 6.0, p.y * 0.8)) * 0.5 + 0.5;
+		float blot = smoothstep(0.55, 0.9, fbm3(p * 0.35) * 0.5 + 0.5);
+		float edge = 1.0 - smoothstep(0.0, 1.4, s.w);
+		albedo = mix(vellum, albedo, 0.35) * mix(0.9, 1.08, fib) * mix(1.0, 0.8, blot);
+		albedo = mix(albedo, srgb_to_lin(vec3(0.36, 0.2, 0.1)), edge * 0.75);
+		float wrinkle = fbm2(vec2(p.x * 0.4 + p.y * 0.9, p.y * 0.5)) - 0.5;
+		n = normalize(gn + vec3(wrinkle * 0.25, wrinkle * 0.12, 0.0) + (dn - gn) * 0.15);
+		rough = 0.8;
+		spec = 0.3;
+	} else if (mat == M_EARTH || mat == M_SAND) {
 		// clay/soil: strata + pebbles, slightly wet in cavities
 		// continuous world-space strata + large tonal patches flowing across tile boundaries, so
 		// neighbouring tiles read as one rock mass rather than individual blocks

@@ -669,6 +669,8 @@ func _make_material() -> void:
 	material.set_shader_parameter("orig_tex", ImageTexture.create_from_image(orig_img))
 	if day:
 		material.set_shader_parameter("mottle", 0.12)
+		var r := WorldPalette.FV_RECT_SCROLL
+		material.set_shader_parameter("scroll_rect", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
 	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))

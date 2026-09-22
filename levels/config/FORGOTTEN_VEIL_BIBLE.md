@@ -24,7 +24,7 @@ make every mechanic read instantly.
 | **The ΣX logo** | x300-345, y14-42 | Mossy stone letters with CROWN tiles as gold inlays and blue UP ARROWS under them. | Gilded letters glint; the blue arrow row under it = updraft. |
 | **The Winners' Scroll** | x350-397, y0-72 | A huge parchment scroll hanging in the sky; the names are written with CROWNS (gold) and RED KEYS (vermilion) on brown parchment. | ILLUMINATED MANUSCRIPT: crowns = gold-leaf ink, red keys = vermilion ink. They must render as legible LETTERING (flat, inked into the parchment, softly gilded), NOT as floating gems. Keys still flare on touch. |
 | **"LOL"** | x215-223, y1-6 | Tiny joke text at the top centre. | Keep it (a wink), stone letters. |
-| **Sky** | all | Pastel sky (531) with painted clouds (540) and painted snowy mountain ranges (541/542) behind everything; small white "V" bird shapes (decor) everywhere. | Deep-blue morning gradient, soft cumulus, distant snowy ranges with aerial haze, parallax; the painted "V" birds become real distant birds gliding. |
+| **Sky** | all | Pastel sky (531) with painted clouds (540) and painted snowy mountain ranges (541/542) behind everything; small white "V" bird shapes made of fg 87 (EE-SOLID) floating in the sky. | Deep-blue morning gradient, soft cumulus, distant snowy ranges with aerial haze, parallax. The "V" birds are SOLID: render as floating pale-marble bird sculptures (readable stepping stones); actors2 adds real gliding birds around them. |
 
 ## Mechanics as art (FV-specific look, readability first)
 - **Arrows (gravity 1-3)** fill the trial rooms: keep crisp chevrons, but in FV give the current a "wind" feel

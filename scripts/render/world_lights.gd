@@ -82,6 +82,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_make_cluster_lights(lvl, terrain)
 	if WorldPalette.is_odyssey():
 		_make_demon()
+	else:
+		_make_shrine()
 
 ## Groups emissive tiles into BIN x BIN bins and places one light per sufficiently lit bin.
 func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
@@ -233,6 +235,24 @@ func _make_demon() -> void:
 		rim.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 		rim.name = "DemonRim"
 		add_child(rim)
+
+## FV finale: warm golden rim light wrapping the summit shrine peak and the trophy.
+func _make_shrine() -> void:
+	var t := WorldPalette.FV_SHRINE
+	for off in [Vector3(-2.5, 1.5, 2.2), Vector3(3.0, 0.5, 1.2)]:
+		var l := OmniLight3D.new()
+		l.name = "ShrineRim"
+		l.position = Vector3(t.x + 0.5, -t.y - 0.5, 0.0) + off
+		l.light_color = Color(1.0, 0.78, 0.42)
+		l.light_energy = 2.2
+		l.omni_range = 9.0
+		l.omni_attenuation = 1.4
+		l.light_volumetric_fog_energy = 1.5
+		l.distance_fade_enabled = true
+		l.distance_fade_begin = 80.0
+		l.distance_fade_length = 15.0
+		l.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
+		add_child(l)
 
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	_focus = world_pos

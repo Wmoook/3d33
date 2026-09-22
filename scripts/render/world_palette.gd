@@ -22,9 +22,12 @@ const ZONE_NAMES := ["surface", "earth", "hell", "corrupt", "ice", "lake", "torn
 	"day", "ruins", "waterway"]
 
 ## Forgotten Veil: water-dominated regions (the falls + pool, the sunken aqueducts along the bottom).
-const FV_WATER_RECTS := [Rect2i(125, 100, 53, 100), Rect2i(178, 172, 222, 28)]
+const FV_WATER_RECTS := [Rect2i(122, 125, 50, 55), Rect2i(140, 165, 260, 35)]
 ## Forgotten Veil: the WINNERS parchment scroll (top right).
-const FV_RECT_SCROLL := Rect2i(350, 0, 50, 75)
+const FV_RECT_SCROLL := Rect2i(350, 0, 48, 72)
+## Forgotten Veil finale: the summit shrine peak with the finish trophy (394, 74).
+const FV_SHRINE := Vector2i(394, 74)
+const FV_RECT_SHRINE := Rect2i(385, 70, 15, 16)
 ## Forgotten Veil sky backdrop bg ids (pastel blue sky, painted clouds / snowy mountains).
 const FV_SKY_BG := [530, 531, 540]
 

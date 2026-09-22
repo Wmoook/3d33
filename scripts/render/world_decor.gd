@@ -254,6 +254,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
 	_build_near_silhouettes(lvl, terrain)
+	if not WorldPalette.is_odyssey():
+		_build_shrine(lvl, terrain)
 
 var _near_mat: ShaderMaterial
 
@@ -307,6 +309,25 @@ func _leafy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	if WorldPalette.is_odyssey():
 		return y < 22
 	return _near_sky(terrain, x, y, W, H)
+
+## FV finale: dense wind-swept grass on every exposed top of the summit shrine peak (all leaning east).
+func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
+	var W := lvl.width
+	var xs: Array[Transform3D] = []
+	var cs: Array[Color] = []
+	var r := WorldPalette.FV_RECT_SHRINE
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, mini(r.end.x, W - 1)):
+			var i := y * W + x
+			if not terrain.solid[i] or terrain.solid[i - W]:
+				continue
+			for k in 7:
+				var sc := _rng.randf_range(0.9, 1.5)
+				var b := Basis(Vector3.FORWARD, -0.45).scaled(Vector3(sc, sc * 1.2, sc))
+				xs.append(Transform3D(b, Vector3(x + (k + _rng.randf()) / 7.0, -y + 0.02, _rng.randf_range(-1.6, 0.25))))
+				cs.append(_vary(Color(0.46, 0.62, 0.22), 0.12))
+	var m := _foliage_mat(2.2, 0.55, 0.0, 0.7)
+	_add_mm("ShrineGrass", _grass_mesh(), m, xs, cs)
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):
