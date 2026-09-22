@@ -68,6 +68,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	add_child(key_light)
 
 	_make_cluster_lights(lvl, terrain)
+	_make_demon()
 
 ## Groups emissive tiles into BIN x BIN bins and places one light per sufficiently lit bin.
 func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
@@ -171,6 +172,55 @@ func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
 		_flicker.append(flick)
 		_phase.append(randf() * 100.0)
 
+## The hero figure: the demon rising from the lake gets glowing eyes and a cold rim light from the water.
+const DEMON_EYES := [Vector2(301.5, 147.5), Vector2(304.3, 148.3)]
+var demon_eye_lights: Array[OmniLight3D] = []
+
+func _make_demon() -> void:
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	eye_mat.albedo_color = Color(1.0, 0.75, 0.55)
+	eye_mat.emission_enabled = true
+	eye_mat.emission = Color(1.0, 0.35, 0.2)
+	eye_mat.emission_energy_multiplier = 3.5
+	var k := 0
+	for e: Vector2 in DEMON_EYES:
+		var m := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.22 if k == 0 else 0.16
+		sm.height = sm.radius * 1.4
+		m.mesh = sm
+		m.material_override = eye_mat
+		m.position = Vector3(e.x, -e.y, 0.95)
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.name = "DemonEye%d" % k
+		add_child(m)
+		var l := OmniLight3D.new()
+		l.position = Vector3(e.x, -e.y, 1.6)
+		l.light_color = Color(1.0, 0.35, 0.2)
+		l.light_energy = 0.9
+		l.omni_range = 2.8
+		l.light_volumetric_fog_energy = 2.0
+		l.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
+		add_child(l)
+		demon_eye_lights.append(l)
+		k += 1
+	# cold rim from the lake: behind-below the figure, grazing its silhouette
+	for p in [Vector3(318.0, -186.0, -2.5), Vector3(292.0, -176.0, -2.0), Vector3(322.0, -150.0, -2.5)]:
+		var rim := OmniLight3D.new()
+		rim.position = p
+		rim.light_color = Color(0.35, 0.6, 1.0)
+		rim.light_energy = 3.0
+		rim.omni_range = 22.0
+		rim.omni_attenuation = 1.2
+		rim.light_specular = 1.0
+		rim.distance_fade_enabled = true
+		rim.distance_fade_begin = 60.0
+		rim.distance_fade_length = 15.0
+		rim.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
+		rim.name = "DemonRim"
+		add_child(rim)
+
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	_focus = world_pos
 	focus_light.position = world_pos + Vector3(0.0, 1.5, 3.0)
@@ -204,6 +254,8 @@ func _assign_shadows() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	for i in demon_eye_lights.size():
+		demon_eye_lights[i].light_energy = 0.9 * (0.8 + 0.2 * sin(_time * 1.3 + i))
 	for i in cluster_lights.size():
 		var f := _flicker[i]
 		if f <= 0.0:

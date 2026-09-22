@@ -253,7 +253,49 @@ func _find_specks() -> void:
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
+## Key-door tiles used as ART: door regions (same id, 8-connected) larger than ART_DOOR_MIN tiles, and
+## every door tile inside the demon. Value = key colour 1 red / 2 green / 3 blue, 0 = normal door.
+const ART_DOOR_MIN := 30
+var art_door := PackedByteArray()
+
+func _find_art_doors() -> void:
+	art_door.resize(W * H)
+	art_door.fill(0)
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	for start in W * H:
+		var id: int = level.fg[start]
+		if seen[start] or not WorldPalette.is_key_door(id):
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		var in_demon := false
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			if WorldPalette.RECT_DEMON.has_point(Vector2i(x, y)):
+				in_demon = true
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := x + dx
+					var ny := y + dy
+					if nx < 0 or ny < 0 or nx >= W or ny >= H:
+						continue
+					var j := ny * W + nx
+					if seen[j] or level.fg[j] != id:
+						continue
+					seen[j] = 1
+					comp.append(j)
+		if comp.size() >= ART_DOOR_MIN or (in_demon and not WorldPalette.is_gate(id)):
+			var c: StringName = WorldPalette.key_color_of(id)
+			var v := 1 if c == &"red" else (2 if c == &"green" else 3)
+			for i in comp:
+				art_door[i] = v
+
 func _classify() -> void:
+	_find_art_doors()
 	var n := W * H
 	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n); backwall.resize(n)
 	solid.fill(0); sky.fill(0); backwall.fill(0)
@@ -295,6 +337,15 @@ func _classify() -> void:
 				solid[i] = 1
 				mat_ids[i] = WorldPalette.M_STONE
 				fgb[i * 4] = 42; fgb[i * 4 + 1] = 36; fgb[i * 4 + 2] = 34; fgb[i * 4 + 3] = WorldPalette.M_STONE
+				has_fg[i] = 1
+				continue
+			if art_door[i]:
+				# key-door tiles that are part of the painting (demon body, pink flesh tube, upper pond):
+				# sculpted as the surrounding terrain mass; hidden while their key is active
+				solid[i] = 1
+				var am := WorldPalette.M_WATER if WorldPalette.RECT_UPPER_LAKE.has_point(Vector2i(x, y)) else WorldPalette.M_FLESH
+				mat_ids[i] = am
+				fgb[i * 4] = mc.r8; fgb[i * 4 + 1] = mc.g8; fgb[i * 4 + 2] = mc.b8; fgb[i * 4 + 3] = am
 				has_fg[i] = 1
 				continue
 			if WorldPalette.is_world_solid(id):
@@ -341,7 +392,7 @@ func _classify() -> void:
 	bgcol_img.set_data(W, H, false, Image.FORMAT_RGBA8, bgb)
 	var inf := PackedByteArray(); inf.resize(n * 4)
 	for i in n:
-		inf[i * 4] = 255 if solid[i] else 0
+		inf[i * 4] = (80 + art_door[i] * 40) if art_door[i] else (255 if solid[i] else 0)
 		inf[i * 4 + 1] = 255 if backwall[i] else 0
 		inf[i * 4 + 2] = zones[i]
 		inf[i * 4 + 3] = 255 if sky[i] else 0
@@ -574,6 +625,10 @@ func _make_chunks() -> void:
 			add_child(sh)
 			y0 += CHUNK
 		x0 += CHUNK
+
+## Which keys are active (art-door tiles of that colour are hidden from the terrain while true).
+func set_keys_open(red: bool, green: bool, blue: bool) -> void:
+	material.set_shader_parameter("keys_open", Vector3(1.0 if red else 0.0, 1.0 if green else 0.0, 1.0 if blue else 0.0))
 
 ## 0 off, 1 collision grid overlay, 2 zone map overlay, 3 solidity mask (white = rendered solid).
 func set_debug_mode(mode: int) -> void:

@@ -14,6 +14,7 @@ const SPOTS := [
 	["inferno", Vector2(150, 110)],
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
+	["keytouch", Vector2(89, 10)],
 ]
 var ghost: Node3D
 var game
@@ -43,6 +44,10 @@ func _ready() -> void:
 			ghost = game.actors.create_ghost_ball()
 			game.actors.get_parent().add_child(ghost)
 		await _wait(2.0)
+		if s[0] == "keytouch":
+			game.sim.sim_event.emit(&"key", {"color": &"red", "tile": Vector2i(86, 12)})
+			for i in 8:
+				await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png("user://fx_game_%s.png" % s[0])
 		print("saved fx_game_", s[0])
 	get_tree().quit()

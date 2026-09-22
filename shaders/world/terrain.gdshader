@@ -16,6 +16,7 @@ uniform sampler2D height_tex : filter_linear, repeat_disable;   // baked z(p), H
 uniform float height_margin = 16.0;
 uniform float htpt = 16.0;
 uniform float time_scale = 1.0;
+uniform vec3 keys_open = vec3(0.0);
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -138,6 +139,12 @@ void fragment() {
 	s.x = sdf_linear(p).x;
 	vec4 fld = field_at(p);
 
+	// art key-door tiles (demon body...) vanish while their key is active (WorldDoors draws the ghost)
+	float info_r = texelFetch(info_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
+	int art = (info_r > 100.0 && info_r < 220.0) ? int((info_r - 80.0) / 40.0 + 0.5) : 0;
+	if (art > 0 && keys_open[art - 1] > 0.5) {
+		discard;
+	}
 	// ---- layer classification ----
 	int layer = 0; // 0 fg, 1 bg wall, 2 cave
 	if (s.x < -0.07) {
@@ -376,14 +383,25 @@ void fragment() {
 		rough = 0.75;
 		n = normalize(mix(gn, triplanar_normal(detail_nrm2, wp * 2.5, gn, 0.8), 0.9));
 	} else if (mat == M_FLESH) {
-		float musc = ridge(vec2(p.x * 0.8, p.y * 0.25) + fbm2(p * 0.4) * 1.2);
-		albedo *= mix(0.55, 1.1, musc);
-		rough = 0.32;
-		spec = 0.55;
+		// demon flesh: sinew striations flowing along the limbs (warped, anisotropic), dark crevices,
+		// glossy wet highlights, subsurface red, and a cool rim from the lake
+		vec2 fw2 = vec2(fbm2(p * 0.3), fbm2(p * 0.3 + 11.0)) * 2.2;
+		float sinew = ridge(vec2(p.x * 0.45 + p.y * 0.35, p.y * 1.6 - p.x * 0.5) * 0.9 + fw2);
+		float crevice = smoothstep(0.55, 0.15, fbm3(p * 0.5 + fw2 * 0.5) * 0.5 + 0.5);
+		vec3 base = albedo;
+		albedo = base * mix(0.5, 1.1, sinew) * mix(1.0, 0.45, crevice);
+		rough = mix(0.22, 0.5, crevice);
+		spec = 0.65;
 		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
-		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 2.0);
-		emit += albedo * fres * 0.35;
-		n = normalize(mix(gn, dn, 0.4));
+		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 2.5);
+		emit += base * vec3(1.0, 0.35, 0.35) * 0.18 * (1.0 - crevice);                 // subsurface red
+		emit += vec3(0.35, 0.55, 1.0) * fres * 0.45 * smoothstep(-0.2, 0.9, -gn.x + gn.y * 0.3);  // lake rim
+		n = normalize(gn + vec3((sinew - 0.5) * 0.35, (sinew - 0.5) * 0.2, 0.0) + (dn - gn) * 0.25);
+		if (art == 1) {
+			// the key-door hint: faint slow-pulsing rune veins
+			float vein = smoothstep(0.985, 0.998, ridge(p * 0.35 + fw2 * 0.4));
+			emit += vec3(1.0, 0.15, 0.2) * vein * (0.06 + 0.06 * sin(TIME * 0.8 + p.y * 0.2));
+		}
 	} else if (mat == M_WOOD) {
 		float grain = sin(p.x * 2.0 + fbm2(vec2(p.x * 0.5, p.y * 3.0)) * 4.0) * 0.5 + 0.5;
 		albedo *= mix(0.7, 1.1, grain);

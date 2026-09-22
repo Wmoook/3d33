@@ -12,9 +12,12 @@ var sim: Object
 var regions: Array = []      # [{node, tile: Vector2i, id, solid_mat, ghost_mat, solid: bool}]
 var sdf_tex: Texture2D
 var _level: EELevel
+var terrain_ref: WorldTerrain
+var _keys_state := [false, false, false]
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_level = lvl
+	terrain_ref = terrain
 	var W := lvl.width
 	var H := lvl.height
 	var mask := PackedByteArray()
@@ -68,8 +71,11 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		mi.material_override = mats[id][0]
 		mi.name = "Door%d_%d_%d" % [id, mn.x, mn.y]
 		add_child(mi)
-		regions.append({"node": mi, "tile": Vector2i(start % W, start / W), "id": id,
+		var art := terrain.art_door[start] != 0
+		regions.append({"node": mi, "tile": Vector2i(start % W, start / W), "id": id, "art": art,
 			"solid_mat": mats[id][0], "ghost_mat": mats[id][1], "solid": true})
+		if art:
+			mi.visible = false   # the terrain draws it while closed
 
 func _materials(id: int, terrain: WorldTerrain) -> Array:
 	var col := Color8(156, 45, 70)
@@ -125,6 +131,11 @@ func _region_solid(r: Dictionary) -> bool:
 	return not WorldPalette.is_gate(r["id"])
 
 func _process(_delta: float) -> void:
+	if terrain_ref and sim and sim.has_method(&"is_key_active"):
+		var k := [sim.is_key_active(&"red"), sim.is_key_active(&"green"), sim.is_key_active(&"blue")]
+		if k != _keys_state:
+			_keys_state = k
+			terrain_ref.set_keys_open(k[0], k[1], k[2])
 	for r in regions:
 		var s := _region_solid(r)
 		if s == r["solid"]:
@@ -132,6 +143,8 @@ func _process(_delta: float) -> void:
 		r["solid"] = s
 		var mi: MeshInstance3D = r["node"]
 		mi.material_override = r["solid_mat"] if s else r["ghost_mat"]
+		if r["art"]:
+			mi.visible = not s
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if s else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func set_mask_mode(on: bool) -> void:

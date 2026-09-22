@@ -44,6 +44,8 @@ var _buttons: Array[Button] = []
 var _quality_btns: Array[Button] = []
 var _fs_btn: Button
 var _hint_btn: Button
+var _col_btn: Button
+var _hc_btn: Button
 var _open := false
 var _a := 0.0
 var _info: Control
@@ -100,7 +102,7 @@ func _build_settings() -> void:
 	sb.content_margin_top = 34
 	sb.content_margin_bottom = 34
 	_settings_panel.add_theme_stylebox_override(&"panel", sb)
-	_settings_panel.position = Vector2(760, 250)
+	_settings_panel.position = Vector2(760, 170)
 	_settings_panel.custom_minimum_size = Vector2(700, 0)
 	_root.add_child(_settings_panel)
 	var v := VBoxContainer.new()
@@ -138,6 +140,8 @@ func _build_settings() -> void:
 	v.add_child(qrow)
 	_fs_btn = _toggle_row(v, "FULLSCREEN", func(on): setting_changed.emit("fullscreen", on))
 	_hint_btn = _toggle_row(v, "CONTROL HINTS", func(on): setting_changed.emit("show_hints", on))
+	_col_btn = _toggle_row(v, "SHOW COLLISION (F3)", func(on): setting_changed.emit("show_collision", on))
+	_hc_btn = _toggle_row(v, "HIGH-CONTRAST GLYPHS", func(on): setting_changed.emit("high_contrast", on))
 	v.add_child(_spacer(6))
 	var ctl := Label.new()
 	ctl.text = "ARROWS / WASD  move      SPACE  jump      G  god mode\nM  map      SHIFT+R  retry      WHEEL / + -  zoom      H  ghost      F3  collision      F11  fullscreen"
@@ -218,6 +222,9 @@ func sync_from_settings() -> void:
 	_fs_btn.text = "ON" if settings.fullscreen else "OFF"
 	_hint_btn.set_pressed_no_signal(settings.show_hints)
 	_hint_btn.text = "ON" if settings.show_hints else "OFF"
+	for pair in [[_col_btn, settings.show_collision], [_hc_btn, settings.high_contrast]]:
+		pair[0].set_pressed_no_signal(pair[1])
+		pair[0].text = "ON" if pair[1] else "OFF"
 
 func open() -> void:
 	if _open:

@@ -237,9 +237,9 @@ func _key() -> GPUParticles3D:
 	pm.damping_max = 6.0
 	pm.scale_curve = _curve([Vector2(0, 1), Vector2(1, 0)])
 	pm.color = Color(1, 0.3, 0.3)
-	pm.color_ramp = _ramp([Color(1.6, 1.6, 1.6, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)], [0.0, 0.3, 1.0])
+	pm.color_ramp = _ramp([Color(1.2, 1.2, 1.2, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)], [0.0, 0.3, 1.0])
 	p.process_material = pm
-	p.draw_pass_1 = _sprite_pass(0.09, true, 5.0)
+	p.draw_pass_1 = _sprite_pass(0.07, true, 3.0)
 	return p
 
 func _portal() -> GPUParticles3D:

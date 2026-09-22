@@ -41,7 +41,7 @@ void vertex() {
 	float c = cos(spin), s = sin(spin);
 	VERTEX.xz = mat2(vec2(c, s), vec2(-s, c)) * VERTEX.xz;
 	NORMAL.xz = mat2(vec2(c, s), vec2(-s, c)) * NORMAL.xz;
-	VERTEX *= 1.0 + v_flare * 0.45 + v_near * 0.08;
+	VERTEX *= 1.0 + v_flare * 0.3 + v_near * 0.08;
 	VERTEX.y += sin(TIME * 1.8 + v_ph) * bob / max(length(MODEL_MATRIX[1].xyz), 0.01);
 }
 
@@ -50,9 +50,10 @@ void fragment() {
 	float pulse = 0.8 + 0.2 * sin(TIME * 2.2 + v_ph);
 	float spark = pow(max(sin(TIME * 0.7 + v_ph * 13.0), 0.0), 30.0);
 	float k = mix(pulse, 0.7 + spark * 1.2, twinkle) * (1.0 - active * 0.35);
-	ALBEDO = gem_color * 0.35;
+	ALBEDO = gem_color * (0.35 + v_flare * 0.4);
 	ROUGHNESS = 0.1;
 	SPECULAR = 0.8;
 	vec3 hot = mix(gem_color, vec3(1.0), 0.4);
-	EMISSION = gem_color * glow * k * (0.7 + fres * 0.8) + hot * (v_near * 0.35 + v_flare * 2.5);
+	// touch flare stays in the key hue (a white-hot core blew out into a flare with the dark gem as a pupil)
+	EMISSION = gem_color * glow * k * (0.7 + fres * 0.8) + gem_color * v_near * 0.3 + mix(gem_color, hot, 0.35) * v_flare * 1.4;
 }

@@ -18,6 +18,8 @@ const SPOTS := {
 	"demon": Vector2(315, 165),
 	"torches": Vector2(345, 92),
 	"lake": Vector2(335, 184),
+	"demon_close": Vector2(302, 152),
+	"demon_wide": Vector2(318, 162),
 	"door": Vector2(80, 10),
 	"overview": Vector2(200, 97),
 	"door2": Vector2(262, 40),

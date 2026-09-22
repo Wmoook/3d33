@@ -43,6 +43,9 @@ func _init() -> void:
 	var out := {"level": "ex_crew_odyssey", "units": "tiles (x right, y down); world = (x+0.5, -(y+0.5))",
 		"spawn": [65, 11], "goal": [54, 9],
 		"kind": "topological designer route (doors open, coin door after the coin); see LEVEL_ROUTE.md",
+		"physics_verified_replay": "res://scripts/physics/route_descent.eerp",
+		"physics_verified_until": [293, 45],
+		"physics_blocked_at": {"tile": [262, 44], "note": "shaft (253-262,44-56) -> right-arrow wall column x=262 rows 43-45; not reachable from below under EE rules (exhaustive search); everything after it is physically verified from (262,44) to the blue keys (238,45)"},
 		"waypoints": pts}
 	var f := FileAccess.open("res://scripts/physics/route_waypoints.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(out, "  "))

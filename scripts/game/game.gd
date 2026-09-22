@@ -204,6 +204,8 @@ func _boot() -> void:
 	collision_overlay.name = "CollisionOverlay"
 	_world_root.add_child(collision_overlay)
 	collision_overlay.setup(level, sim)
+	collision_overlay.visible = settings.show_collision
+	_apply_high_contrast()
 	minimap.full_opened.connect(func():
 		get_tree().paused = true
 		hud.set_state({"visible": false})
@@ -668,6 +670,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				audio.play("ui_move", -8.0, 0.0)
 			elif event.is_action_pressed(&"ee_collision"):
 				collision_overlay.visible = not collision_overlay.visible
+				settings.show_collision = collision_overlay.visible
+				settings.save_settings()
 				collision_overlay.mark_dirty()
 				audio.play("ui_move", -8.0, 0.0)
 			elif event.is_action_pressed(&"ee_minimap"):
@@ -740,7 +744,18 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 			_apply_fullscreen()
 		"show_hints":
 			hud.show_hints = bool(value)
+		"show_collision":
+			if collision_overlay:
+				collision_overlay.visible = bool(value)
+				collision_overlay.mark_dirty()
+		"high_contrast":
+			_apply_high_contrast()
 	settings.save_settings()
+
+## Accessibility: brighter/bigger gameplay glyphs (keys, arrows, dots) via ActorsView when it supports it.
+func _apply_high_contrast() -> void:
+	if actors and actors.has_method(&"set_high_contrast"):
+		actors.set_high_contrast(settings.high_contrast)
 
 func _apply_audio_settings() -> void:
 	audio.apply_volumes(settings.master, settings.music, settings.sfx)

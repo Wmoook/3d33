@@ -114,7 +114,7 @@ func _draw() -> void:
 	var cy := H * 0.47
 	var a := o
 	# eyebrow
-	var eb := "EVERYBODY  EDITS  PRESENTS"
+	var eb := "A  REIMAGINING  OF  EX  CREW  ODYSSEY"
 	var ef := UITheme.hud_medium(9)
 	draw_string(ef, Vector2(0, cy - 150), eb, HORIZONTAL_ALIGNMENT_CENTER, W, 20, Color(1, 1, 1, 0.55 * _k(0.7, 1.6) * a))
 	# rule + diamond

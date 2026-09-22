@@ -5,6 +5,18 @@
   ],
   "kind": "topological designer route (doors open, coin door after the coin); see LEVEL_ROUTE.md",
   "level": "ex_crew_odyssey",
+  "physics_blocked_at": {
+    "note": "shaft (253-262,44-56) -> right-arrow wall column x=262 rows 43-45; not reachable from below under EE rules (exhaustive search); everything after it is physically verified from (262,44) to the blue keys (238,45)",
+    "tile": [
+      262,
+      44
+    ]
+  },
+  "physics_verified_replay": "res://scripts/physics/route_descent.eerp",
+  "physics_verified_until": [
+    293,
+    45
+  ],
   "spawn": [
     65,
     11

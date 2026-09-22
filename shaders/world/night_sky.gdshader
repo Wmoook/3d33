@@ -75,6 +75,8 @@ void sky() {
 		col = mix(col, vec3(1.0, 0.97, 0.9) * 6.0 * crater, disc);
 		col += vec3(0.5, 0.6, 1.0) * pow(max(mdot, 0.0), 180.0) * 0.8;
 		col += vec3(0.3, 0.35, 0.6) * pow(max(mdot, 0.0), 12.0) * 0.08;
-		COLOR = col;
+		// seen from underground (through a discarded / open patch): cave darkness, never stars
+		vec3 cave = mix(cave_bottom, cave_top, smoothstep(-0.7, 0.9, d.y)) * 0.25;
+		COLOR = mix(col, cave, cave_amount);
 	}
 }

@@ -56,6 +56,13 @@ func _init() -> void:
 		_cleanup()
 		quit()
 		return
+	# ROUTE_EXPORT=1: turn the cached legs (user://route_partial.json) into a verified replay
+	if OS.get_environment("ROUTE_EXPORT") == "1":
+		var pj: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("user://route_partial.json"))
+		var acts: Array = []
+		for pr in pj["actions"]: acts.append([int(pr[0]), int(pr[1])])
+		_write_outputs(acts, "res://scripts/physics/route_descent.eerp", false)
+		_cleanup(); quit(); return
 	# ROUTE_PIVOT="px,py,gx,gy,macro,mode": coarse search from spawn to the pivot tile, then a finer
 	# search from that exact physics state to the goal tile (tests a suspected choke point)
 	if OS.get_environment("ROUTE_PIVOT") != "":
@@ -353,7 +360,7 @@ func _distance_field(targets: Array) -> PackedInt32Array:
 
 # ---------------------------------------------------------------- outputs
 
-func _write_outputs(all_actions: Array) -> void:
+func _write_outputs(all_actions: Array, replay_path := "res://scripts/physics/route_completion.eerp", need_complete := true) -> void:
 	var inp := EEInput.new()
 	var rep := EEReplay.new()
 	for pair in all_actions:
@@ -397,14 +404,11 @@ func _write_outputs(all_actions: Array) -> void:
 	print("replay verification from reset: completed=%s ticks=%d (%.1f s game time) coins=%d blue=%d deaths=%d" % [ok, rep.tick_count(), rep.tick_count() / 100.0, sim.coins, sim.blue_coins, sim.deaths])
 	for e in ev_log:
 		print("  ", e)
-	if not ok:
+	if need_complete and not ok:
 		return
-	pts.append({"tick": rep.tick_count(), "tile": [54, 9], "note": "121 complete"})
-	rep.meta = {"level": "ex_crew_odyssey", "kind": "completion", "ticks": rep.tick_count(), "hash": sim.state_hash()}
-	rep.save("res://scripts/physics/route_completion.eerp")
-	var f := FileAccess.open("res://scripts/physics/route_waypoints.json", FileAccess.WRITE)
-	f.store_string(JSON.stringify({"level": "ex_crew_odyssey", "units": "tiles (x right, y down)",
-		"spawn": [65, 11], "goal": [54, 9], "replay": "res://scripts/physics/route_completion.eerp",
-		"ticks": rep.tick_count(), "waypoints": pts, "events": ev_log}, "  "))
-	f.close()
-	print("wrote route_completion.eerp (%d bytes) and route_waypoints.json (%d waypoints)" % [rep.to_bytes().size(), pts.size()])
+	var endt := Vector2i((int(sim.px) + 8) >> 4, (int(sim.py) + 8) >> 4)
+	pts.append({"tick": rep.tick_count(), "tile": [endt.x, endt.y], "note": "121 complete" if ok else "end"})
+	rep.meta = {"level": "ex_crew_odyssey", "kind": "completion" if ok else "partial", "ticks": rep.tick_count(),
+		"hash": sim.state_hash(), "end_tile": [endt.x, endt.y], "trajectory": pts}
+	rep.save(replay_path)
+	print("wrote %s (%d bytes, %d ticks, ends at %s, final state hash in meta)" % [replay_path, rep.to_bytes().size(), rep.tick_count(), endt])
