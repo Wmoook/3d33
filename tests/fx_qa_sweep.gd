@@ -76,6 +76,12 @@ func _ready() -> void:
 		for c in [&"red", &"green", &"blue"]:
 			game.sim._set_key(c, s[2] != "" and StringName(s[2]) == c)
 		_put(s[1])
+		if OS.get_cmdline_user_args().has("noblocks"):
+			for n in game.actors.blocks.get_children():
+				if not String(n.name).begins_with(OS.get_environment("KEEP")):
+					n.visible = false
+				else:
+					print("kept ", n.name)
 		await _wait(1.6)
 		game.collision_overlay.visible = false
 		await _frames(3)

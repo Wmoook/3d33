@@ -11,7 +11,7 @@ enum Mode { FOLLOW, CINEMATIC }
 signal cinematic_cut   # the flyover jumped (portal cut); the shell dips to black
 
 const FOV_V := 34.0                  # vertical fov (degrees); moderate perspective = readable parallax
-const BASE_PITCH := -5.0             # look slightly down on the diorama
+const BASE_PITCH := 0.0              # straight-on view like EE (was -5: looked down on the diorama)
 const MAX_YAW := 3.2                 # degrees of parallax tilt at full look-ahead
 const MAX_PITCH_TILT := 2.0
 const LOOK_AHEAD_TIME := 0.22        # seconds of velocity projected ahead
@@ -79,7 +79,7 @@ func add_trauma(a: float) -> void:
 	trauma = clampf(trauma + a, 0.0, 1.0)
 
 func snap_to(world_pos: Vector3) -> void:
-	focus = _clamp_focus(Vector3(world_pos.x, world_pos.y + FRAME_UP, 0.0))
+	focus = Vector3(world_pos.x - 0.5, world_pos.y + 0.5, 0.0)  # EE target: player top-left, no clamp
 	_focus_vel = Vector3.ZERO
 	_look = Vector2.ZERO
 	_fall_look = Vector2.ZERO
@@ -90,55 +90,34 @@ func begin_follow(swoop: bool) -> void:
 	mode = Mode.FOLLOW
 	_smooth_boost = 1.1 if swoop else 0.0
 
-## world_pos: interpolated player center; vel: tiles/second (world axes, y up);
-## gravity: current gravity direction (world axes, y up; zero for dots / god mode keeps the last one).
+## EE-exact follow (BlContainer.tick): every 100 Hz physics tick the camera moves 1/16 of the way toward the
+## player's top-left corner (EE centres Player.x/.y, the box's top-left) and snaps once within 0.5 px.
+## No look-ahead, tilt, fall lead, shake or level clamping, exactly like the original.
+## world_pos: interpolated player center; vel/gravity kept for API compatibility (unused).
+const EE_CAMERA_LAG := 1.0 / 16.0
+const EE_SNAP := 0.5 / 16.0          # 0.5 px in tiles
+var _ee_accum := 0.0
 func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = Vector2(0, -1)) -> void:
 	_t += delta
 	zoom = _damp(zoom, target_zoom, 7.0, delta)
-	var la := Vector2(clampf(vel.x * LOOK_AHEAD_TIME, -LOOK_AHEAD_MAX.x, LOOK_AHEAD_MAX.x),
-		clampf(vel.y * LOOK_AHEAD_TIME * 0.6, -LOOK_AHEAD_MAX.y, LOOK_AHEAD_MAX.y * 0.5))
-	_look = _look.lerp(la, 1.0 - exp(-2.2 * delta))
-	# Gravity-relative framing is smoothed so arrow fields (rapid gravity flips) never jitter the camera.
-	if gravity.length_squared() > 0.01:
-		_grav = _grav.slerp(gravity.normalized(), 1.0 - exp(-GRAV_SMOOTH * delta)).normalized()
-	# Long falls: frame the terrain coming up along gravity.
-	# The damped follow trails a fast fall by ~speed * smooth_time, so compensate that lag first, then lead
-	# by an extra amount that grows with speed; capped so the ball stays in the upper part of the frame.
-	var v_g := vel.dot(_grav)
-	var he := half_extents()
-	var extra := 0.0
-	var lag_comp := Vector2.ZERO
-	if v_g > FALL_LOOK_START:
-		extra = minf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, minf(FALL_LOOK_MAX, he.y * 0.6))
-		lag_comp = _grav * (v_g - FALL_LOOK_START) * (follow_smooth + _smooth_boost * _smooth_boost * 1.1)
-	var fl := _grav * extra
-	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(5.0 if fl.length() > _fall_look.length() else 1.5) * delta))
-	# smoothed too (fast), so arrow fields that kick the along-gravity speed around don't jerk the target
-	_lag_comp = _lag_comp.lerp(lag_comp, 1.0 - exp(-6.0 * delta))
-	lag_comp = _lag_comp
-	var up := -_grav * FRAME_UP
-	var target := Vector3(world_pos.x + _look.x + _fall_look.x + lag_comp.x + up.x, world_pos.y + _look.y + _fall_look.y + lag_comp.y + up.y, 0.0)
-	target = _clamp_focus(target)
-	# Teleports (portals, respawn far away): don't drag the camera across the map.
-	if focus.distance_to(target) > 30.0 and _smooth_boost <= 0.0:
-		focus = target
-		_focus_vel = Vector3.ZERO
-	_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
-	var st := follow_smooth + _smooth_boost * _smooth_boost * 1.1
-	focus = _smooth_damp(focus, target, st, delta)
-	# Safety leash: however the smoothing/look-ahead behaves (e.g. after a long frame hitch), the ball never
-	# leaves the central part of the frame.
-	var he2 := half_extents()
-	var leash := Vector2(he2.x * 0.72, he2.y * 0.42)
-	var fx := clampf(focus.x, world_pos.x - leash.x, world_pos.x + leash.x)
-	var fy := clampf(focus.y, world_pos.y - leash.y, world_pos.y + leash.y)
-	if fx != focus.x or fy != focus.y:
-		focus = _clamp_focus(Vector3(fx, fy, 0.0))
-	var tl := _look + _fall_look * 0.5
-	var tilt_target := Vector2(clampf(tl.x / LOOK_AHEAD_MAX.x, -1.0, 1.0) * MAX_YAW, clampf(tl.y / LOOK_AHEAD_MAX.y, -1.0, 1.0) * MAX_PITCH_TILT)
-	_tilt = _tilt.lerp(tilt_target, 1.0 - exp(-3.0 * delta))
-	trauma = maxf(0.0, trauma - delta * 1.5)
-	_apply_transform(_tilt)
+	var target := Vector3(world_pos.x - 0.5, world_pos.y + 0.5, 0.0)
+	if _smooth_boost > 0.0:
+		# title -> gameplay swoop: glide in, then hand over to the EE follow
+		_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
+		focus = _smooth_damp(focus, target, 0.14 + _smooth_boost * _smooth_boost * 1.1, delta)
+	else:
+		_ee_accum += delta * 100.0
+		var steps := int(_ee_accum)
+		_ee_accum -= steps
+		for i in mini(steps, 60):
+			focus.x -= (focus.x - target.x) * EE_CAMERA_LAG
+			focus.y -= (focus.y - target.y) * EE_CAMERA_LAG
+			if absf(focus.x - target.x) < EE_SNAP: focus.x = target.x
+			if absf(focus.y - target.y) < EE_SNAP: focus.y = target.y
+	focus.z = 0.0
+	_tilt = Vector2.ZERO
+	trauma = 0.0
+	_apply_transform(Vector2.ZERO)
 
 # ---------------------------------------------------------------- cinematic
 func set_cinematic_path(keys: Array) -> void:

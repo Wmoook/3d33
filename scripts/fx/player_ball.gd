@@ -401,7 +401,7 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	# --- trail ---
 	var spd := ee_vel.length()
 	if _trail:
-		_trail.push(world_pos, clampf((spd - 3.5) / 5.0, 0.0, 1.0) * 0.8 * (0.0 if god or _dying else 1.0), delta)
+		_trail.push(world_pos, 0.0, delta)  # trail disabled (user: "a little light following me when I jump")
 
 	# --- death / materialize ---
 	if _dying:
