@@ -87,6 +87,11 @@ var _center := Vector2(0.5, 0.5)
 var _zoom := 1.0
 var _drag := false
 var zone_name := ""
+var _warm := 0
+
+## Draw once (nearly transparent, behind the loading screen) so shaders compile before first real use.
+func warmup(frames: int = 3) -> void:
+	_warm = frames
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -290,6 +295,10 @@ func _process(delta: float) -> void:
 	_full_a = lerpf(_full_a, 1.0 if mode == Mode.FULL else 0.0, 1.0 - exp(-9.0 * delta))
 	modulate.a = _a
 	visible = _a > 0.01
+	if _warm > 0:
+		_warm -= 1
+		visible = true
+		modulate.a = 0.02
 	if _map == null or not visible:
 		return
 	if mode == Mode.FULL:
@@ -321,7 +330,7 @@ func _tile_to_screen(tile: Vector2) -> Vector2:
 	return r.position + ((uv - cen) / _span() + Vector2(0.5, 0.5)) * r.size
 
 func _draw() -> void:
-	if _map == null or _a < 0.01:
+	if _map == null or (_a < 0.01 and _warm <= 0):
 		return
 	if _full_a > 0.01:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 0.01, 0.72 * _full_a))

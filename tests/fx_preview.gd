@@ -225,17 +225,18 @@ func _run() -> void:
 		await _frames(30)
 		await _shot("crowns")
 	if _want("hero_run"):
-		# gameplay zoom, rolling fast along the surface near spawn
-		_place_ball(75, 11, true, Vector2(2.2, 0))
-		_look_at_tile(80, 12, 40)
-		await _frames(50)
+		# gameplay zoom (40 tiles wide): ball resting on open ground near the spawn, then a closer look
+		var spot := _open_ground_near(Vector2i(65, 11))
+		_place_ball(spot.x, spot.y, true, Vector2(0.0, 0))
+		_look_at_tile(spot.x + 0.5, spot.y, 40)
+		await _frames(40)
 		await _shot("hero_run")
-		# close-up in open air (tunnel at the spawn), gliding right
-		_place_ball(66.5, 11, true, Vector2(1.2, 0))
-		_look_at_tile(67.5, 11, 12)
-		await _frames(20)
-		await _shot("hero_run_close")
+		ball_vel = Vector2(5.5, 0)
+		await _frames(12)
 		ball_vel = Vector2.ZERO
+		_look_at_tile(ball_pos.x, -ball_pos.y, 12)
+		await _frames(3)
+		await _shot("hero_run_close")
 	if _want("death"):
 		_place_ball(65, 11)
 		_look_at_tile(65, 11, 16)
@@ -253,6 +254,21 @@ func _run() -> void:
 	if _want("faces"):
 		await _faces()
 	get_tree().quit()
+
+## First air tile (with 6 free tiles to its right) that sits on top of a solid stand-in tile.
+func _open_ground_near(c: Vector2i) -> Vector2i:
+	for r in range(0, 60):
+		for dx in range(-r, r + 1):
+			for y in range(maxi(c.y - 10, 1), mini(c.y + 10, lvl.height - 2)):
+				var x := c.x + dx
+				var ok := true
+				for k in 7:
+					for h in 2:
+						if lvl.get_fg(x + k, y - h) != 0:
+							ok = false
+				if ok and lvl.get_fg(x, y + 1) > 8:
+					return Vector2i(x, y)
+	return c
 
 ## Close-up turntable of face states, lit like a product shot.
 func _faces() -> void:

@@ -8,11 +8,12 @@ extends Node3D
 var environment: Environment
 var world_env: WorldEnvironment
 var sky_mat: ShaderMaterial
-var post: MeshInstance3D
+var post_layer: CanvasLayer
 var fog_volume: FogVolume
 var particles := {}   # name -> GPUParticles3D
 var weights := PackedFloat32Array()
 var _terrain: WorldTerrain
+var _zones: WorldZones
 var _lights: WorldLights
 var _first := true
 
@@ -22,28 +23,28 @@ var PRESETS := {
 	WorldPalette.Z_SURFACE: {"key": 0.55, "key_col": Color(0.6, 0.7, 1.0), "ambient": Color(0.69, 0.72, 0.83), "amb_e": 1.00, "exposure": 1.05, "glow": 0.75,
 		"sat": 1.08, "contrast": 1.06, "sky": 1.0, "moon": 1.0, "fill": 0.77, "fill_col": Color(0.8, 0.85, 1.0),
 		"parts": {"fireflies": 1.0}},
-	WorldPalette.Z_EARTH: {"key": 2.2, "key_col": Color(1.0, 0.82, 0.66), "ambient": Color(0.80, 0.69, 0.67), "amb_e": 1.00, "exposure": 1.62, "glow": 0.9,
+	WorldPalette.Z_EARTH: {"key": 3.08, "key_col": Color(1.0, 0.82, 0.66), "ambient": Color(0.80, 0.69, 0.67), "amb_e": 1.00, "exposure": 1.62, "glow": 0.9,
 		"sat": 1.1, "contrast": 1.1, "sky": 0.15, "moon": 0.0, "fill": 1.98, "fill_col": Color(1.0, 0.8, 0.62),
 		"parts": {"dust": 1.0}},
-	WorldPalette.Z_HELL: {"key": 1.4, "key_col": Color(1.0, 0.6, 0.4), "ambient": Color(0.86, 0.66, 0.59), "amb_e": 1.00, "exposure": 1.00, "glow": 1.35,
+	WorldPalette.Z_HELL: {"key": 1.96, "key_col": Color(1.0, 0.6, 0.4), "ambient": Color(0.86, 0.66, 0.59), "amb_e": 1.00, "exposure": 1.00, "glow": 1.35,
 		"sat": 1.18, "contrast": 1.14, "sky": 0.0, "moon": 0.0, "fill": 1.10, "fill_col": Color(1.0, 0.6, 0.35),
-		"parts": {"embers": 1.0}},
-	WorldPalette.Z_CORRUPT: {"key": 1.8, "key_col": Color(0.85, 0.7, 1.0), "ambient": Color(0.74, 0.63, 0.83), "amb_e": 1.00, "exposure": 1.56, "glow": 1.2,
+		"parts": {"dust": 0.6}},
+	WorldPalette.Z_CORRUPT: {"key": 2.52, "key_col": Color(0.85, 0.7, 1.0), "ambient": Color(0.74, 0.63, 0.83), "amb_e": 1.00, "exposure": 1.56, "glow": 1.2,
 		"sat": 1.15, "contrast": 1.12, "sky": 0.0, "moon": 0.0, "fill": 1.65, "fill_col": Color(0.85, 0.65, 1.0),
-		"parts": {"spores": 1.0}},
-	WorldPalette.Z_ICE: {"key": 2.0, "key_col": Color(0.8, 0.9, 1.0), "ambient": Color(0.74, 0.82, 0.93), "amb_e": 1.00, "exposure": 1.49, "glow": 1.0,
+		"parts": {"dust": 0.5}},
+	WorldPalette.Z_ICE: {"key": 2.80, "key_col": Color(0.8, 0.9, 1.0), "ambient": Color(0.74, 0.82, 0.93), "amb_e": 1.00, "exposure": 1.49, "glow": 1.0,
 		"sat": 1.0, "contrast": 1.08, "sky": 0.0, "moon": 0.0, "fill": 1.76, "fill_col": Color(0.75, 0.88, 1.0),
-		"parts": {"snow": 1.0}},
-	WorldPalette.Z_LAKE: {"key": 1.9, "key_col": Color(0.7, 0.82, 1.0), "ambient": Color(0.65, 0.70, 0.86), "amb_e": 1.00, "exposure": 1.49, "glow": 1.1,
+		"parts": {"dust": 0.4}},
+	WorldPalette.Z_LAKE: {"key": 2.66, "key_col": Color(0.7, 0.82, 1.0), "ambient": Color(0.65, 0.70, 0.86), "amb_e": 1.00, "exposure": 1.49, "glow": 1.1,
 		"sat": 1.12, "contrast": 1.1, "sky": 0.0, "moon": 0.0, "fill": 1.76, "fill_col": Color(0.7, 0.8, 1.0),
-		"parts": {"bubbles": 1.0, "snow": 0.3}},
-	WorldPalette.Z_TORNADO: {"key": 2.0, "key_col": Color(0.9, 0.92, 1.0), "ambient": Color(0.75, 0.77, 0.81), "amb_e": 1.00, "exposure": 1.49, "glow": 0.9,
+		"parts": {"dust": 0.4}},
+	WorldPalette.Z_TORNADO: {"key": 2.80, "key_col": Color(0.9, 0.92, 1.0), "ambient": Color(0.75, 0.77, 0.81), "amb_e": 1.00, "exposure": 1.49, "glow": 0.9,
 		"sat": 0.9, "contrast": 1.1, "sky": 0.0, "moon": 0.0, "fill": 1.76, "fill_col": Color(0.9, 0.92, 1.0),
-		"parts": {"wind": 1.0, "dust": 0.5}},
-	WorldPalette.Z_BONES: {"key": 2.2, "key_col": Color(1.0, 0.85, 0.65), "ambient": Color(0.78, 0.72, 0.67), "amb_e": 1.00, "exposure": 1.62, "glow": 0.95,
+		"parts": {"dust": 0.8}},
+	WorldPalette.Z_BONES: {"key": 3.08, "key_col": Color(1.0, 0.85, 0.65), "ambient": Color(0.78, 0.72, 0.67), "amb_e": 1.00, "exposure": 1.62, "glow": 0.95,
 		"sat": 1.05, "contrast": 1.12, "sky": 0.0, "moon": 0.0, "fill": 1.98, "fill_col": Color(1.0, 0.82, 0.6),
-		"parts": {"dust": 1.0, "embers": 0.2}},
-	WorldPalette.Z_DEEP: {"key": 2.0, "key_col": Color(1.0, 0.75, 0.68), "ambient": Color(0.82, 0.65, 0.66), "amb_e": 1.00, "exposure": 1.56, "glow": 1.0,
+		"parts": {"dust": 1.0}},
+	WorldPalette.Z_DEEP: {"key": 2.80, "key_col": Color(1.0, 0.75, 0.68), "ambient": Color(0.82, 0.65, 0.66), "amb_e": 1.00, "exposure": 1.56, "glow": 1.0,
 		"sat": 1.12, "contrast": 1.12, "sky": 0.0, "moon": 0.0, "fill": 1.87, "fill_col": Color(1.0, 0.7, 0.62),
 		"parts": {"dust": 0.8}},
 }
@@ -61,8 +62,9 @@ var FOG := {
 	WorldPalette.Z_DEEP: [Color(0.9, 0.45, 0.45), 0.055, Color(0.02, 0.004, 0.004), 0.05],
 }
 
-func build(lvl: EELevel, terrain: WorldTerrain, lights: WorldLights) -> void:
+func build(lvl: EELevel, terrain: WorldTerrain, lights: WorldLights, zones: WorldZones) -> void:
 	_terrain = terrain
+	_zones = zones
 	_lights = lights
 	weights.resize(WorldPalette.Z_COUNT)
 	_make_environment()
@@ -81,9 +83,11 @@ func _make_environment() -> void:
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 	environment.sky = sky
 	environment.background_mode = Environment.BG_SKY
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_sky_contribution = 1.0
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_BG
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_agx_contrast = 1.25
 	environment.tonemap_exposure = 1.1
 	environment.tonemap_white = 6.0
 	environment.ssao_enabled = true
@@ -104,16 +108,16 @@ func _make_environment() -> void:
 	environment.glow_normalized = false
 	environment.glow_intensity = 0.9
 	environment.glow_strength = 1.0
-	environment.glow_bloom = 0.04
-	environment.glow_hdr_threshold = 0.9
+	environment.glow_bloom = 0.0
+	environment.glow_hdr_threshold = 1.1
 	environment.glow_hdr_scale = 2.0
-	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
-	environment.set("glow_levels/1", 0.3)
-	environment.set("glow_levels/2", 0.6)
-	environment.set("glow_levels/3", 1.0)
-	environment.set("glow_levels/4", 0.8)
-	environment.set("glow_levels/5", 0.6)
-	environment.set("glow_levels/6", 0.3)
+	environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	environment.set("glow_levels/1", 0.0)
+	environment.set("glow_levels/2", 0.25)
+	environment.set("glow_levels/3", 0.8)
+	environment.set("glow_levels/4", 1.0)
+	environment.set("glow_levels/5", 0.35)
+	environment.set("glow_levels/6", 0.1)
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.0
 	environment.volumetric_fog_albedo = Color(0.7, 0.7, 0.8)
@@ -162,25 +166,27 @@ func _make_fog(lvl: EELevel, terrain: WorldTerrain) -> void:
 	fog_volume = FogVolume.new()
 	fog_volume.name = "ZoneFog"
 	fog_volume.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
-	fog_volume.size = Vector3(W + 40, H + 40, 11.0)
-	fog_volume.position = Vector3(W * 0.5, -H * 0.5, -3.5)
+	fog_volume.size = Vector3(W + 40, H + 40, 16.0)
+	fog_volume.position = Vector3(W * 0.5, -H * 0.5, -6.0)
 	fog_volume.material = fmat
 	add_child(fog_volume)
 
+## Post effect as a full-rect canvas item on its own CanvasLayer (POST_LAYER): hint_screen_texture there
+## is the final 3D frame including all transparent effects.
+const POST_LAYER := -10
+
 func _make_post() -> void:
-	post = MeshInstance3D.new()
-	post.name = "PostFX"
-	var q := QuadMesh.new()
-	q.size = Vector2(1, 1)
-	post.mesh = q
+	post_layer = CanvasLayer.new()
+	post_layer.name = "PostFX"
+	post_layer.layer = POST_LAYER
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/world/post.gdshader")
-	m.render_priority = 127
-	post.material_override = m
-	post.extra_cull_margin = 16384.0
-	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	post.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-	add_child(post)
+	rect.material = m
+	post_layer.add_child(rect)
+	add_child(post_layer)
 
 func _particle_system(pname: String, amount: int, color: Color, energy: float, size: float, gravity: Vector3,
 		vel: float, lifetime: float, turbulence: float) -> GPUParticles3D:
@@ -248,13 +254,9 @@ func _soft_dot() -> Texture2D:
 	_dot_tex = ImageTexture.create_from_image(img)
 	return _dot_tex
 
+## Ambient motes only; zone FX (embers, snow, spores, bubbles, wind debris) belong to the actors layer.
 func _make_particles() -> void:
-	_particle_system("embers", 600, Color(1.0, 0.45, 0.12), 3.0, 0.12, Vector3(0, 0.6, 0), 1.2, 5.0, 1.2)
 	_particle_system("dust", 500, Color(1.0, 0.85, 0.65), 0.35, 0.09, Vector3(0, -0.02, 0), 0.15, 9.0, 0.4)
-	_particle_system("spores", 450, Color(0.8, 0.35, 1.0), 1.8, 0.1, Vector3(0, 0.08, 0), 0.25, 8.0, 0.8)
-	_particle_system("snow", 800, Color(0.85, 0.92, 1.0), 0.9, 0.09, Vector3(0, -0.5, 0), 0.3, 10.0, 0.6)
-	_particle_system("bubbles", 300, Color(0.55, 0.75, 1.0), 0.8, 0.1, Vector3(0, 0.5, 0), 0.4, 6.0, 0.3)
-	_particle_system("wind", 500, Color(0.85, 0.88, 1.0), 0.5, 0.07, Vector3(0.0, 0.0, 0), 3.0, 4.0, 2.0)
 	_particle_system("fireflies", 160, Color(0.75, 1.0, 0.45), 2.2, 0.1, Vector3(0, 0.0, 0), 0.25, 9.0, 0.7)
 
 func _measure(world_pos: Vector3) -> PackedFloat32Array:
@@ -270,7 +272,7 @@ func _measure(world_pos: Vector3) -> PackedFloat32Array:
 			var x := clampi(cx + i * 3, 0, W - 1)
 			var y := clampi(cy + j * 3, 0, H - 1)
 			var fall := 1.0 / (1.0 + (i * i + j * j) * 0.08)
-			w[_terrain.zones[y * W + x]] += fall
+			w[_zones.visual[y * W + x]] += fall
 			total += fall
 	for k in w.size():
 		w[k] /= total
@@ -309,12 +311,16 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 		for pn in pr["parts"]:
 			parts[pn] = parts.get(pn, 0.0) + pr["parts"][pn] * wk
 	environment.ambient_light_color = amb
-	environment.ambient_light_energy = amb_e
+	environment.ambient_light_energy = amb_e * lerpf(1.35, 1.0, weights[WorldPalette.Z_SURFACE])
+	var surf := weights[WorldPalette.Z_SURFACE]
+	sky_mat.set_shader_parameter("cave_amount", clampf(1.0 - surf, 0.0, 1.0))
+	sky_mat.set_shader_parameter("cave_top", Vector3(amb.r, amb.g, amb.b) * 0.9)
+	sky_mat.set_shader_parameter("cave_bottom", Vector3(amb.r, amb.g, amb.b) * 0.08)
 	environment.tonemap_exposure = expo
-	environment.glow_intensity = glow
-	environment.adjustment_saturation = sat
+	environment.glow_intensity = glow * 0.6
+	environment.adjustment_saturation = sat * 1.22
 	environment.adjustment_contrast = con
-	environment.background_energy_multiplier = maxf(skye, 0.02)
+	environment.background_energy_multiplier = 1.0   # (it also scales sky ambient; sky brightness is in the shader)
 	_lights.moon_energy = moon
 	_lights.focus_fill_energy = fill
 	_lights.focus_light.light_color = fill_col

@@ -51,7 +51,8 @@ const BG_COLORS := {
 	645: Color8(6, 6, 6),
 }
 
-## True for foreground ids that are solid AND drawn by the world (doors/gates/coin doors are actors').
+## True for STATIC foreground solids baked into the terrain height field (EE ItemId.isSolid, minus the
+## dynamic key doors/gates, which WorldDoors renders, and the coin door 43, which actors render).
 static func is_world_solid(id: int) -> bool:
 	if id < 9 or id > 97:
 		return false
@@ -62,6 +63,19 @@ static func is_world_solid(id: int) -> bool:
 	return true
 
 ## Non-solid decorations the world renders as props.
+## Key doors (solid until their key is active) and key gates (the inverse).
+static func is_key_door(id: int) -> bool:
+	return id == 23 or id == 24 or id == 25 or id == 26 or id == 28
+
+static func is_gate(id: int) -> bool:
+	return id == 26 or id == 27 or id == 28
+
+static func key_color_of(id: int) -> StringName:
+	match id:
+		23, 26: return &"red"
+		24, 27: return &"green"
+	return &"blue"
+
 static func is_world_deco(id: int) -> bool:
 	return id >= 227 and id <= 254 and id != 241 and id != 242 and id != 243
 
@@ -117,15 +131,17 @@ static func material_for(id: int, x: int, y: int, z: int) -> int:
 			return M_STONE
 		49:
 			return M_STONE
-		87, 22:
+		87:
 			return M_METAL
+		22:
+			return M_WOOD
+		50:
+			return M_OBSIDIAN
 		11, 18, 37, 52:
 			return M_CORRUPT
-		30, 31:
+		30, 31, 32:
 			return M_FIRE
-		32:
-			return M_FIRE
-		44, 33, 50:
+		44, 33:
 			return M_OBSIDIAN
 		34, 35, 36:
 			return M_GRASS

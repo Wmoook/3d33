@@ -1,7 +1,7 @@
 extends SceneTree
 ## Headless smoke test for the game shell: boots main.tscn with the title skipped, runs ~300 sim ticks
 ## of scripted input (right, jump, left, god-mode toggle), prints positions + module status.
-## Run: $G --headless --path . -s res://tests/game_smoke.gd
+## Run: $G --headless --audio-driver Dummy --path . -s res://tests/game_smoke.gd
 
 const GameScript := preload("res://scripts/game/game.gd")
 

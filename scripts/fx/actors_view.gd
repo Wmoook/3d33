@@ -11,6 +11,7 @@ var sim
 var player: FxPlayerBall
 var blocks: FxInteractiveBlocks
 var bursts: FxBursts
+var overlays: FxOverlays
 
 func build(lvl: EELevel, s) -> void:
 	level = lvl
@@ -23,6 +24,10 @@ func build(lvl: EELevel, s) -> void:
 	blocks.bursts = bursts
 	add_child(blocks)
 	blocks.build(lvl, s)
+	overlays = FxOverlays.new()
+	overlays.name = "Overlays"
+	add_child(overlays)
+	overlays.build(lvl)
 	player = FxPlayerBall.new()
 	player.name = "PlayerBall"
 	player.bursts = bursts
@@ -40,6 +45,11 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 		blocks.sim = s
 	player.update_from_sim(world_pos, s, delta)
 	blocks.set_ball_pos(world_pos)
+
+## Shell calls this every frame with the camera's global position (culling / pooled FX focus).
+func update_camera(cam_pos: Vector3) -> void:
+	if overlays:
+		overlays.focus_override = cam_pos
 
 func get_player_node() -> Node3D:
 	return player

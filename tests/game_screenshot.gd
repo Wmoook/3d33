@@ -1,11 +1,12 @@
 extends Node
 ## Windowed screenshot tour of the shell: loading, title, gameplay, minimap, pause, settings.
-## Run: $G --path . res://tests/game_screenshot.tscn   -> user://game_*.png
+## Run: $G --audio-driver Dummy --position 20000,20000 --path . res://tests/game_screenshot.tscn   -> user://game_*.png
 
 const GameScript := preload("res://scripts/game/game.gd")
 var game
 
 func _ready() -> void:
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	GameScript.boot_options = {"no_save": true, "quality": 3}
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
@@ -13,19 +14,26 @@ func _ready() -> void:
 	_shot("loading")
 	await _wait(1.2)
 	_shot("loading2")
-	await game.booted
+	if game.state == 0:  # BOOT
+		await game.booted
 	await _wait(6.0)
 	_shot("title")
 	game.press_start()
 	await _wait(1.0)
 	_shot("intro")
-	await game.ready_to_play
+	while game.state != 3:  # PLAYING
+		await get_tree().process_frame
 	game.input_provider = func(t: int) -> Dictionary:
 		return {"right": t < 160, "jump": t > 60 and t < 80}
 	await _wait(1.2)
 	_shot("play")
 	await _wait(2.0)
 	_shot("play2")
+	game.collision_overlay.visible = true
+	game.collision_overlay.mark_dirty()
+	await _wait(0.3)
+	_shot("collision")
+	game.collision_overlay.visible = false
 	print("[shot] fps during play: ", Engine.get_frames_per_second())
 	game.minimap.set_shown(true)
 	await _wait(0.8)
@@ -65,8 +73,11 @@ func _ready() -> void:
 	game._resume()
 	get_tree().quit()
 
+## Waits real time AND a minimum number of frames (a 4K screenshot readback stalls ~0.5 s, eating timer time).
 func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true, false, true).timeout
+	for i in int(s * 40.0):
+		await get_tree().process_frame
 
 func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()

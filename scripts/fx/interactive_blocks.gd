@@ -6,7 +6,8 @@ extends Node3D
 ## one merged slab mesh per door kind.
 
 const FIELD_SHADER := preload("res://shaders/fx/gravity_field.gdshader")
-const PEBBLE_SHADER := preload("res://shaders/fx/art_pebble.gdshader")
+const GEM_SHADER := preload("res://shaders/fx/key_gem.gdshader")
+const GLYPH_SHADER := preload("res://shaders/fx/grav_glyph.gdshader")
 const GLOW_SHADER := preload("res://shaders/fx/glow_sprite.gdshader")
 const BARRIER_SHADER := preload("res://shaders/fx/barrier.gdshader")
 const PORTAL_SHADER := preload("res://shaders/fx/portal.gdshader")
@@ -18,9 +19,9 @@ const Z_KEYS := -0.3
 const Z_PORTAL := -0.46
 
 const KEY_COLORS := {
-	&"red": Color(1.0, 0.16, 0.14),
-	&"green": Color(0.2, 1.0, 0.3),
-	&"blue": Color(0.2, 0.42, 1.0),
+	&"red": Color("#ff3b3b"),
+	&"green": Color("#3bff5a"),
+	&"blue": Color("#3b7bff"),
 }
 const KEY_IDS := {6: &"red", 7: &"green", 8: &"blue"}
 ## Exact EE minimap colours (assets/ee_ref/minimap_colors.json): these tiles ARE the painting's dither.
@@ -40,6 +41,8 @@ var _flares := {}         # id -> Array of Vector4(x, y, age, strength) (ring bu
 var _key_active := {}     # color -> float (smoothed)
 var _ball_pos := Vector3(-1000, 0, 0)
 var _field_mat: ShaderMaterial
+var _halo_mats := {}
+var _glyph_mats: Array[ShaderMaterial] = []
 var _barriers: Array = [] # [{mat, reps: Array[Vector2i], open: float, target: float, id}]
 var _coins: Array = []    # [{node, tile, collected, t}]
 var _portal_tiles := {}   # Vector2i -> true
@@ -88,6 +91,45 @@ func _build_field() -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	_field_mat = m
+	_build_glyphs()
+
+## Crisp per-tile glyphs: chevrons for arrows 1/2/3 (pointing in the gravity direction), orbs for dots 4.
+func _build_glyphs() -> void:
+	var angles := {1: PI, 2: PI * 0.5, 3: 0.0}
+	for id in [1, 2, 3, 4]:
+		var tiles := lvl.find_all(id)
+		if tiles.is_empty():
+			continue
+		var dot: bool = id == 4
+		var mesh := (FxMeshes.dot_glyph() if dot else FxMeshes.chevron_glyph()).duplicate() as Mesh
+		var gm := ShaderMaterial.new()
+		gm.shader = GLYPH_SHADER
+		if dot:
+			gm.set_shader_parameter("color", Color(1.0, 0.9, 0.62))
+			gm.set_shader_parameter("intensity", 1.1)
+		var om := ShaderMaterial.new()
+		om.shader = GLYPH_SHADER
+		om.set_shader_parameter("outline", 1.0)
+		mesh.surface_set_material(0, gm)
+		mesh.surface_set_material(1, om)
+		_glyph_mats.append(gm)
+		_glyph_mats.append(om)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = mesh
+		mm.instance_count = tiles.size()
+		var ang: float = 0.0 if dot else angles[id]
+		for i in tiles.size():
+			var t := tiles[i]
+			var b := Basis(Vector3(0, 0, 1), ang).scaled(Vector3.ONE * (1.0 if dot else 1.15))
+			mm.set_instance_transform(i, Transform3D(b, EECoords.tile_center(t.x, t.y, 0.12)))
+			mm.set_instance_custom_data(i, Color(_tile_hash(t).x, ang, 1.0 if dot else 0.0, 0))
+		var gi := MultiMeshInstance3D.new()
+		gi.name = "Glyphs_%d" % id
+		gi.multimesh = mm
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(gi)
 
 # ============================================================================ keys
 
@@ -96,34 +138,29 @@ func _build_keys() -> void:
 		var tiles := lvl.find_all(id)
 		if tiles.is_empty():
 			continue
+		var crown: bool = id == 5
+		var col: Color = CROWN_GLOW if crown else KEY_COLORS[KEY_IDS[id]]
 		var m := ShaderMaterial.new()
-		m.shader = PEBBLE_SHADER
-		m.set_shader_parameter("base_color", ART_COLORS[id])
-		if id == 5:
-			m.set_shader_parameter("glow_color", CROWN_GLOW)
-			m.set_shader_parameter("ember", 0.006)
-			m.set_shader_parameter("glint_rate", 1.0)
-		else:
-			m.set_shader_parameter("glow_color", KEY_COLORS[KEY_IDS[id]])
-			m.set_shader_parameter("ember", 0.015)
-		var sph := SphereMesh.new()
-		sph.radius = 0.5
-		sph.height = 1.0
-		sph.radial_segments = 12
-		sph.rings = 6
-		sph.material = m
-		var mi := _multimesh(sph, tiles, Vector3(0, 0, -0.42), 1.0, false, [], 0.0)
-		mi.name = "ArtPebbles_%d" % id
-		# flatten into embedded stones with per-tile size/rotation variety
-		var mm := mi.multimesh
-		for i in tiles.size():
-			var h := _tile_hash(tiles[i])
-			var sc := Vector3(0.62 + h.x * 0.2, 0.55 + h.y * 0.2, 0.34)
-			var b := Basis(Vector3(0, 0, 1), h.z * TAU).scaled(sc)
-			var o := EECoords.tile_center(tiles[i].x, tiles[i].y, -0.42) + Vector3(h.y - 0.5, h.x - 0.5, 0) * 0.14
-			mm.set_instance_transform(i, Transform3D(b, o))
+		m.shader = GEM_SHADER
+		m.set_shader_parameter("gem_color", col)
+		m.set_shader_parameter("glow", 0.9 if crown else 1.15)
+		m.set_shader_parameter("twinkle", 1.0 if crown else 0.0)
+		var gem := FxMeshes.gem().duplicate() as Mesh
+		gem.surface_set_material(0, m)
+		var mi := _multimesh(gem, tiles, Vector3(0, 0, 0.1), 0.26 if crown else 0.4, true, [], 0.0)
+		mi.name = "KeyGems_%d" % id
+		# small soft halo (additive) so dense fields glitter
+		var gm := ShaderMaterial.new()
+		gm.shader = GLOW_SHADER
+		gm.set_shader_parameter("color", col)
+		gm.set_shader_parameter("intensity", 0.12 if crown else 0.22)
+		var quad := QuadMesh.new()
+		quad.size = Vector2(0.9, 0.9)
+		quad.material = gm
+		_multimesh(quad, tiles, Vector3(0, 0, -0.05), 1.0, false).name = "KeyHalo_%d" % id
 		_art_mats[id] = m
 		_flares[id] = []
+		_halo_mats[id] = gm
 	for c in KEY_COLORS:
 		_key_active[c] = 0.0
 
@@ -141,6 +178,8 @@ func set_ball_pos(p: Vector3) -> void:
 	_ball_pos = p
 	if _field_mat:
 		_field_mat.set_shader_parameter("ball_pos", p)
+	for m in _glyph_mats:
+		m.set_shader_parameter("ball_pos", p)
 
 func _multimesh(mesh: Mesh, tiles: Array[Vector2i], offset: Vector3, scale: float, tilt: bool, custom_y := [], jitter := 0.0) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
@@ -513,7 +552,11 @@ func _build_spawn() -> void:
 		var l := OmniLight3D.new()
 		l.light_color = Color(0.6, 0.85, 1.0)
 		l.light_energy = 1.2
-		l.omni_range = 4.0
+		l.omni_range = 3.5
+		l.shadow_enabled = false
+		l.distance_fade_enabled = true
+		l.distance_fade_begin = 40.0
+		l.distance_fade_length = 10.0
 		l.position = Vector3(0, floor_y + 0.4, 0.3)
 		root.add_child(l)
 		var p := _coin_sparkles(true)
@@ -596,6 +639,7 @@ func _process(delta: float) -> void:
 			var active := 1.0 if sim != null and sim.has_method("is_key_active") and sim.is_key_active(color) else 0.0
 			_key_active[color] = move_toward(_key_active[color], active, delta * 4.0)
 			m.set_shader_parameter("active", _key_active[color])
+			_halo_mats[id].set_shader_parameter("active", 0.0)
 	# barriers
 	for b in _barriers:
 		var solid := _query_solid(b.reps[0], b.style)

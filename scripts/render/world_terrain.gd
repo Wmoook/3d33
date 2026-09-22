@@ -13,6 +13,7 @@ var W := 0
 var H := 0
 var material: ShaderMaterial
 var fgcol_img: Image
+var orig_img: Image
 var info_img: Image
 var bgcol_img: Image
 var sdf_img: Image
@@ -21,6 +22,8 @@ var mat_ids := PackedByteArray()
 var zones := PackedByteArray()
 var sky := PackedByteArray()
 var solid := PackedByteArray()
+## Air tiles with a recessed back wall behind them (bg blocks, minimap-coloured air such as the key dither).
+var backwall := PackedByteArray()
 ## Tiny isolated solid islands (<= 3 tiles: sparks, debris, drips) are removed from the height field
 ## and rendered as floating 3D props by WorldDecor (their collision is unchanged). Index -> tile colour.
 var floaters := {}
@@ -42,7 +45,7 @@ func build(lvl: EELevel) -> void:
 		var m := 0
 		if solid[i]:
 			m = 3
-		elif _has_bg(lvl.bg[i]) or pocket[i]:
+		elif backwall[i] or pocket[i]:
 			m = 2
 		mask[i] = m
 	sdf_img = WorldSdfBaker.bake(mask, W, H)
@@ -145,12 +148,76 @@ func _find_floaters(fgb: PackedByteArray, has_fg: PackedByteArray) -> void:
 				sky[i] = 1
 				break
 
+var _mm_ids := {}
+## Non-solid fg ids that paint the minimap (keys 6/7/8, crowns 5, portals...): their tiles get a back wall.
+func _fg_has_minimap_colour(id: int) -> bool:
+	if id <= 0:
+		return false
+	if _mm_ids.is_empty():
+		var j = JSON.parse_string(FileAccess.get_file_as_string("res://assets/ee_ref/minimap_colors.json"))
+		if j is Dictionary:
+			for k in j:
+				if j[k] != null:
+					_mm_ids[int(k)] = true
+		_mm_ids[-1] = true
+	return _mm_ids.has(id)
+
+func _load_minimap() -> Image:
+	var buf := FileAccess.get_file_as_bytes("res://assets/ee_ref/minimap_ee.png")
+	if buf.is_empty():
+		return null
+	var img := Image.new()
+	if img.load_png_from_buffer(buf) != OK:
+		return null
+	img.convert(Image.FORMAT_RGB8)
+	return img
+
+## True sky visibility: open air straight up to the level top (column test), plus air reachable from it
+## that stays within 2 tiles of the local ground line (under canopies / overhangs at the surface).
+## Tunnels and anything underground never see the sky.
+func _compute_sky() -> void:
+	var ground := PackedInt32Array()
+	ground.resize(W)
+	for x in W:
+		var gy := H
+		for y in range(1, H):   # row 0 is the solid world border
+			if solid[y * W + x] or backwall[y * W + x]:
+				gy = y
+				break
+			sky[y * W + x] = 1
+		ground[x] = gy
+	var q := PackedInt32Array()
+	for i in W * H:
+		if sky[i]:
+			q.append(i)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if sky[j] or solid[j] or backwall[j]:
+				continue
+			var lim := 0
+			for dx in range(-8, 9):
+				lim = maxi(lim, ground[clampi(nx + dx, 0, W - 1)])
+			if ny > lim + 2:
+				continue
+			sky[j] = 1
+			q.append(j)
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
 func _classify() -> void:
 	var n := W * H
-	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n)
+	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n); backwall.resize(n)
+	solid.fill(0); sky.fill(0); backwall.fill(0)
 	fgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
 	bgcol_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
 	info_img = Image.create(W, H, false, Image.FORMAT_RGBA8)
@@ -158,54 +225,44 @@ func _classify() -> void:
 	var bgb := PackedByteArray(); bgb.resize(n * 4)
 	var has_fg := PackedByteArray(); has_fg.resize(n)
 	var has_bgc := PackedByteArray(); has_bgc.resize(n)
+	var mm := _load_minimap()
+	var mmd := mm.get_data() if mm else PackedByteArray()
+	var mm_ok := mm != null and mm.get_width() == W and mm.get_height() == H
 	for y in H:
 		for x in W:
 			var i := y * W + x
 			var id: int = level.fg[i]
 			var z := WorldPalette.zone_at(x, y)
 			zones[i] = z
-			if _is_border(x, y):
-				# the obsidian world border mirrors its inner neighbour (rock continues, sky stays open)
-				var ix := clampi(x, 1, W - 2)
-				var iy := clampi(y, 1, H - 2)
-				id = level.fg[iy * W + ix]
+			if _is_border(x, y) and not WorldPalette.is_world_solid(id):
+				id = 44   # the world border is always solid (EE)
+			# THE canonical colour of every tile = the EE minimap (CONTRACTS "canonical art")
+			var mc := Color8(mmd[i * 3], mmd[i * 3 + 1], mmd[i * 3 + 2]) if mm_ok else WorldPalette.base_color(id)
 			if WorldPalette.is_world_solid(id):
 				solid[i] = 1
 				var m := WorldPalette.material_for(id, x, y, z)
 				mat_ids[i] = m
-				var c := WorldPalette.base_color(id)
+				var c := mc
+				if id == 50 or (c.get_luminance() < 0.02 and m != WorldPalette.M_OBSIDIAN):
+					c = Color8(22, 20, 26)
 				fgb[i * 4] = c.r8; fgb[i * 4 + 1] = c.g8; fgb[i * 4 + 2] = c.b8; fgb[i * 4 + 3] = m
 				has_fg[i] = 1
+				continue
 			var b: int = level.bg[i]
-			if _has_bg(b):
-				var bc: Color = WorldPalette.BG_COLORS.get(b, Color8(40, 40, 40))
+			if _has_bg(b) or (mm_ok and _fg_has_minimap_colour(id) and not WorldPalette.is_key_door(id)):
+				# bg block, or minimap-coloured air (key dither, crowns, portals): recessed back wall
+				var bc: Color = mc if mm_ok else WorldPalette.BG_COLORS.get(b, Color8(40, 40, 40))
 				bgb[i * 4] = bc.r8; bgb[i * 4 + 1] = bc.g8; bgb[i * 4 + 2] = bc.b8; bgb[i * 4 + 3] = 255
 				has_bgc[i] = 1
-	# Open night sky: flood fill from the top row through empty (no fg solid, no bg) tiles, upper area only.
-	var q := PackedInt32Array()
-	for x in W:
-		var i0 := x
-		if not solid[i0] and not _has_bg(level.bg[i0]):
-			sky[i0] = 1
-			q.append(i0)
-	var qi := 0
-	while qi < q.size():
-		var i := q[qi]; qi += 1
-		var x := i % W
-		var y := i / W
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: int = x + d.x
-			var ny: int = y + d.y
-			if nx < 0 or ny < 0 or nx >= W or ny >= 24:
-				continue
-			var j := ny * W + nx
-			if sky[j] or solid[j] or _has_bg(level.bg[j]):
-				continue
-			sky[j] = 1
-			q.append(j)
+				backwall[i] = 1
+	_compute_sky()
+	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
-	_find_floaters(fgb, has_fg)
 	_dilate(fgb, has_fg)
+	for i in n:
+		if not has_fg[i]:
+			orig[i * 4] = fgb[i * 4]; orig[i * 4 + 1] = fgb[i * 4 + 1]; orig[i * 4 + 2] = fgb[i * 4 + 2]; orig[i * 4 + 3] = fgb[i * 4 + 3]
+	orig_img = Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, orig)
 	_find_pockets()
 	for i in n:
 		if pocket[i] and not has_bgc[i]:
@@ -222,7 +279,7 @@ func _classify() -> void:
 	var inf := PackedByteArray(); inf.resize(n * 4)
 	for i in n:
 		inf[i * 4] = 255 if solid[i] else 0
-		inf[i * 4 + 1] = 255 if _has_bg(level.bg[i]) else 0
+		inf[i * 4 + 1] = 255 if backwall[i] else 0
 		inf[i * 4 + 2] = zones[i]
 		inf[i * 4 + 3] = 255 if sky[i] else 0
 	info_img.set_data(W, H, false, Image.FORMAT_RGBA8, inf)
@@ -273,6 +330,30 @@ const RELIEF := {
 	WorldPalette.M_BONE: [0.1, 0.9],
 }
 
+## Surface pattern weights per material: [cobbles, domes, grain, strata].
+const PATTERN := {
+	WorldPalette.M_EARTH: [0.35, 0.0, 0.0, 0.8], WorldPalette.M_SAND: [0.1, 0.0, 0.3, 0.8],
+	WorldPalette.M_FOLIAGE: [0.0, 1.0, 0.0, 0.0], WorldPalette.M_GRASS: [0.0, 0.5, 0.0, 0.3],
+	WorldPalette.M_WOOD: [0.0, 0.0, 1.0, 0.0], WorldPalette.M_CLOUD: [0.0, 0.3, 0.6, 0.0],
+	WorldPalette.M_FLESH: [0.0, 0.4, 0.5, 0.0], WorldPalette.M_FIRE: [0.3, 0.3, 0.0, 0.0],
+	WorldPalette.M_SNOW: [0.6, 0.4, 0.0, 0.0], WorldPalette.M_BONE: [0.4, 0.3, 0.3, 0.0],
+	WorldPalette.M_CORRUPT: [0.5, 0.3, 0.0, 0.2],
+	WorldPalette.M_MARBLE: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_GEM: [0.0, 0.0, 0.0, 0.0],
+	WorldPalette.M_GLASS: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_WATER: [0.0, 0.0, 0.0, 0.0],
+	WorldPalette.M_METAL: [0.0, 0.0, 0.0, 0.0], WorldPalette.M_OBSIDIAN: [0.2, 0.0, 0.0, 0.0],
+	WorldPalette.M_ICE: [0.3, 0.3, 0.0, 0.0],
+}
+
+func _pattern_image() -> Image:
+	var b := PackedByteArray(); b.resize(W * H * 4)
+	var data := fgcol_img.get_data()
+	for i in W * H:
+		var m: int = data[i * 4 + 3]
+		var pw: Array = PATTERN.get(m, [1.0, 0.0, 0.0, 0.0])
+		for k in 4:
+			b[i * 4 + k] = int(clampf(pw[k], 0.0, 1.0) * 255.0)
+	return Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, b)
+
 func _relief_image() -> Image:
 	var b := PackedByteArray(); b.resize(W * H * 2)
 	var data := fgcol_img.get_data()   # alpha = material (dilated into air)
@@ -322,8 +403,10 @@ func _make_material() -> void:
 	material.set_shader_parameter("sdf_tex", sdf_tex)
 	material.set_shader_parameter("field_tex", ImageTexture.create_from_image(_field_image()))
 	material.set_shader_parameter("relief_tex", ImageTexture.create_from_image(_relief_image()))
+	material.set_shader_parameter("pattern_tex", ImageTexture.create_from_image(_pattern_image()))
 	material.set_shader_parameter("level_size", Vector2(W, H))
 	material.set_shader_parameter("fgcol_tex", ImageTexture.create_from_image(fgcol_img))
+	material.set_shader_parameter("orig_tex", ImageTexture.create_from_image(orig_img))
 	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))
@@ -349,7 +432,7 @@ func _bake_height() -> void:
 	rect.size = Vector2(vp.size)
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/world/height_bake.gdshader")
-	for k in ["sdf_tex", "field_tex", "relief_tex", "level_size"]:
+	for k in ["sdf_tex", "field_tex", "relief_tex", "pattern_tex", "level_size"]:
 		m.set_shader_parameter(k, material.get_shader_parameter(k))
 	m.set_shader_parameter("margin", float(HMARGIN))
 	rect.material = m
@@ -406,12 +489,21 @@ func _make_chunks() -> void:
 			mi.mesh = mesh
 			mi.material_override = material
 			mi.position = Vector3(x0, -y0, 0.0)
-			mi.custom_aabb = AABB(Vector3(0, -CHUNK, -9.5), Vector3(CHUNK, CHUNK, 11.0))
+			mi.custom_aabb = AABB(Vector3(0, -CHUNK, -14.5), Vector3(CHUNK, CHUNK, 16.0))
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			mi.name = "Chunk_%d_%d" % [x0, y0]
 			add_child(mi)
 			y0 += CHUNK
 		x0 += CHUNK
 
-func set_debug_grid(on: bool) -> void:
-	material.set_shader_parameter("debug_grid", on)
+## 0 off, 1 collision grid overlay, 2 zone map overlay, 3 solidity mask (white = rendered solid).
+func set_debug_mode(mode: int) -> void:
+	material.set_shader_parameter("debug_mode", mode)
+
+func set_visual_map(visual: PackedByteArray) -> void:
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_R8, visual)
+	material.set_shader_parameter("visual_tex", ImageTexture.create_from_image(img))
+
+func set_zone_map(tile_zone: PackedByteArray) -> void:
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_R8, tile_zone)
+	material.set_shader_parameter("zone_tex", ImageTexture.create_from_image(img))

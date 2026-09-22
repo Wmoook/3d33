@@ -31,8 +31,9 @@ void fog() {
 	vec3 q = wp * vec3(0.12, 0.16, 0.25) + vec3(TIME * 0.05, TIME * 0.02, TIME * 0.03);
 	float wisps = vnoise(q) * 0.65 + vnoise(q * 2.3 + 4.0) * 0.35;
 	// thicker towards the back of the slab: depth haze behind the gameplay plane
-	float back = smoothstep(1.5, -6.0, wp.z);
-	float d = fld.a * mix(0.35, 1.0, back) * (0.45 + 1.1 * wisps);
+	// thin in front of / around the gameplay plane (keeps the playfield crisp), thick behind it
+	float back = smoothstep(-0.5, -9.0, wp.z);
+	float d = fld.a * mix(0.08, 1.0, back) * (0.45 + 1.1 * wisps);
 	// low-lying mist pooling in cave floors (em.a)
 	d += em.a * smoothstep(0.55, 0.9, wisps) * 0.6;
 	DENSITY = d * density_scale;

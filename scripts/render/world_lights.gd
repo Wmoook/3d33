@@ -47,6 +47,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	focus_light.light_energy = 0.6
 	focus_light.light_specular = 0.2
 	focus_light.shadow_enabled = false
+	focus_light.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 	focus_light.light_volumetric_fog_energy = 0.0
 	add_child(focus_light)
 
@@ -61,6 +62,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	key_light.shadow_bias = 0.04
 	key_light.shadow_normal_bias = 1.5
 	key_light.light_volumetric_fog_energy = 0.35
+	key_light.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 	add_child(key_light)
 
 	_make_cluster_lights(lvl, terrain)
@@ -150,12 +152,13 @@ func _make_cluster_lights(lvl: EELevel, terrain: WorldTerrain) -> void:
 		l.light_energy = energy
 		l.omni_range = rng
 		l.omni_attenuation = 1.3
-		l.light_specular = 0.6
+		l.light_specular = 0.6 if kind < 3 else 0.15
 		l.light_volumetric_fog_energy = 1.2 if kind == 0 else 0.7
 		l.shadow_enabled = false
 		l.shadow_bias = 0.05
 		l.shadow_normal_bias = 1.0
 		l.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
+		l.shadow_caster_mask = ~WorldBackdrop.OCCLUDER_LAYER & 0xFFFFF
 		add_child(l)
 		cluster_lights.append(l)
 		_base_energy.append(energy)

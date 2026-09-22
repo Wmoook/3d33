@@ -150,11 +150,55 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_add_mm("Floaters", _pebble_mesh(), _mat_prop, float_x, float_c)
 	_add_mm("GlowFloaters", _pebble_mesh(), _mat_glow, glow_x, glow_c, true)
 	_add_mm("Grass", _grass_mesh(), _mat_foliage, grass_x, grass_c)
+	_build_cave_depth(lvl, terrain)
 	_add_mm("Leaves", _leaf_mesh(), _mat_foliage, leaf_x, leaf_c)
 	_add_mm("Rocks", _rock_mesh(), _mat_prop, rock_x, rock_c)
 	_add_mm("Bulbs", _sphere(), _mat_glow, bulb_x, bulb_c, true)
 	_add_mm("Cones", _cone(), _mat_prop, cone_x, cone_c)
 	_add_mm("Boxes", _box(), _mat_prop, box_x, box_c)
+
+## Depth layers for caves: stalactites / stalagmites behind the gameplay plane (z -2.8..-8, parallax
+## mid-layer) and a few big dark near-camera silhouettes (z +3.5..+5.5) hanging from thick ceilings.
+func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
+	var W := lvl.width
+	var H := lvl.height
+	var cols := terrain.fgcol_img
+	var mid_x: Array[Transform3D] = []
+	var mid_c: Array[Color] = []
+	var fg_x: Array[Transform3D] = []
+	var fg_c: Array[Color] = []
+	for y in range(2, H - 2):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if terrain.solid[i] or terrain.sky[i] or terrain.pocket[i]:
+				continue
+			var ceil := terrain.solid[i - W] == 1
+			var floor := terrain.solid[i + W] == 1
+			if not ceil and not floor:
+				continue
+			var c := cols.get_pixel(x, y - 1 if ceil else y + 1).darkened(0.35)
+			if ceil and _rng.randf() < 0.22:
+				var len := _rng.randf_range(0.8, 3.8)
+				var r := _rng.randf_range(0.18, 0.55) * clampf(len / 2.0, 0.6, 1.3)
+				var b := Basis.from_scale(Vector3(r * 2.0, -len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
+				mid_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y + 0.3 - len * 0.5, _rng.randf_range(-8.0, -2.8))))
+				mid_c.append(_vary(c, 0.15))
+			if floor and _rng.randf() < 0.12:
+				var len := _rng.randf_range(0.6, 2.6)
+				var r := _rng.randf_range(0.25, 0.6)
+				var b := Basis.from_scale(Vector3(r * 2.0, len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
+				mid_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y - 1.2 + len * 0.5, _rng.randf_range(-8.0, -2.8))))
+				mid_c.append(_vary(c, 0.15))
+			var thick := ceil and y > 4 and terrain.solid[i - 2 * W] and terrain.solid[i - 3 * W] and terrain.solid[i - 4 * W]
+			if thick and _rng.randf() < 0.02:
+				var len := _rng.randf_range(1.5, 3.5)
+				var r := _rng.randf_range(0.35, 0.75)
+				var b := Basis.from_scale(Vector3(r * 2.0, -len, r * 2.0)).rotated(Vector3.UP, _rng.randf() * TAU)
+				fg_x.append(Transform3D(b, Vector3(x + _rng.randf(), -y + 1.2 - len * 0.5, _rng.randf_range(3.5, 5.5))))
+				fg_c.append(c.darkened(0.8))
+	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
+	var dark := _foliage_mat(0.0, 0.0, 0.0, 0.9)
+	_add_mm("NearSilhouettes", _cone(), dark, fg_x, fg_c)
 
 func _vary(c: Color, a: float) -> Color:
 	var f := 1.0 + _rng.randf_range(-a, a)

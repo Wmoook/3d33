@@ -75,8 +75,8 @@ void fragment() {
 
 	// --- eyes ---
 	vec2 ex = vec2(abs(f.x), f.y);
-	vec2 ec = vec2(0.25, 0.19);
-	vec2 er = vec2(0.105, 0.19) * (1.0 + wide * 0.25);
+	vec2 ec = vec2(0.25, 0.2);
+	vec2 er = vec2(0.12, 0.215) * (1.0 + wide * 0.2);
 	float open_amt = eye_open * (1.0 - squeeze);
 	vec2 e = ex - ec;
 	float d_ell = sd_ellipse(e, vec2(er.x, max(er.y * open_amt, 0.026)));
@@ -104,7 +104,7 @@ void fragment() {
 	float mr = 0.46;
 	float ap = 0.88 + grin * 0.12;
 	vec2 m = vec2(f.x, -(f.y - mc.y));
-	float d_smile = sd_arc(m, vec2(sin(ap), cos(ap)), mr) - 0.062;
+	float d_smile = sd_arc(m, vec2(sin(ap), cos(ap)), mr) - 0.072;
 	float chord_y = mc.y - mr * cos(ap) * 0.98;
 	float d_grin = max(length(f - mc) - mr, f.y - chord_y);
 	float d_mouth = mix(d_smile, min(d_smile, d_grin), grin);
@@ -160,7 +160,7 @@ void fragment() {
 	col *= ao;
 	// thin dark silhouette outline (EE's smiley has a dark ring) so the ball pops on bright and dark backdrops
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
-	float outline = 1.0 - smoothstep(0.16, 0.3, ndv);
+	float outline = 1.0 - smoothstep(0.2, 0.34, ndv);
 	col = mix(col, outline_color, outline * 0.85);
 	ALBEDO = col;
 	ROUGHNESS = mix(rough, 0.18, ink);

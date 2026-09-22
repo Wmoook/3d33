@@ -17,6 +17,13 @@ const SPOTS := {
 	"ice": Vector2(322, 138),
 	"demon": Vector2(315, 165),
 	"torches": Vector2(345, 92),
+	"lake": Vector2(335, 184),
+	"door": Vector2(80, 10),
+	"overview": Vector2(200, 97),
+	"door2": Vector2(262, 40),
+	"tunnel": Vector2(40, 30),
+	"rootworks": Vector2(228, 130),
+	"forge": Vector2(160, 185),
 }
 
 var world: WorldView
@@ -28,6 +35,10 @@ var _grid := false
 var _yaw := 0.0
 var _fps_samples := []
 var _perf := false
+var _mode := 0
+var _suffix := ""
+var _redkey := false
+var sim: EESim
 
 func _ready() -> void:
 	var only := []
@@ -38,6 +49,11 @@ func _ready() -> void:
 			_perf = true
 		elif a == "grid":
 			_grid = true
+			_mode = 1; _suffix = "_grid"
+		elif a == "zones":
+			_mode = 2; _suffix = "_zones"
+		elif a == "redkey":
+			_redkey = true; _suffix += "_open"
 		elif a.begins_with("dist="):
 			_dist = float(a.substr(5))
 		elif a.begins_with("yaw="):
@@ -50,14 +66,19 @@ func _ready() -> void:
 	cam = Camera3D.new()
 	cam.fov = 36.0
 	cam.near = 0.5
-	cam.far = 600.0
+	cam.far = 3000.0
 	add_child(cam)
 	cam.current = true
 	var lvl := EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
 	world = WorldView.new()
 	add_child(world)
 	world.build(lvl)
-	world.set_debug_grid(_grid)
+	sim = EESim.new(lvl)
+	world.set_sim(sim)
+	if _redkey:
+		sim._set_key(&"red", true)
+	world.set_debug_mode(_mode)
+	world.zone_changed.connect(func(z): print("ZONE ", z, " ", world.get_zone_info(z).get("title")))
 	_run()
 
 func _place(tile: Vector2) -> Vector3:
@@ -108,6 +129,7 @@ func _run() -> void:
 		return
 	for nm in _names:
 		var focus := _place(SPOTS[nm])
+		world.update_focus(focus, 10.0)   # snap the atmosphere blend to this spot
 		var t0 := Time.get_ticks_usec()
 		for f in _settle:
 			world.update_focus(focus, 1.0 / 60.0)
@@ -115,7 +137,7 @@ func _run() -> void:
 		var frame_us := float(Time.get_ticks_usec() - t0) / _settle
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
-		var path := "user://world_%s%s.png" % [nm, "_grid" if _grid else ""]
+		var path := "user://world_%s%s.png" % [nm, _suffix]
 		img.save_png(path)
 		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
 	get_tree().quit()

@@ -130,7 +130,7 @@ func _draw() -> void:
 				draw_rect(Rect2(0, size.y - 110 + i * 11, 1100, 110 - i * 11), Color(0, 0, 0, 0.035 * ha))
 			var hy := size.y - 44
 			var x := 44.0
-			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["ESC", "menu"]]:
+			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["F3", "collision"], ["ESC", "menu"]]:
 				x = _hint(Vector2(x, hy), pair[0], pair[1], ha) + 26
 
 func _coin_row(c: Vector2, n: int, total: int, blue: bool, spin: float, pop: float) -> void:

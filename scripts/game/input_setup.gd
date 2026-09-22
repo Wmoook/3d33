@@ -7,7 +7,7 @@ class_name InputSetup
 ##   down  = Down arrow / S
 ##   jump  = Space ONLY            (Up/W is "up", not jump: the sim decides what up does)
 ##   G = toggle god mode, M = toggle minimap, Shift+R = retry run (EE retryRun binding)
-## Extras: Esc pause, +/- and mouse wheel zoom, F11 fullscreen, gamepad (stick/dpad, A jump, Y god, Start pause, Back map).
+## Extras: F3 collision overlay, Esc pause, +/- and mouse wheel zoom, F11 fullscreen, gamepad (stick/dpad, A jump, Y god, Start pause, Back map).
 
 const DEADZONE := 0.45
 
@@ -24,6 +24,7 @@ static func ensure_actions() -> void:
 	_action(&"ee_zoom_in", [_key(KEY_EQUAL), _key(KEY_KP_ADD), _joy_btn(JOY_BUTTON_RIGHT_SHOULDER)])
 	_action(&"ee_zoom_out", [_key(KEY_MINUS), _key(KEY_KP_SUBTRACT), _joy_btn(JOY_BUTTON_LEFT_SHOULDER)])
 	_action(&"ee_fullscreen", [_key(KEY_F11)])
+	_action(&"ee_collision", [_key(KEY_F3)])
 
 static func _action(name: StringName, events: Array) -> void:
 	if InputMap.has_action(name):

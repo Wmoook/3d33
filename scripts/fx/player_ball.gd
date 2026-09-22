@@ -87,6 +87,9 @@ func _ready() -> void:
 	_env_light.omni_attenuation = 2.0
 	_env_light.shadow_enabled = true
 	_env_light.shadow_bias = 0.06
+	# dual-paraboloid = 2 shadow passes instead of 6; the world's moon-occluder curtain (layer 20) never casts
+	_env_light.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	_env_light.shadow_caster_mask = 0xFFFFFFFF & ~(1 << 19)
 	_env_light.light_cull_mask = 0xFFFFF & ~ball_layer
 	_env_light.position = Vector3(0, 0.15, 1.1)
 	add_child(_env_light)
@@ -292,7 +295,7 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	_god = move_toward(_god, 1.0 if god else 0.0, delta * 4.0)
 	_aura.visible = _god > 0.01
 	_halo.visible = not _dying
-	_aura_mat.set_shader_parameter("intensity", _god)
+	_aura_mat.set_shader_parameter("intensity", _god * 0.6)
 	_aura.scale = Vector3.ONE * (0.8 + 0.2 * _god)
 	var has_crown := bool(_sget(sim, "has_crown", false))
 	var has_silver := bool(_sget(sim, "has_silver_crown", false))

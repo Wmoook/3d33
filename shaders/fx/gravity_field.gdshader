@@ -107,7 +107,7 @@ void fragment() {
 		float sparse = nb[k] >= 2.0 ? step(0.9, tile_h) : 1.0;
 		float chev = chevron(lc, d, t + tile_h) * hard[k] * sparse;
 		vec3 c = mix(col_edge, col_core, clamp(st, 0.0, 1.0));
-		col += c * (st * (0.55 + gust * 0.6) + haze) * m + col_core * chev * 0.75;
+		col += c * (st * (0.55 + gust * 0.6) + haze) * m ;  // per-tile chevrons are real geometry now (grav_glyph)
 	}
 	// zero-gravity dots: a calm hovering mote per tile + soft shimmer
 	float wd = soft.a;
@@ -119,7 +119,7 @@ void fragment() {
 		float r = length(lc - bob);
 		float mote = (exp(-r * r * 320.0) * 1.3 + exp(-r * r * 60.0) * 0.12) * hard.a;
 		float shimmer = 0.012 + 0.02 * vnoise(w * 2.0 + vec2(t * 0.3, -t * 0.2));
-		col += col_dot * (mote + shimmer * m);
+		col += col_dot * (mote * 0.3 + shimmer * m);
 	}
 	float near = smoothstep(3.2, 0.3, distance(w, ball_pos.xy));
 	ALBEDO = col * intensity * (1.0 + near * 1.6);

@@ -1,18 +1,13 @@
-shader_type spatial;
-// Full-screen cinematic post: chromatic aberration at the edges, vignette, subtle film grain and a
-// warm/cool split tone. Drawn as a screen quad, last in the transparent pass.
-render_mode unshaded, depth_test_disabled, depth_draw_never, cull_disabled, skip_vertex_transform, fog_disabled;
-
+shader_type canvas_item;
+// Cinematic post on the FINAL composited 3D frame (drawn from a CanvasLayer at layer -10, so it sees
+// every transparent effect and stays under the HUD): edge chromatic aberration, vignette, split tone,
+// fine film grain.
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap, repeat_disable;
-uniform float aberration = 0.0025;
+uniform float aberration = 0.0018;
 uniform float vignette = 0.38;
-uniform float grain = 0.025;
-uniform vec3 shadow_tint = vec3(0.92, 0.97, 1.08);
-uniform vec3 highlight_tint = vec3(1.05, 1.0, 0.94);
-
-void vertex() {
-	POSITION = vec4(VERTEX.xy * 2.0, 1.0, 1.0);
-}
+uniform float grain = 0.018;
+uniform vec3 shadow_tint = vec3(0.94, 0.98, 1.06);
+uniform vec3 highlight_tint = vec3(1.04, 1.0, 0.95);
 
 float rnd(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -29,8 +24,8 @@ void fragment() {
 	col.b = textureLod(screen_tex, uv + off, 0.0).b;
 	float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
 	col *= mix(shadow_tint, highlight_tint, smoothstep(0.05, 0.8, lum));
-	float vig = 1.0 - vignette * smoothstep(0.08, 0.55, r2 * 1.6);
-	col *= vig;
+	c.x *= 1.2;
+	col *= 1.0 - vignette * smoothstep(0.05, 0.42, dot(c, c));
 	col += (rnd(uv * 1000.0 + fract(TIME) * 37.0) - 0.5) * grain * (0.3 + lum);
-	ALBEDO = max(col, vec3(0.0));
+	COLOR = vec4(max(col, vec3(0.0)), 1.0);
 }

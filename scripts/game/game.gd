@@ -45,6 +45,8 @@ var title: TitleScreen
 var loading: LoadingScreen
 var pause_menu: PauseMenu
 var victory: VictoryScreen
+var collision_overlay: Node3D   # CollisionOverlay (preloaded so a stale class cache can't break boot)
+const CollisionOverlayScript := preload("res://scripts/game/collision_overlay.gd")
 var _fade: ColorRect
 
 var _play_ticks := 0
@@ -172,6 +174,10 @@ func _boot() -> void:
 	loading.set_progress(0.9, "Charting the depths")
 	await _frames(1)
 	minimap.build(level, sim)
+	collision_overlay = CollisionOverlayScript.new()
+	collision_overlay.name = "CollisionOverlay"
+	_world_root.add_child(collision_overlay)
+	collision_overlay.setup(level, sim)
 	minimap.full_opened.connect(func():
 		get_tree().paused = true
 		hud.set_state({"visible": false})
@@ -186,6 +192,9 @@ func _boot() -> void:
 	_setup_cinematic()
 	_render_pos = _player_world_pos(1.0)
 	loading.set_progress(0.96, "Lighting the torches")
+	minimap.warmup(6)
+	pause_menu.warmup(6)
+	victory.show_stats({"time": 0.0, "coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "deaths": 0})
 	# Warm up: render a few frames at several places so pipelines compile before the reveal.
 	for k in [Vector2(65, 8), Vector2(140, 100), Vector2(215, 95), Vector2(320, 150), Vector2(150, 185)]:
 		rig.snap_to(Vector3(k.x, -k.y, 0))
@@ -193,6 +202,7 @@ func _boot() -> void:
 		if world.has_method(&"update_focus"):
 			world.update_focus(Vector3(k.x, -k.y, 0), 0.016)
 		await _frames(2)
+	victory.visible = false
 	loading.set_progress(1.0, "Ready")
 	await _frames(8)
 	# let the map-of-the-odyssey finish painting itself in (max ~4 s)
@@ -359,6 +369,10 @@ func _run_time() -> float:
 	return _play_ticks * 0.01
 
 func _update_world_actors(focus: Vector3, delta: float) -> void:
+	if collision_overlay:
+		collision_overlay.update_view(rig.focus, rig.half_extents(), _render_pos)
+	if actors and actors.has_method(&"update_camera") and rig.cam:
+		actors.update_camera(rig.cam.global_position)
 	if world and world.has_method(&"update_focus"):
 		world.update_focus(focus, delta)
 	if actors and actors.has_method(&"update_player"):
@@ -372,12 +386,12 @@ func _player_world_pos(f: float) -> Vector3:
 func _update_zone(delta: float) -> void:
 	var tile := EECoords.world_to_tile(_render_pos)
 	var z: Variant = _zone_key_at(tile)
-	if z != _zone_candidate:
+	if not _same(z, _zone_candidate):
 		_zone_candidate = z
 		_zone_candidate_t = 0.0
 	_zone_candidate_t += delta
 	var first: bool = _zone is int and _zone == -2
-	if z != _zone and (_zone_candidate_t > 0.35 or first):
+	if not _same(z, _zone) and (_zone_candidate_t > 0.35 or first):
 		_zone = z
 		_zone_info = _zone_info_for(z)
 		audio.set_bed(_zone_info.bed, false)
@@ -386,6 +400,9 @@ func _update_zone(delta: float) -> void:
 		if _zone_info.name != "":
 			zone_card.show_zone(_zone_info.name, _zone_info.sub)
 			audio.play("zone", -9.0, 0.0)
+
+static func _same(a: Variant, b: Variant) -> bool:
+	return typeof(a) == typeof(b) and a == b
 
 ## Zone identity: WorldView is the source of truth (get_zone_at / get_zone_info, CONTRACTS "Zones");
 ## the shell's own rectangles (zones.gd) are only a fallback while WorldView lacks them.
@@ -454,6 +471,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				minimap.erase_tile(data.tile)
 		&"door_state", &"god_mode":
 			minimap.refresh_doors()
+			collision_overlay.mark_dirty()
 		&"key":
 			audio.play("key", -3.0, 0.0)
 			hud.flash(UITheme.KEY_COLORS.get(StringName(data.get("color", &"red")), Color.WHITE), 0.35)
@@ -520,6 +538,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_jump_latch = true
 			elif event.is_action_pressed(&"ee_god"):
 				_god_request = true
+			elif event.is_action_pressed(&"ee_collision"):
+				collision_overlay.visible = not collision_overlay.visible
+				collision_overlay.mark_dirty()
+				audio.play("ui_move", -8.0, 0.0)
 			elif event.is_action_pressed(&"ee_minimap"):
 				minimap.toggle()
 				audio.play("ui_move", -8.0, 0.0)
@@ -594,7 +616,8 @@ func _apply_audio_settings() -> void:
 	audio.apply_volumes(settings.master, settings.music, settings.sfx)
 
 func _apply_fullscreen() -> void:
-	if DisplayServer.get_name() == "headless":
+	# Tests keep their off-screen, no-focus window untouched (CONTRACTS test rule).
+	if DisplayServer.get_name() == "headless" or boot_options.get("no_save", false):
 		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if settings.fullscreen else DisplayServer.WINDOW_MODE_MAXIMIZED)
 
@@ -632,6 +655,9 @@ func _apply_quality() -> void:
 	vp.scaling_3d_scale = [0.67, 0.85, 1.0, 1.0][q]
 	vp.msaa_3d = Viewport.MSAA_2X if q >= 2 else Viewport.MSAA_DISABLED
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if q < 3 else Viewport.SCREEN_SPACE_AA_SMAA
+	# Geometry/shadow cost dominates (tests/game_perf.tscn): scale shadow atlas + mesh LOD with the preset.
+	vp.positional_shadow_atlas_size = [2048, 4096, 8192, 8192][q]
+	vp.mesh_lod_threshold = [4.0, 2.5, 1.5, 1.0][q]
 	# Depth of field on the far background at HIGH+, only when the world didn't author camera attributes.
 	var we := _find_world_env_node()
 	var world_attrs: CameraAttributes = we.camera_attributes if we else null

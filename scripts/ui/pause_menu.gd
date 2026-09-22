@@ -47,6 +47,11 @@ var _hint_btn: Button
 var _open := false
 var _a := 0.0
 var _info: Control
+var _warm := 0
+
+## Draw the blur once behind the loading screen so its shader is compiled before the first pause.
+func warmup(frames: int = 3) -> void:
+	_warm = frames
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -135,7 +140,7 @@ func _build_settings() -> void:
 	_hint_btn = _toggle_row(v, "CONTROL HINTS", func(on): setting_changed.emit("show_hints", on))
 	v.add_child(_spacer(6))
 	var ctl := Label.new()
-	ctl.text = "ARROWS / WASD  move      SPACE  jump      G  god mode\nM  map      SHIFT+R  retry      WHEEL / + -  zoom      F11  fullscreen"
+	ctl.text = "ARROWS / WASD  move      SPACE  jump      G  god mode\nM  map      SHIFT+R  retry      WHEEL / + -  zoom      F3  collision      F11  fullscreen"
 	ctl.add_theme_font_size_override(&"font_size", 19)
 	ctl.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.45))
 	v.add_child(ctl)
@@ -234,6 +239,11 @@ func _process(delta: float) -> void:
 	_a = lerpf(_a, 1.0 if _open else 0.0, 1.0 - exp(-12.0 * delta))
 	if not _open and _a < 0.01:
 		visible = false
+	if _warm > 0:
+		_warm -= 1
+		visible = true
+		_bg_mat.set_shader_parameter("amount", 0.02)
+		return
 	_bg_mat.set_shader_parameter("amount", _a)
 	_root.modulate.a = _a
 	_root.position.x = (1.0 - _a) * -40.0

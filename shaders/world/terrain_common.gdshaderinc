@@ -3,7 +3,8 @@
 
 uniform sampler2D sdf_tex : filter_linear, repeat_disable;      // RGBAH: open_fg, open_wall, raw_fg, raw_wall
 uniform sampler2D field_tex : filter_linear, repeat_disable;    // RGBA8 (1 texel / tile): r sky, g cave depth mod, b glow, a surface
-uniform sampler2D relief_tex : filter_linear, repeat_disable;   // RG8 per tile: r = height offset (+0.5), g = relief amplitude
+uniform sampler2D relief_tex : filter_linear, repeat_disable;   // RGBA8 per tile: r = height offset (+0.5), g = relief amplitude, b = pattern weights (see below)
+uniform sampler2D pattern_tex : filter_linear, repeat_disable;  // RGBA8 per tile: r cobbles, g domes, b grain, a strata
 uniform vec2 level_size = vec2(400.0, 200.0);
 
 const float SPT = 8.0;
@@ -115,8 +116,13 @@ const float Z_BG = -1.9;
 
 float cave_depth(vec2 p, vec4 fld) {
 	// deep cave back wall; the sky region is shallower (and discarded in the fragment shader)
-	float n = fbm2(p * 0.11) * 0.9 + ridge(p * 0.045 + 3.0) * 0.7;
-	return mix(-4.6 + n, -3.0, fld.r);
+	// layered rock: warped horizontal strata ledges + a few fractures
+	float sy = p.y * 0.42 + fbm2(p * vec2(0.05, 0.1)) * 2.5;
+	float fs = fract(sy);
+	float ledge = smoothstep(0.0, 0.25, fs) * (1.0 - smoothstep(0.75, 1.0, fs)) ;
+	float n = fbm2(p * 0.11) * 0.8 + ridge(p * 0.045 + 3.0) * 0.6
+		+ ledge * 0.55 + fbm3(p * vec2(0.35, 0.9)) * 0.25 + cobbles(p * 0.4 + fbm2(p * 0.1) * 1.5) * 0.25;
+	return mix(-9.5 + n * 1.8, -3.0, fld.r);   // deep caverns: back wall ~6-12 tiles behind the plane
 }
 
 // Full height field z(p). `s` = sdf sample (open_fg, open_wall, raw_fg, raw_wall).
@@ -128,10 +134,19 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 	vec2 rel = textureLod(relief_tex, p / level_size, 0.0).rg;
 	float hoff = rel.r - 0.5;
 	float amp = rel.g * 2.0;
-	// foliage (amp > 1.6): dense small round leaf clumps instead of cobbles
-	float leafy = smoothstep(1.5, 1.9, amp);
-	float cob = leafy > 0.5 ? domes(p * 2.0 + fbm2(p * 0.8) * 0.4) * 1.2 : cobbles(p * 0.9 + fbm2(p * 0.3) * 0.6);
-	float relief = (cob * mix(0.2, 0.12, leafy) + fbm3(p * 0.9) * 0.07) * min(amp, 1.5) + gnoise(p * 0.23 + 5.0) * 0.12
+	// surface pattern blend per material: cobbles (rock), domes (leaves), grain (wood), strata (soil)
+	vec4 pw = textureLod(pattern_tex, p / level_size, 0.0);
+	float pat = 0.0;
+	if (pw.r > 0.01) pat += pw.r * cobbles(p * 0.9 + fbm2(p * 0.3) * 0.6) * 0.2;
+	if (pw.g > 0.01) pat += pw.g * domes(p * 2.0 + fbm2(p * 0.8) * 0.4) * 0.15;
+	if (pw.b > 0.01) pat += pw.b * (fbm2(vec2(p.x * 2.2, p.y * 0.25)) * 0.5 + 0.5) * 0.18;
+	if (pw.a > 0.01) {
+		float sy = p.y * 1.1 + fbm2(p * vec2(0.12, 0.3)) * 1.6;
+		float fs = fract(sy);
+		pat += pw.a * (smoothstep(0.0, 0.2, fs) * (1.0 - smoothstep(0.7, 1.0, fs)) * 0.13
+			+ cobbles(p * 1.3 + fbm2(p * 0.5)) * 0.07);
+	}
+	float relief = (pat + fbm3(p * 0.9) * 0.07) * min(amp, 1.5) + gnoise(p * 0.23 + 5.0) * 0.12
 		+ hoff * smoothstep(0.0, 0.45, s_front);
 	// (s_front: the main bevel follows the SMOOTH outline so staircases read as slopes; the true grid
 	// footprint keeps a low lip so every solid tile is still covered at the gameplay plane)
@@ -142,7 +157,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		return zf;
 	}
 	// background wall (tiny enclosed pockets sit much shallower: pits in the rock)
-	float zbase = mix(Z_BG, -0.75, fld.g);
+	float zbase = mix(Z_BG, -1.3, fld.g);   // non-solid tiles always stay below z = -0.8
 	float zb = zbase + 0.42 * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10) * smoothstep(0.0, 0.6, sw);
 	float back;
 	if (sw >= 0.0) {
@@ -161,5 +176,7 @@ vec4 field_at(vec2 p) {
 
 float height_at(vec2 p) {
 	vec4 fld = field_at(p);
-	return height_from(p, sdf_bicubic(p), fld);
+	vec4 s = sdf_bicubic(p);
+	s.x = sdf_linear(p).x;   // the cliff sits exactly on the (rounded) collision contour
+	return height_from(p, s, fld);
 }

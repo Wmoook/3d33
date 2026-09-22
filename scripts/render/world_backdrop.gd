@@ -5,6 +5,8 @@ extends Node3D
 
 var ground_top := PackedFloat32Array()   # per tile column: tile y of the ground surface (EE y down)
 var _layers: Array[MeshInstance3D] = []
+## Render layer bit (layer 20) reserved for the moon occluder; every other world light excludes it.
+const OCCLUDER_LAYER := 1 << 19
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	var W := lvl.width
@@ -115,6 +117,7 @@ func _make_moon_occluder(W: int, H: int) -> void:
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	mi.layers = OCCLUDER_LAYER   # only the moon's shadow sees it (see WorldLights shadow_caster_mask)
 	add_child(mi)
 
 func update_focus(world_pos: Vector3, _delta: float) -> void:

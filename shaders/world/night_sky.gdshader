@@ -6,6 +6,11 @@ uniform vec3 horizon = vec3(0.03, 0.035, 0.09);
 uniform vec3 moon_dir = vec3(-0.35, 0.55, -0.75);
 uniform float aurora_strength = 1.0;
 uniform float star_strength = 1.0;
+// Underground the radiance (ambient + reflections) becomes a zone-tinted cave hemisphere: light
+// from above/front, dark below, so ambient still sculpts normals instead of flattening them.
+uniform float cave_amount = 0.0;
+uniform vec3 cave_top = vec3(0.5, 0.4, 0.35);
+uniform vec3 cave_bottom = vec3(0.05, 0.04, 0.04);
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -39,7 +44,9 @@ void sky() {
 	float up = clamp(d.y, -1.0, 1.0);
 	vec3 col = mix(horizon, zenith, pow(clamp(up * 0.5 + 0.5, 0.0, 1.0), 1.6));
 	if (AT_CUBEMAP_PASS) {
-		COLOR = col * 2.0;
+		vec3 night = mix(vec3(0.03, 0.035, 0.07), vec3(0.14, 0.17, 0.3), smoothstep(-0.5, 0.7, d.y));
+		vec3 cave = mix(cave_bottom, cave_top, smoothstep(-0.7, 0.9, d.y + d.z * 0.35 - d.x * 0.15));
+		COLOR = mix(night, cave, cave_amount);
 	} else {
 		// milky band
 		vec3 bandn = normalize(vec3(0.3, 0.8, 0.5));

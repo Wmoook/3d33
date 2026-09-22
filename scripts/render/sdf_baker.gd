@@ -9,8 +9,8 @@ extends RefCounted
 ##   A = raw foreground SDF (exact distance to the tile grid boundary), clamped to +-5.5
 
 const SPT := 8          # samples per tile
-const OPEN_R := 0.42    # convex corner rounding radius (tiles); < 0.5 so 1-wide strips survive
-const CLOSE_R := 0.28   # concave fillet radius (covers <= 0.12 of an air tile at the corner)
+const OPEN_R := 0.24    # convex corner rounding radius (tiles); < 0.5 so 1-wide strips survive
+const CLOSE_R := 0.2    # concave fillet radius (covers <= 0.12 of an air tile at the corner)
 
 const _GLSL_RAW := """
 #version 450
@@ -79,8 +79,9 @@ void main() {
 				int x = clamp(px.x + i, 0, OW - 1);
 				vec2 v = raw[y * OW + x].xy;
 				float d = length(vec2(float(i), float(j))) / spt;
-				if (v.x >= pc.R) mf = min(mf, d);
-				if (v.y >= pc.R) mw = min(mw, d);
+				// sub-texel distance to the eroded set {raw >= R}
+				if (v.x >= pc.R - 0.09) mf = min(mf, d + max(0.0, pc.R - v.x));
+				if (v.y >= pc.R - 0.09) mw = min(mw, d + max(0.0, pc.R - v.y));
 			}
 		}
 		if (do_f) res.x = (mf < 50.0) ? min(r0.x, pc.R - mf) : r0.x;
@@ -116,8 +117,8 @@ void main() {
 				int x = clamp(px.x + i, 0, OW - 1);
 				vec2 v = opn[y * OW + x];
 				float d = length(vec2(float(i), float(j))) / spt;
-				if (v.x <= -pc.R) mf = min(mf, d);
-				if (v.y <= -pc.R) mw = min(mw, d);
+				if (v.x <= -pc.R + 0.09) mf = min(mf, d + max(0.0, v.x + pc.R));
+				if (v.y <= -pc.R + 0.09) mw = min(mw, d + max(0.0, v.y + pc.R));
 			}
 		}
 		if (do_f) res.x = (mf < 50.0) ? max(v0.x, mf - pc.R) : v0.x;

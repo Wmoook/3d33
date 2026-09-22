@@ -225,3 +225,72 @@ static func soft_dot_texture() -> Texture2D:
 		t.height = 64
 		_cache["softdot"] = t
 	return _cache["softdot"]
+
+## Gravity arrow glyph: chevron ">" pointing +x in the XY plane (size ~0.5), slightly extruded.
+## Surface 0 = glowing chevron, surface 1 = dark outline backing (thicker, behind).
+static func chevron_glyph() -> Mesh:
+	return _cached("chevron", func() -> Mesh:
+		var mesh := ArrayMesh.new()
+		for pass_i in 2:
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			var th := 0.075 if pass_i == 0 else 0.13
+			var z := 0.02 if pass_i == 0 else -0.02
+			var ext := 0.2 + (0.035 if pass_i == 1 else 0.0)
+			var tip := Vector2(0.14 + (0.04 if pass_i == 1 else 0.0), 0.0)
+			for sgn in [1.0, -1.0]:
+				var a := Vector2(-0.1 - (0.03 if pass_i == 1 else 0.0), ext * sgn)
+				var dir := (tip - a).normalized()
+				var n := Vector2(-dir.y, dir.x) * th * 0.5
+				var p0 := a + n; var p1 := a - n; var p2 := tip - n; var p3 := tip + n
+				# extra corner fill at the tip
+				var q := [p0, p1, p2, p3]
+				_prism(st, q, z, 0.03)
+			# tip cap
+			st.generate_normals()
+			st.commit(mesh)
+		return mesh)
+
+## Zero-gravity dot glyph: orb + floating ring in the XY plane. Surface 0 glow, surface 1 dark backing disc.
+static func dot_glyph() -> Mesh:
+	return _cached("dotglyph", func() -> Mesh:
+		var mesh := ArrayMesh.new()
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		_sphere(st, Vector3.ZERO, 0.1, 10, 6)
+		var seg := 28
+		for i in seg:
+			var a0 := TAU * i / seg
+			var a1 := TAU * (i + 1) / seg
+			for j in 4:
+				var b0 := TAU * j / 4
+				var b1 := TAU * (j + 1) / 4
+				var R := 0.2
+				var r := 0.016
+				var f := func(a: float, b: float) -> Vector3:
+					var rr := R + cos(b) * r
+					return Vector3(cos(a) * rr, sin(a) * rr, sin(b) * r)
+				_quad(st, f.call(a0, b0), f.call(a1, b0), f.call(a1, b1), f.call(a0, b1))
+		st.generate_normals()
+		st.commit(mesh)
+		var st2 := SurfaceTool.new()
+		st2.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for i in seg:
+			var a0 := TAU * i / seg
+			var a1 := TAU * (i + 1) / seg
+			_tri(st2, Vector3(0, 0, -0.03), Vector3(cos(a0) * 0.25, sin(a0) * 0.25, -0.03), Vector3(cos(a1) * 0.25, sin(a1) * 0.25, -0.03))
+		st2.generate_normals()
+		st2.commit(mesh)
+		return mesh)
+
+static func _prism(st: SurfaceTool, q: Array, z: float, depth: float) -> void:
+	var f: Array[Vector3] = []
+	var b: Array[Vector3] = []
+	for p: Vector2 in q:
+		f.append(Vector3(p.x, p.y, z + depth * 0.5))
+		b.append(Vector3(p.x, p.y, z - depth * 0.5))
+	_quad(st, f[0], f[1], f[2], f[3])
+	_quad(st, b[3], b[2], b[1], b[0])
+	for i in 4:
+		var j := (i + 1) % 4
+		_quad(st, f[j], f[i], b[i], b[j])
