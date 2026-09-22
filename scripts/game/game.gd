@@ -15,7 +15,7 @@ const ODYSSEY_CFG := {"id": "odyssey", "title": "EX ODYSSEY", "eyebrow": "A REIM
 const LEVEL_TEXT := {
 	"odyssey": {"victory_eyebrow": "THE  SOUL  RETURNS", "victory_title": "ODYSSEY COMPLETE", "map_title": "EX CREW ODYSSEY",
 		"map_caption": "the map of the odyssey", "quote": "\"The Devil hath taken thy Soul...  Go, and Return!\""},
-	"forgotten_veil": {"victory_eyebrow": "FORGOTTEN  VEIL", "victory_title": "THE VEIL IS LIFTED", "map_title": "FORGOTTEN VEIL",
+	"forgotten_veil": {"victory_eyebrow": "CROWNED", "victory_title": "THE VEIL IS LIFTED", "victory_sfx": "crowned", "map_title": "FORGOTTEN VEIL",
 		"map_caption": "the map of the forgotten veil", "quote": "\"Sixteen trials. Only the worthy return.\"",
 		"tagline": "Sixteen trials.  Only the worthy return.", "trials": "1",
 		# sunlit exteriors to open the title flyover on (tile space): twin spires + vine bridges, falls, grove canopy
@@ -923,7 +923,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"secret":
 			audio.play("blue_coin", -12.0, 0.0, 0.5)
 		&"complete":
-			audio.play("crown", 0.0, 0.0)
+			audio.play(_level_text("victory_sfx", "crown"), 0.0, 0.0)
 			_victory_delay = 0.0
 			hud.flash(UITheme.GOLD, 0.8)
 			audio.set_bed(_title_bed())
@@ -936,7 +936,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 				rig.override_on = true
 				rig.begin_follow(true)
 				rig.target_zoom = minf(CameraRig.ZOOM_MAX, _victory_zoom * 1.5)
-				_victory_delay = 2.2
+				_victory_delay = 3.2   # camera frames the shrine, then actors' crowning (~1.5 s) before the card
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
 			if _trials():
 				victory.subline = ("All %d trials conquered" % _coins_total) if int(sim.coins) >= _coins_total else ("%d of %d %s conquered" % [int(sim.coins), _coins_total, "trial" if _coins_total == 1 else "trials"])

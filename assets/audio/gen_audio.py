@@ -787,9 +787,39 @@ def gen_trial():
     write(os.path.join(ROOT, "sfx", "trial.wav"), sfx_trial())
 
 
+def sfx_crowned():
+    """Regal crowning fanfare: brassy triplet pickup into a sustained major chord, timpani + cymbal swell."""
+    d = 5.0
+    t = t_axis(d)
+    n = len(t)
+    x = np.zeros((n, 2))
+    def brass(m, st, dur, g, p):
+        s0 = int(st * SR); ln = min(int(dur * SR), n - s0)
+        tt = t[:ln]
+        v = osc_saw(midi(m), tt, (-5, 0, 6)) * 0.55 + osc_saw(midi(m) * 2, tt, (0,)) * 0.15
+        v = sweep_lp(v, 900, 4200, 0.4) * env_adsr(ln, 0.02, 0.12, 0.75, min(0.6, dur * 0.4), 0.75)
+        x[s0:s0 + ln] += pan(v * g, p)
+    for i, st in enumerate([0.0, 0.14, 0.28]):
+        brass(62, st, 0.12, 0.35, -0.3 + i * 0.3)
+    for i, m in enumerate([50, 57, 62, 66, 69, 74]):
+        brass(m, 0.44, 3.2, 0.2, -0.6 + i * 0.24)
+    tim = sine(55 * np.exp(-t * 3), t) * env_exp(n, 0.6, 0.003) * 0.6
+    x[:, 0] += np.roll(tim, int(0.44 * SR)); x[:, 1] += np.roll(tim, int(0.44 * SR))
+    cym = hp(noise(n), 5000) * (np.clip((t - 0.2) / 0.3, 0, 1) * np.exp(-np.clip(t - 0.5, 0, None) / 1.2)) * 0.15
+    x += np.stack([cym, np.roll(cym, 60)], 1)
+    x += np.stack([bell(midi(98), d, 1.8) * 0.12] * 2, 1)
+    return reverb(x, 3.0, 1.2, 0.35, 8000)
+
+
+def gen_crowned():
+    write(os.path.join(ROOT, "sfx", "crowned.wav"), sfx_crowned())
+
+
 if __name__ == "__main__":
     import sys
-    if "--trial" in sys.argv:
+    if "--crowned" in sys.argv:
+        gen_crowned()
+    elif "--trial" in sys.argv:
         gen_trial()
     elif "--veil" in sys.argv:
         gen_veil()   # only the Forgotten Veil set (keeps the Odyssey files byte-identical)
