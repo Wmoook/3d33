@@ -80,11 +80,24 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	InputSetup.ensure_actions()
 	settings.load_settings()
-	settings.persist = not boot_options.get("no_save", false)
 	if boot_options.has("quality"):
 		settings.quality = int(boot_options.quality)
 	if "--skip-title" in OS.get_cmdline_user_args():
 		boot_options["skip_title"] = true
+	# Packaged-build self test: `EX_Odyssey.exe --headless --audio-driver Dummy -- --smoke-test`
+	if "--smoke-test" in OS.get_cmdline_user_args():
+		boot_options["skip_title"] = true
+		boot_options["no_save"] = true
+		get_tree().create_timer(90.0).timeout.connect(func():
+			print("[smoke-test] FAIL: timeout in state ", State.keys()[state])
+			get_tree().quit(1))
+		ready_to_play.connect(func():
+			input_provider = func(t: int) -> Dictionary: return {"right": t < 150, "jump": t > 60 and t < 70}
+			while _play_ticks < 200:
+				await get_tree().physics_frame
+			print("[smoke-test] OK modules=%s ticks=%d pos=(%.1f,%.1f) zone=%s" % [modules, _play_ticks, sim.px, sim.py, _zone_info.name])
+			get_tree().quit(0), CONNECT_ONE_SHOT)
+	settings.persist = not boot_options.get("no_save", false)
 	Engine.max_physics_steps_per_frame = maxi(Engine.max_physics_steps_per_frame, 24)
 	_world_root = Node3D.new()
 	_world_root.name = "World"
