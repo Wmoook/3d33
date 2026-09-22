@@ -1,0 +1,15 @@
+{
+  "id": "odyssey",
+  "order": 0,
+  "title": "EX ODYSSEY",
+  "eyebrow": "A REIMAGINING OF EX CREW ODYSSEY",
+  "subtitle": "The Devil hath taken thy Soul...  Go, and Return!",
+  "credit": "Based on \"EX Crew Odyssey\" - Everybody Edits",
+  "level_file": "res://levels/ex_crew_odyssey.eelvl",
+  "ref_dir": "res://assets/ee_ref",
+  "time_of_day": "night",
+  "route_waypoints": "res://scripts/physics/route_waypoints.json",
+  "attract_replay": "res://scripts/physics/route_descent.eerp",
+  "best_run_file": "user://best.eerp",
+  "notes": "Original level. All Odyssey-specific tuning in world/actors/shell is keyed on id == \"odyssey\" and must stay byte-for-byte equivalent in behaviour."
+}

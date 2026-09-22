@@ -83,7 +83,7 @@ func _parse(raw: PackedByteArray) -> void:
 		_utf(); _p += 1; _utf(); _utf(); _int(); _p += 1; _utf()  # desc, campaign, crew id/name/status, minimap, ownerID
 	var max_x := 0
 	var max_y := 0
-	while _p < _d.size():
+	while _p + 8 <= _d.size():
 		var t := _int()
 		var l := _int()
 		var xs := _ushorts()
@@ -152,6 +152,9 @@ func _utf() -> String:
 
 func _ushorts() -> PackedInt32Array:
 	var n := _uint()
+	if n > _d.size() - _p:   # corrupt / misdetected data: stop instead of looping forever
+		_p = _d.size()
+		return PackedInt32Array()
 	var out := PackedInt32Array()
 	out.resize(n / 2)
 	for i in n / 2:

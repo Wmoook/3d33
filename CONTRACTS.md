@@ -178,3 +178,34 @@ Consequences:
   It runs a mirror project (C:/Users/super/ex-odyssey-test, junctions to the real folders) whose settings make
   the window unfocusable, off-screen and silent. user:// is the same folder, so screenshots land where they did.
   Headless: `$G --headless --audio-driver Dummy --path . -s res://tests/x.gd` (unchanged).
+
+## MULTI-LEVEL (phase 2: "Forgotten Veil")
+The game now hosts several levels. Level 2 is **EXPro Forgotten Veil** (`levels/forgotten_veil.eelvl`,
+400x200, spawn (2,56), finish 121; original raw-deflate file kept in `levels/original/`).
+- Per-level config: `res://levels/config/<id>.json` (id, title, eyebrow, subtitle, credit, level_file, ref_dir,
+  time_of_day, route_waypoints, attract_replay, best_run_file). Loader: `LevelCatalog` (`scripts/core/level_catalog.gd`):
+  `LevelCatalog.all()`, `LevelCatalog.current()`, static `LevelCatalog.current_id` (set by shell's level select).
+- Per-level reference art in `ref_dir` (same file layout as `assets/ee_ref`): `<id>.png` sprites, `blocks.json`,
+  `minimap_colors.json`, `minimap_ee.png` (THE canonical art, EE's exact minimap rule), `minimap_ee_4x.png`,
+  `level_preview_full.png`/`_small.png`. Forgotten Veil: `res://assets/ee_ref_fv`.
+  (Fix applied: EE createBrick calls using ItemId constants are now resolved, so coin door 43 is gold #b88e15
+  on Odyssey's minimap too.)
+- API additions (every module): `set_level_config(cfg: Dictionary)` called BEFORE `build(...)`. Modules must
+  read level paths, zones, colors, special tweaks from the config/ref_dir, never hardcode a level. All existing
+  Odyssey-specific tuning stays but is keyed on `cfg.id == "odyssey"`; Odyssey must look and play exactly as now.
+- ALL the earlier directives apply to every level: minimap = canonical art; readability overrides art;
+  zones + correct backdrops (sky only where connected to the top); no surface top border; EE-exact camera;
+  no ball trail; tests invisible/silent via tools_run_test.sh.
+- PERFORMANCE ETIQUETTE (user: "testing is lagging my PC"): at most ONE Godot process per agent at a time,
+  prefer short headless runs, no long background searches, and kill only your own PIDs.
+
+### Forgotten Veil at a glance (from its minimap)
+Daytime. Pale blue sky (bg 531 pastel blue, 30840 tiles) with painted clouds (540) and snowy mountains (541/542)
+behind; brown earth (45/47/48, 86/88 scifi brown/grey) with dense grey stone temple architecture (9, 42, 46, 86,
+44 black alcoves), a forested mountain top-left (trees, pines), a waterfall into a blue pool (~x130-170, y130-175),
+two huge vine-hung ruined spires in the centre (~x175-215 and ~x230-265), hanging vine bridges, a ruined keep on
+the right plateau, underground temple corridors and water channels along the bottom, a parchment WINNERS scroll
+(top right) and a moss-covered ΣX logo. New mechanics vs Odyssey: purple switch 113 + purple doors 184 / gates 185
+(switch id in extra.rotation), speed boost 115, piano 77 (sound, decoration), magenta key 409 + magenta door 1006,
+pink one-way 1004, coin door 43 (needs 16 coins; there are 16 gold coins 100 and 8 blue 101), invisible gravity
+412/414, 187 portals + 22 invisible portals, halloween blocks 68/69 and 223/224, pirate 272, scifi 85-90.

@@ -1,0 +1,15 @@
+{
+  "id": "forgotten_veil",
+  "order": 1,
+  "title": "FORGOTTEN VEIL",
+  "eyebrow": "A REIMAGINING OF EXPRO FORGOTTEN VEIL",
+  "subtitle": "",
+  "credit": "Based on \"EXPro Forgotten Veil\" - Everybody Edits",
+  "level_file": "res://levels/forgotten_veil.eelvl",
+  "ref_dir": "res://assets/ee_ref_fv",
+  "time_of_day": "day",
+  "route_waypoints": "res://levels/config/forgotten_veil_route.json",
+  "attract_replay": "",
+  "best_run_file": "user://best_forgotten_veil.eerp",
+  "notes": "Daytime overgrown temple ruins. Zones, titles and atmosphere are defined by the world agent (get_zone_at/get_zone_info) from this level's own art."
+}
