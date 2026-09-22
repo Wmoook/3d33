@@ -225,6 +225,9 @@ func _boot() -> void:
 		loading.set_progress(0.0, "Level file missing")
 		return
 	_coins_total = level.find_all(100).size()
+	for id in ([] if str(cfg.get("id", "")) == "odyssey" else [43, 165]):   # FV: the finish needs all coins
+		for t in level.find_all(id):
+			_coin_doors.append([t, int(level.get_extra(t.x, t.y).get("rotation", 0))])
 	_blue_total = level.find_all(101).size()
 	rig.level_size = Vector2(level.width, level.height)
 	loading.set_progress(0.06, "Reading the old map")
@@ -496,6 +499,7 @@ func _stop_attract() -> void:
 	sim.reset()
 	if ghost:
 		ghost.on_reset()
+	_coin_door_seen = false
 	if state == State.TITLE:
 		rig.begin_cinematic()
 		_fade_flash(0.7)
@@ -567,7 +571,12 @@ func _physics_process(_delta: float) -> void:
 ## EE piano (77): plays when the player's center enters a piano tile; note = the block's rotation value
 ## (EE Me.as: `if (pastx != cx || pasty != cy) ... case PIANO: playPianoSound(lookup.getInt(cx, cy))`).
 var _piano_cell := Vector2i(-1, -1)
+var _sim_piano_events := false
+var _coin_doors: Array = []        # [Vector2i tile, int needed] of gold coin doors/gates (43/165)
+var _coin_door_seen := false
 func _check_piano() -> void:
+	if _sim_piano_events:
+		return
 	var c := Vector2i(floori((sim.px + 8.0) / 16.0), floori((sim.py + 8.0) / 16.0))
 	if c == _piano_cell:
 		return
@@ -761,6 +770,13 @@ func _update_hud() -> void:
 		"blue_total": _blue_total, "keys": keys, "time": _run_time(), "god": bool(sim.in_god_mode),
 		"crown": bool(sim.has_crown), "zone": z.name})
 	var he := rig.half_extents()
+	if not _coin_door_seen and not _coin_doors.is_empty():
+		var vr := Rect2(Vector2(rig.focus.x, -rig.focus.y) - he * 0.85, he * 1.7)
+		for cd in _coin_doors:
+			if vr.has_point(Vector2(cd[0]) + Vector2(0.5, 0.5)) and sim.is_tile_solid_now(cd[0].x, cd[0].y):
+				_coin_door_seen = true
+				hud.toast("COIN DOOR", "needs %d gold coins  -  you have %d" % [cd[1], int(sim.coins)], 5.0)
+				break
 	var ptile := Vector2(_render_pos.x, -_render_pos.y)
 	var cf := Vector2(rig.focus.x, -rig.focus.y)
 	minimap.set_player(ptile, Rect2(cf - he, he * 2.0))
@@ -821,6 +837,9 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			audio.play("gravity", -14.0, 0.1)
 		&"checkpoint":
 			audio.play("ui_select", -6.0, 0.0)
+		&"piano":
+			_sim_piano_events = true
+			audio.play_piano(int(data.get("note", 0)))
 		&"secret":
 			audio.play("blue_coin", -12.0, 0.0, 0.5)
 		&"complete":
@@ -959,6 +978,7 @@ func restart_run() -> void:
 		sim.reset()
 	if ghost:
 		ghost.on_reset()
+	_coin_door_seen = false
 	_play_ticks = 0
 	_snap_render = true
 	_key_dur.clear()

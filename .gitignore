@@ -1,3 +1,4 @@
 .godot/
 *.import.bak
 build/
+.tests_visible

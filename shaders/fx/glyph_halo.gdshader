@@ -3,6 +3,7 @@ shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
 
 uniform float hc = 0.0;
+uniform float strength = 0.5;
 varying float v_r;
 
 void vertex() {
@@ -12,5 +13,5 @@ void vertex() {
 
 void fragment() {
 	ALBEDO = vec3(0.02, 0.015, 0.01);
-	ALPHA = (1.0 - smoothstep(0.15, 1.0, v_r)) * 0.5;
+	ALPHA = (1.0 - smoothstep(0.15, 1.0, v_r)) * strength;
 }

@@ -113,10 +113,16 @@ func _build_glyphs() -> void:
 		if dot:
 			gm.set_shader_parameter("color", Color(1.0, 0.88, 0.6))
 			gm.set_shader_parameter("intensity", 0.6)
+			if not odyssey:
+				# daylight: a deeper gold orb on a firmer dark backing so it never washes out on the sky
+				gm.set_shader_parameter("color", Color(1.0, 0.72, 0.22))
+				gm.set_shader_parameter("intensity", 1.1)
 		var om := ShaderMaterial.new()
 		om.shader = preload("res://shaders/fx/glyph_halo.gdshader") if dot else GLYPH_SHADER
 		if not dot:
 			om.set_shader_parameter("outline", 1.0)
+		elif not odyssey:
+			om.set_shader_parameter("strength", 0.85)
 		mesh.surface_set_material(0, gm)
 		mesh.surface_set_material(1, om)
 		_hc_mats.append(gm)
@@ -311,8 +317,11 @@ func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, front: fl
 		l.double_sided = false
 		l.no_depth_test = false
 		l.render_priority = 2
-		var c := _centroid(comp)
-		l.position = Vector3(c.x, c.y, front + 0.12)
+		var cm := Vector2.ZERO
+		for q in comp:
+			cm += Vector2(q) + Vector2(0.5, 0.5)
+		cm /= comp.size()
+		l.position = Vector3(cm.x, -cm.y, front + 0.12)
 		l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(l)
 		out.append(l)

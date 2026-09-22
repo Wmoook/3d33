@@ -94,6 +94,7 @@ func _classify_water(x: int, y: int, i: int) -> void:
 
 ## Any level: blue minimap pixels (not doors/portals) are water. Per tile, the horizontal run of water in
 ## its row vs the vertical run in its column decides pool/channel (wide) or falling stream (tall, narrow).
+## Isolated bits (painted spray, dither) are left alone so no FX squares float over them.
 func _classify_generic(lvl: EELevel) -> void:
 	var wet := PackedByteArray()
 	wet.resize(W * H)
@@ -123,10 +124,10 @@ func _classify_generic(lvl: EELevel) -> void:
 				k = y + 1
 				while k < H and wet[k * W + xx] == 1 and vr < 8:
 					vr += 1; k += 1
-				if x - x0 >= 6 or vr < 4:
+				if x - x0 >= 6:
 					water[i] = 1
-				else:
-					stream[i] = 1
+				elif vr >= 3:
+					stream[i] = 1   # isolated painted splash bits get neither
 
 static func is_open(lvl: EELevel, x: int, y: int) -> bool:
 	var id := lvl.get_fg(x, y)

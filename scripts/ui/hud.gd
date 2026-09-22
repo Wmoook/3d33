@@ -27,6 +27,18 @@ var show_hints := true
 var _vignette: ColorRect
 var _vig_mat: ShaderMaterial
 var _vig_amount := 0.0
+var _toast_title := ""
+var _toast_text := ""
+var _toast_t := -1.0
+var _toast_len := 4.0
+
+## Small one-off message pill (e.g. "COIN DOOR  needs 16 gold coins"), top-center under the god pill.
+func toast(title_s: String, text: String, secs: float = 4.0) -> void:
+	_toast_title = title_s
+	_toast_text = text
+	_toast_len = secs
+	_toast_t = 0.0
+	_pop_gold = 1.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -67,6 +79,10 @@ func _process(delta: float) -> void:
 	_alpha = lerpf(_alpha, 1.0 if _s.visible else 0.0, 1.0 - exp(-5.0 * delta))
 	_vig_amount = maxf(0.0, _vig_amount - delta * 1.2)
 	_vig_mat.set_shader_parameter("amount", _vig_amount)
+	if _toast_t >= 0.0:
+		_toast_t += delta
+		if _toast_t > _toast_len:
+			_toast_t = -1.0
 	for f in _floaters:
 		f.t += delta
 	_floaters = _floaters.filter(func(f): return f.t < 1.1)
@@ -126,6 +142,22 @@ func _draw() -> void:
 		sb.set_border_width_all(2)
 		draw_style_box(sb, pr)
 		draw_string(UITheme.hud(6), Vector2(pr.position.x, pr.position.y + 29), "GOD MODE", HORIZONTAL_ALIGNMENT_CENTER, pw, 22, UITheme.GOLD)
+	# ---- toast (top-center)
+	if _toast_t >= 0.0:
+		var ta := clampf(_toast_t / 0.4, 0.0, 1.0) * clampf((_toast_len - _toast_t) / 0.8, 0.0, 1.0)
+		var tf := UITheme.hud(6)
+		var bf := UITheme.hud_medium(2)
+		var tw := tf.get_string_size(_toast_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
+		var bw := bf.get_string_size(_toast_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
+		var w := tw + bw + 110.0
+		var r := Rect2(W * 0.5 - w * 0.5, 96 + (1.0 - ta) * -10.0, w, 48)
+		var sb := UITheme.glass_box(24, 0.62 * ta)
+		sb.border_color = Color(UITheme.GOLD, 0.5 * ta)
+		sb.set_border_width_all(1)
+		draw_style_box(sb, r)
+		UITheme.draw_coin(self, r.position + Vector2(30, 24), 12.0, cos(_t * 2.2), false, 0.0)
+		draw_string(tf, r.position + Vector2(54, 32), _toast_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(UITheme.GOLD, ta))
+		draw_string(bf, r.position + Vector2(66 + tw, 32), _toast_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 0.96, 0.9, 0.9 * ta))
 	# ---- hints (bottom-left), fade out after a while
 	if show_hints:
 		var ha := clampf(1.0 - (_hint_t - 14.0) / 2.0, 0.0, 1.0) * clampf(_hint_t / 1.5, 0.0, 1.0)

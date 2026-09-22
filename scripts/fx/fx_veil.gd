@@ -98,33 +98,46 @@ func _build_fall(comp: Array[Vector2i]) -> void:
 	var y1 := -1
 	for t in comp:
 		if not rows.has(t.y):
-			rows[t.y] = Vector2i(t.x, t.x)
-		var r: Vector2i = rows[t.y]
-		rows[t.y] = Vector2i(mini(r.x, t.x), maxi(r.y, t.x))
+			rows[t.y] = [] as Array[int]
+		rows[t.y].append(t.x)
 		y0 = mini(y0, t.y)
 		y1 = maxi(y1, t.y)
 	if y1 - y0 < 5:
 		return
 	# the lip: the water feeding the column from above (a channel row) joins the sheet
 	var lip := y0
-	if y0 > 0 and rows.has(y0):
-		var r0: Vector2i = rows[y0]
-		for x in range(r0.x - 1, r0.y + 2):
-			if x >= 0 and x < W and maps.water[(y0 - 1) * W + x] == 1:
+	if y0 > 0:
+		for x in rows[y0]:
+			if maps.water[(y0 - 1) * W + x] == 1:
 				lip = y0 - 1
 				break
-	# per-row extents, gaps filled, smoothed over +-2 rows
+	# follow the column's core down (painted falls are dithered and sprout splash bits sideways): per row keep
+	# the stream tiles within 3 tiles of the running centre, at most ~4 tiles wide; gaps keep the last extent
+	var c := 0.0
+	for x in rows[y0]:
+		c += x + 0.5
+	c /= rows[y0].size()
 	var ext: Array[Vector2] = []
-	var last := Vector2i(rows[y0].x, rows[y0].y)
+	var last := Vector2(c - 1.0, c + 1.0)
 	for y in range(y0, y1 + 1):
 		if rows.has(y):
-			last = rows[y]
-		ext.append(Vector2(last.x, last.y + 1))
+			var lo := INF
+			var hi := -INF
+			for x in rows[y]:
+				if absf(x + 0.5 - c) <= 3.0:
+					lo = minf(lo, float(x))
+					hi = maxf(hi, x + 1.0)
+			if lo < INF:
+				var mid := (lo + hi) * 0.5
+				var half := minf((hi - lo) * 0.5, 2.2)
+				last = Vector2(mid - half, mid + half)
+				c = lerpf(c, mid, 0.35)
+		ext.append(last)
 	var sm: Array[Vector2] = []
 	for i in ext.size():
 		var a := Vector2.ZERO
 		var n := 0
-		for k in range(-2, 3):
+		for k in range(-3, 4):
 			var j := clampi(i + k, 0, ext.size() - 1)
 			a += ext[j]
 			n += 1

@@ -11,15 +11,18 @@ func _ready() -> void:
 	var at := Vector2i(145, 50)
 	var nm := "tunnel"
 	var key := ""
+	var lvl_id := "odyssey"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("at="):
 			var v := a.substr(3).split(",")
 			at = Vector2i(int(v[0]), int(v[1]))
+		elif a.begins_with("level="):
+			lvl_id = a.substr(6)
 		elif a.begins_with("key="):
 			key = a.substr(4)
 		elif a.begins_with("name="):
 			nm = a.substr(5)
-	GameScript.boot_options = {"no_save": true, "quality": 3}
+	GameScript.boot_options = {"no_save": true, "quality": 3, "level": lvl_id}
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
 	if game.state == 0:

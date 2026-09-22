@@ -42,6 +42,13 @@ func _ready() -> void:
 	if pianos.size() > 0:
 		var t: Vector2i = pianos[0]
 		print("[lv] piano (%d,%d) note %s" % [t.x, t.y, game.level.get_extra(t.x, t.y).get("rotation", 0)])
+	# coin door toast: fly to the first gold coin door
+	if game._coin_doors.size() > 0:
+		game._coin_door_seen = false
+		_teleport(Vector2(game._coin_doors[0][0]) + Vector2(-4, 0))
+		await _secs(1.5)
+		_shot("lv_fv_coindoor")
+	print("[lv] flyover keys: %d" % game.rig._cine_keys.size())
 	game._pause()
 	await _secs(0.6)
 	_shot("lv_fv_pause")

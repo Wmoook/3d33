@@ -80,7 +80,7 @@ func _build_switches() -> void:
 		root.add_child(mi)
 		var halo := MeshInstance3D.new()
 		var hq := QuadMesh.new()
-		hq.size = Vector2(2.2, 2.2)
+		hq.size = Vector2(1.6, 1.6)
 		halo.mesh = hq
 		var hm := ShaderMaterial.new()
 		hm.shader = GLOW_SHADER
@@ -205,7 +205,7 @@ func _build_piano() -> void:
 	if tiles.is_empty():
 		return
 	var q := QuadMesh.new()
-	q.size = Vector2(0.56, 0.72)
+	q.size = Vector2(0.64, 0.82)
 	_chime_mat = ShaderMaterial.new()
 	_chime_mat.shader = CHIME_SHADER
 	q.material = _chime_mat
