@@ -1,0 +1,1547 @@
+{
+ "9": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 9,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   106,
+   106,
+   106
+  ],
+  "opaque_frac": 1.0
+ },
+ "12": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 12,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   158,
+   48,
+   76
+  ],
+  "opaque_frac": 1.0
+ },
+ "13": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 13,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   136,
+   158,
+   48
+  ],
+  "opaque_frac": 1.0
+ },
+ "14": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 14,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   59,
+   156,
+   50
+  ],
+  "opaque_frac": 1.0
+ },
+ "15": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 15,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   49,
+   147,
+   157
+  ],
+  "opaque_frac": 1.0
+ },
+ "10": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 10,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   48,
+   74,
+   159
+  ],
+  "opaque_frac": 1.0
+ },
+ "11": {
+  "package": "basic",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 11,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   142,
+   48,
+   155
+  ],
+  "opaque_frac": 1.0
+ },
+ "42": {
+  "package": "beta",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 42,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   96,
+   96,
+   96
+  ],
+  "opaque_frac": 1.0
+ },
+ "40": {
+  "package": "beta",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 40,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   171,
+   59,
+   42
+  ],
+  "opaque_frac": 1.0
+ },
+ "39": {
+  "package": "beta",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 39,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   41,
+   83,
+   171
+  ],
+  "opaque_frac": 1.0
+ },
+ "37": {
+  "package": "beta",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 37,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   164,
+   41,
+   165
+  ],
+  "opaque_frac": 1.0
+ },
+ "20": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 20,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   111,
+   36,
+   41
+  ],
+  "opaque_frac": 1.0
+ },
+ "16": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 16,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   139,
+   62,
+   9
+  ],
+  "opaque_frac": 1.0
+ },
+ "21": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 21,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   111,
+   92,
+   36
+  ],
+  "opaque_frac": 1.0
+ },
+ "19": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 19,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   67,
+   131,
+   18
+  ],
+  "opaque_frac": 1.0
+ },
+ "17": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 17,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   36,
+   111,
+   77
+  ],
+  "opaque_frac": 1.0
+ },
+ "18": {
+  "package": "brick",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 18,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   65,
+   30,
+   94
+  ],
+  "opaque_frac": 1.0
+ },
+ "29": {
+  "package": "metal",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 29,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   162,
+   163,
+   165
+  ],
+  "opaque_frac": 1.0
+ },
+ "30": {
+  "package": "metal",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 30,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   223,
+   121,
+   65
+  ],
+  "opaque_frac": 1.0
+ },
+ "31": {
+  "package": "metal",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 31,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   240,
+   169,
+   39
+  ],
+  "opaque_frac": 1.0
+ },
+ "34": {
+  "package": "grass",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 34,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   70,
+   100,
+   19
+  ],
+  "opaque_frac": 1.0
+ },
+ "35": {
+  "package": "grass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 35,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   69,
+   100,
+   19
+  ],
+  "opaque_frac": 1.0
+ },
+ "36": {
+  "package": "grass",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 36,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   69,
+   99,
+   19
+  ],
+  "opaque_frac": 1.0
+ },
+ "22": {
+  "package": "generic",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 22,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   150,
+   95,
+   19
+  ],
+  "opaque_frac": 0.98
+ },
+ "32": {
+  "package": "generic",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 32,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   207,
+   143,
+   34
+  ],
+  "opaque_frac": 0.98
+ },
+ "33": {
+  "package": "generic",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 33,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   9,
+   9,
+   9
+  ],
+  "opaque_frac": 0.98
+ },
+ "45": {
+  "package": "brickfactorypack",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 45,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   98,
+   80,
+   56
+  ],
+  "opaque_frac": 1.0
+ },
+ "46": {
+  "package": "brickfactorypack",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 46,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   104,
+   104,
+   104
+  ],
+  "opaque_frac": 1.0
+ },
+ "47": {
+  "package": "brickfactorypack",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 47,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   156,
+   124,
+   80
+  ],
+  "opaque_frac": 1.0
+ },
+ "48": {
+  "package": "brickfactorypack",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 48,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   131,
+   69,
+   29
+  ],
+  "opaque_frac": 1.0
+ },
+ "49": {
+  "package": "brickfactorypack",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 49,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   112,
+   124,
+   132
+  ],
+  "opaque_frac": 1.0
+ },
+ "44": {
+  "package": "secret",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 44,
+  "desc": "completely black, makes minimap invisible",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   0,
+   0,
+   0
+  ],
+  "opaque_frac": 1.0
+ },
+ "50": {
+  "package": "secret",
+  "layer": "DECORATION",
+  "sheet": "blocks_special.png",
+  "art": 139,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   7,
+   7,
+   7
+  ],
+  "opaque_frac": 1.0
+ },
+ "51": {
+  "package": "glass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 51,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   235,
+   148,
+   154
+  ],
+  "opaque_frac": 1.0
+ },
+ "55": {
+  "package": "glass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 55,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   136,
+   206,
+   228
+  ],
+  "opaque_frac": 1.0
+ },
+ "54": {
+  "package": "glass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 54,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   125,
+   146,
+   227
+  ],
+  "opaque_frac": 1.0
+ },
+ "53": {
+  "package": "glass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 53,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   157,
+   129,
+   227
+  ],
+  "opaque_frac": 1.0
+ },
+ "52": {
+  "package": "glass",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 52,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   212,
+   130,
+   227
+  ],
+  "opaque_frac": 1.0
+ },
+ "1": {
+  "package": "gravity",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 1,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   119,
+   92,
+   10
+  ],
+  "opaque_frac": 0.18
+ },
+ "2": {
+  "package": "gravity",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 2,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   119,
+   92,
+   10
+  ],
+  "opaque_frac": 0.18
+ },
+ "3": {
+  "package": "gravity",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 3,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   119,
+   92,
+   10
+  ],
+  "opaque_frac": 0.18
+ },
+ "4": {
+  "package": "gravity",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 4,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   76,
+   59,
+   7
+  ],
+  "opaque_frac": 0.05
+ },
+ "6": {
+  "package": "keys",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 6,
+  "desc": "hit to activate key doors and gates for everyone for 6 seconds",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   122,
+   24,
+   24
+  ],
+  "opaque_frac": 0.19
+ },
+ "7": {
+  "package": "keys",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 7,
+  "desc": "hit to activate key doors and gates for everyone for 6 seconds",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   24,
+   122,
+   24
+  ],
+  "opaque_frac": 0.19
+ },
+ "8": {
+  "package": "keys",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 8,
+  "desc": "hit to activate key doors and gates for everyone for 6 seconds",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   24,
+   24,
+   122
+  ],
+  "opaque_frac": 0.19
+ },
+ "26": {
+  "package": "gates",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 26,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   173,
+   39,
+   45
+  ],
+  "opaque_frac": 0.23
+ },
+ "28": {
+  "package": "gates",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 28,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   39,
+   53,
+   173
+  ],
+  "opaque_frac": 0.23
+ },
+ "23": {
+  "package": "doors",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 23,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   156,
+   45,
+   70
+  ],
+  "opaque_frac": 1.0
+ },
+ "24": {
+  "package": "doors",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 24,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   55,
+   156,
+   47
+  ],
+  "opaque_frac": 1.0
+ },
+ "25": {
+  "package": "doors",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 25,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   45,
+   68,
+   156
+  ],
+  "opaque_frac": 1.0
+ },
+ "100": {
+  "package": "coins",
+  "layer": "ABOVE",
+  "sheet": "blocks_special.png",
+  "art": 0,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   173,
+   101,
+   0
+  ],
+  "opaque_frac": 0.45
+ },
+ "101": {
+  "package": "coins",
+  "layer": "ABOVE",
+  "sheet": "blocks_special.png",
+  "art": 13,
+  "desc": "",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   0,
+   72,
+   173
+  ],
+  "opaque_frac": 0.45
+ },
+ "255": {
+  "package": "tools",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 127,
+  "desc": "players spawn here",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   200,
+   200,
+   200
+  ],
+  "opaque_frac": 0.25
+ },
+ "5": {
+  "package": "crown",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 5,
+  "desc": "awards the player a golden crown",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   127,
+   101,
+   32
+  ],
+  "opaque_frac": 0.38
+ },
+ "242": {
+  "package": "portal",
+  "layer": "DECORATION",
+  "sheet": "blocks_special.png",
+  "art": 52,
+  "desc": "teleports the player to another portal",
+  "tab": "ACTION",
+  "tags": [],
+  "avg_rgb": [
+   123,
+   167,
+   200
+  ],
+  "opaque_frac": 1.0
+ },
+ "249": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 121,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   140,
+   164,
+   191
+  ],
+  "opaque_frac": 0.22
+ },
+ "250": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 122,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   140,
+   164,
+   191
+  ],
+  "opaque_frac": 0.22
+ },
+ "251": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 123,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   55,
+   124,
+   36
+  ],
+  "opaque_frac": 0.39
+ },
+ "252": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 124,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   92,
+   138,
+   70
+  ],
+  "opaque_frac": 0.39
+ },
+ "253": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 125,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   138,
+   110,
+   76
+  ],
+  "opaque_frac": 0.36
+ },
+ "254": {
+  "package": "christmas2010",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 126,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   126,
+   76,
+   18
+  ],
+  "opaque_frac": 0.36
+ },
+ "244": {
+  "package": "newyear2010",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 116,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   151,
+   136,
+   159
+  ],
+  "opaque_frac": 0.26
+ },
+ "245": {
+  "package": "newyear2010",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 117,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   159,
+   150,
+   136
+  ],
+  "opaque_frac": 0.26
+ },
+ "246": {
+  "package": "newyear2010",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 118,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   129,
+   141,
+   153
+  ],
+  "opaque_frac": 0.26
+ },
+ "247": {
+  "package": "newyear2010",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 119,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   154,
+   130,
+   134
+  ],
+  "opaque_frac": 0.26
+ },
+ "248": {
+  "package": "newyear2010",
+  "layer": "DECORATION",
+  "sheet": "blocks_deco.png",
+  "art": 120,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   133,
+   154,
+   131
+  ],
+  "opaque_frac": 0.26
+ },
+ "233": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 105,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   70,
+   175,
+   32
+  ],
+  "opaque_frac": 0.22
+ },
+ "234": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 106,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   71,
+   175,
+   33
+  ],
+  "opaque_frac": 0.29
+ },
+ "235": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 107,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   71,
+   175,
+   33
+  ],
+  "opaque_frac": 0.23
+ },
+ "236": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 108,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   63,
+   128,
+   31
+  ],
+  "opaque_frac": 0.56
+ },
+ "237": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 109,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   63,
+   128,
+   31
+  ],
+  "opaque_frac": 0.62
+ },
+ "238": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 110,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   66,
+   131,
+   30
+  ],
+  "opaque_frac": 0.56
+ },
+ "239": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 111,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   134,
+   157,
+   31
+  ],
+  "opaque_frac": 0.33
+ },
+ "240": {
+  "package": "spring2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 112,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   60,
+   135,
+   23
+  ],
+  "opaque_frac": 0.41
+ },
+ "500": {
+  "package": "basicbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 0,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   53,
+   53,
+   53
+  ],
+  "opaque_frac": 1.0
+ },
+ "645": {
+  "package": "basicbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 139,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   6,
+   6,
+   6
+  ],
+  "opaque_frac": 1.0
+ },
+ "501": {
+  "package": "basicbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 1,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   26,
+   42,
+   85
+  ],
+  "opaque_frac": 1.0
+ },
+ "511": {
+  "package": "brickbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 11,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   56,
+   18,
+   21
+  ],
+  "opaque_frac": 1.0
+ },
+ "507": {
+  "package": "brickbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 7,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   69,
+   30,
+   4
+  ],
+  "opaque_frac": 1.0
+ },
+ "512": {
+  "package": "brickbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 12,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   56,
+   46,
+   18
+  ],
+  "opaque_frac": 1.0
+ },
+ "509": {
+  "package": "brickbg",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 9,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   38,
+   17,
+   55
+  ],
+  "opaque_frac": 1.0
+ },
+ "513": {
+  "package": "checker",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 13,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   60,
+   60,
+   60
+  ],
+  "opaque_frac": 1.0
+ },
+ "517": {
+  "package": "checker",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 17,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   82,
+   90,
+   30
+  ],
+  "opaque_frac": 1.0
+ },
+ "519": {
+  "package": "checker",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 19,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   36,
+   103,
+   100
+  ],
+  "opaque_frac": 1.0
+ },
+ "514": {
+  "package": "checker",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 14,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   32,
+   54,
+   95
+  ],
+  "opaque_frac": 1.0
+ },
+ "520": {
+  "package": "dark",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 20,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   53,
+   53,
+   53
+  ],
+  "opaque_frac": 1.0
+ },
+ "523": {
+  "package": "dark",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 23,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   81,
+   12,
+   30
+  ],
+  "opaque_frac": 1.0
+ },
+ "521": {
+  "package": "dark",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 21,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   28,
+   50,
+   93
+  ],
+  "opaque_frac": 1.0
+ },
+ "527": {
+  "package": "pastel",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 27,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   252,
+   236,
+   168
+  ],
+  "opaque_frac": 1.0
+ },
+ "531": {
+  "package": "pastel",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 31,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   168,
+   192,
+   252
+  ],
+  "opaque_frac": 1.0
+ },
+ "538": {
+  "package": "canvas",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 38,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   61,
+   64,
+   73
+  ],
+  "opaque_frac": 1.0
+ },
+ "533": {
+  "package": "canvas",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 33,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   138,
+   61,
+   33
+  ],
+  "opaque_frac": 1.0
+ },
+ "534": {
+  "package": "canvas",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 34,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   106,
+   96,
+   65
+  ],
+  "opaque_frac": 1.0
+ },
+ "535": {
+  "package": "canvas",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 35,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   134,
+   110,
+   37
+  ],
+  "opaque_frac": 1.0
+ },
+ "62": {
+  "package": "candy",
+  "layer": "DECORATION",
+  "sheet": "blocks.png",
+  "art": 62,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   217,
+   35,
+   56
+  ],
+  "opaque_frac": 0.48
+ },
+ "227": {
+  "package": "candy",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 99,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   238,
+   239,
+   242
+  ],
+  "opaque_frac": 0.17
+ },
+ "228": {
+  "package": "summer2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 100,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   96,
+   111,
+   100
+  ],
+  "opaque_frac": 0.34
+ },
+ "229": {
+  "package": "summer2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 101,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   215,
+   178,
+   115
+  ],
+  "opaque_frac": 0.25
+ },
+ "230": {
+  "package": "summer2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 102,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   218,
+   188,
+   134
+  ],
+  "opaque_frac": 0.25
+ },
+ "231": {
+  "package": "summer2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 103,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   116,
+   132,
+   132
+  ],
+  "opaque_frac": 0.21
+ },
+ "232": {
+  "package": "summer2011",
+  "layer": "ABOVE",
+  "sheet": "blocks_deco.png",
+  "art": 104,
+  "desc": "",
+  "tab": "DECORATIVE",
+  "tags": [],
+  "avg_rgb": [
+   139,
+   129,
+   23
+  ],
+  "opaque_frac": 0.37
+ },
+ "542": {
+  "package": "halloween2011",
+  "layer": "BACKGROUND",
+  "sheet": "blocks_bg.png",
+  "art": 42,
+  "desc": "",
+  "tab": "BACKGROUND",
+  "tags": [],
+  "avg_rgb": [
+   41,
+   50,
+   53
+  ],
+  "opaque_frac": 1.0
+ },
+ "87": {
+  "package": "scifi",
+  "layer": "FORGROUND",
+  "sheet": "blocks.png",
+  "art": 87,
+  "desc": "",
+  "tab": "BLOCK",
+  "tags": [],
+  "avg_rgb": [
+   176,
+   176,
+   176
+  ],
+  "opaque_frac": 1.0
+ }
+}
