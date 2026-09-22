@@ -454,20 +454,28 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 	n2.frequency = 0.02
 	n2.seed = 11
 	var S := 256
+	var vals := PackedFloat32Array()
+	vals.resize(S * S)
+	for y in S:
+		for x in S:
+			vals[y * S + x] = n.get_noise_2d(x, y) + (n2.get_noise_2d(x, y)) * 0.25
+	# thresholds by percentile, so ~35% of the pattern is light holes whatever the noise range is
+	var sorted := vals.duplicate()
+	sorted.sort()
+	var t0 := sorted[int(S * S * 0.30)]
+	var t1 := sorted[int(S * S * 0.42)]
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
 	for y in S:
 		for x in S:
 			var u := Vector2(x - S * 0.5, y - S * 0.5) / (S * 0.5)
 			var edge := clampf(1.0 - u.length(), 0.0, 1.0)
 			edge = edge * edge * (3.0 - 2.0 * edge)
-			var c := n.get_noise_2d(x, y) * 0.5 + 0.5          # low near cell centres (light holes)
-			var m := n2.get_noise_2d(x, y) * 0.5 + 0.5
-			var hole := 1.0 - smoothstep(0.2, 0.28, c + (m - 0.5) * 0.25)
+			var hole := 1.0 - smoothstep(t0, t1, vals[y * S + x])
 			if flecks:
 				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
 				img.set_pixel(x, y, Color(1.0 * a, 0.85 * a, 0.55 * a, a))
 			else:
-				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.85))
+				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.55))
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 

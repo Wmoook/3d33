@@ -68,9 +68,6 @@ func _ready() -> void:
 		if s[0] == "switch_on":
 			game.sim._switches[1] = true
 			game.sim.sim_event.emit(&"switch", {"kind": &"purple", "id": 1, "on": true})
-		if game.actors.veil:
-			for dp in game.actors.veil._dapples:
-				dp.node.set_meta("off", s[0] == "grove_nodapple")
 		await _wait(2.0)
 		if game.actors.veil and s[0] == "grove_nodapple":
 			for dp in game.actors.veil._dapples:
