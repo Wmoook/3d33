@@ -56,6 +56,10 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 	if s != null:
 		sim = s
 		blocks.sim = s
+	if overlays:
+		var t := EECoords.world_to_tile(world_pos)
+		var m := overlays.maps
+		player.underwater = t.x >= 0 and t.y >= 0 and t.x < m.W and t.y < m.H and m.water[t.y * m.W + t.x] == 1
 	player.update_from_sim(world_pos, s, delta)
 	blocks.set_ball_pos(world_pos)
 	if life:

@@ -130,6 +130,21 @@ Added events: `complete` {tile, ticks} (121), `secret` {tile}, `god_mode` {on}.
 Per `ItemId.isSolid`, **22, 32, 33, 34, 36 and 50 are solid** (9-97), and **62 is a one-way platform**
 (solid from above). 44 is solid. 227-255, 121, 100/101, 5-8 and 242/381 are not solid.
 
+## Keys vs. a player standing in a door or gate (tested)
+- **Expiry while inside a red door:** when the key's 5 s are up and turning it off would trap the
+  player, `switchKey(false)` is reverted. That revert calls `setKey(true)`, which **restarts the key
+  timer**. The off-switch is queued and retried every frame. So the doors stay open as long as the
+  player's box overlaps any door of that colour, and the player can move around inside and through
+  them. The key turns off, and `key_expired` plus `door_state{open:false}` fire, **in the same tick
+  the box has fully left the door tiles**. It never happens earlier, even if the box straddles two
+  door tiles.
+- **Renderer API during that hold:** `is_key_active()` returns true, `is_tile_solid_now(door)`
+  returns false, `key_expiry_pending()` returns true, and `key_time_left()` returns 0.
+- **Pickup while inside a gate:** same rule in reverse. The key stays inactive and the gate stays
+  open until the box leaves the gate. The key then activates in that tick, with the timer from the
+  original pickup. EE quirk: if the player stays in the gate for 5 s or more, the queued activation
+  is dropped (`setKey` with `fromqueue` returns early).
+
 ## Replays, snapshots, determinism
 - `EESim.snapshot() -> Array` / `restore(s)`: the full mutable state. You can restore any snapshot any
   number of times, in any order, and continue bit-identically. `state_hash()` hashes the whole

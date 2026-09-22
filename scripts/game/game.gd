@@ -296,6 +296,7 @@ func _route_keys() -> Array:
 	if not (d is Array) or d.is_empty():
 		return []
 	var pts: Array[Vector2] = []
+	var notes: Array[bool] = []
 	var max_c := 0.0
 	for w in d:
 		var v := Vector2.INF
@@ -311,20 +312,33 @@ func _route_keys() -> Array:
 				v = Vector2(float(w.px), float(w.py)) / 16.0
 		if v != Vector2.INF:
 			pts.append(v)
+			notes.append(w is Dictionary and str(w.get("note", "")) != "")
 			max_c = maxf(max_c, maxf(v.x, v.y))
 	if pts.size() < 2:
 		return []
 	if max_c > float(maxi(level.width, level.height)) * 1.5:  # pixels -> tiles
 		for i in pts.size():
 			pts[i] = pts[i] / 16.0
-	var keys := [{"pos": pts[0], "zoom": 44.0}]
+	# Portal jumps (physics marks each segment's first point with a note; they're also far apart) become
+	# camera CUTS instead of a flight across the map.
+	var keys := []
 	var acc := 0.0
-	for i in range(1, pts.size()):
-		acc += pts[i].distance_to(pts[i - 1])
-		if acc >= 24.0:
+	for i in pts.size():
+		var jump := i > 0 and pts[i].distance_to(pts[i - 1]) > 30.0 and (notes[i] or pts[i].distance_to(pts[i - 1]) > 60.0)
+		if i == 0 or jump:
+			if i > 0 and keys[-1].pos != pts[i - 1]:
+				keys.append({"pos": pts[i - 1], "zoom": _route_zoom(keys.size())})
+			keys.append({"pos": pts[i], "zoom": _route_zoom(keys.size()), "cut": i > 0})
 			acc = 0.0
-			keys.append({"pos": pts[i], "zoom": 44.0 + 10.0 * sin(keys.size() * 0.9)})
+			continue
+		acc += pts[i].distance_to(pts[i - 1])
+		if acc >= 24.0 or i == pts.size() - 1:
+			acc = 0.0
+			keys.append({"pos": pts[i], "zoom": _route_zoom(keys.size())})
 	return keys
+
+func _route_zoom(k: int) -> float:
+	return 44.0 + 10.0 * sin(k * 0.9)
 
 func _setup_cinematic_default() -> void:
 	# Tile-space keyframes (y down) touring the painting: surface -> sign -> inferno -> corruption ->

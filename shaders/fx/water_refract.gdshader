@@ -29,8 +29,6 @@ void fragment() {
 	vec3 c = textureLod(screen_tex, uv, 0.0).rgb;
 	float absorb = 1.0 - exp(-v_depth * 0.16);
 	c = mix(c * mix(tint, vec3(0.9, 0.97, 1.0), clear), deep, absorb * 0.65 * (1.0 - clear * 0.92));
-	// faint cool outline hugging the ball
-	c += vec3(0.55, 0.85, 1.0) * exp(-pow((bd - 0.52) * 22.0, 2.0)) * 0.35;
 	ALBEDO = c;
 	ALPHA = 1.0;
 }

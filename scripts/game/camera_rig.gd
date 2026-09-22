@@ -8,6 +8,8 @@ extends Node3D
 
 enum Mode { FOLLOW, CINEMATIC }
 
+signal cinematic_cut   # the flyover jumped (portal cut); the shell dips to black
+
 const FOV_V := 34.0                  # vertical fov (degrees); moderate perspective = readable parallax
 const BASE_PITCH := -5.0             # look slightly down on the diorama
 const MAX_YAW := 3.2                 # degrees of parallax tilt at full look-ahead
@@ -160,6 +162,22 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 	var p1: Dictionary = _cine_keys[i]
 	var p2: Dictionary = _cine_keys[(i + 1) % n]
 	var p3: Dictionary = _cine_keys[(i + 2) % n]
+	# Camera cuts (portal jumps / loop wrap): never fly across the map; jump to the next key instead.
+	var wrap_cut := (i + 1) % n == 0 and p1.pos.distance_to(p2.pos) > 30.0
+	if p2.get("cut", false) or wrap_cut:
+		_cine_s = floorf(_cine_s) + 1.0
+		cinematic_cut.emit()
+		i = int(_cine_s) % n
+		f = 0.0
+		p0 = _cine_keys[i]
+		p1 = _cine_keys[i]
+		p2 = _cine_keys[(i + 1) % n]
+		p3 = _cine_keys[(i + 2) % n]
+		_tilt = Vector2.ZERO
+	if p1.get("cut", false):
+		p0 = p1
+	if p3.get("cut", false):
+		p3 = p2
 	var pos := _catmull(p0.pos, p1.pos, p2.pos, p3.pos, f)
 	zoom = lerpf(p1.zoom, p2.zoom, f * f * (3.0 - 2.0 * f))
 	target_zoom = zoom

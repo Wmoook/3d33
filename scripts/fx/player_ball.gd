@@ -167,6 +167,52 @@ func _ready() -> void:
 		_trail = null
 		bursts = null
 
+## Underwater the world's water mass sits in front of the ball, so a see-through copy (depth test off,
+## cool-tinted) is drawn on top while the ball's centre tile is lake water. ActorsView sets `underwater`.
+var underwater := false
+var _xray: MeshInstance3D
+var _xray_k := 0.0
+static var _xray_sh: Shader
+
+static func _xray_shader() -> Shader:
+	if _xray_sh == null:
+		var code := BALL_SHADER.code
+		code = code.replace("render_mode blend_mix, depth_draw_opaque,", "render_mode blend_mix, depth_test_disabled, depth_draw_never,")
+		code = code.replace("uniform float dissolve = 0.0;", "uniform float dissolve = 0.0;
+uniform float xray_alpha = 0.0;")
+		code = code.replace("	ALBEDO = col;", "	col = mix(col, col * vec3(0.72, 0.88, 1.0), 0.45);
+	ALBEDO = col;")
+		code = code.replace("	EMISSION = emis;", "	float edge = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	EMISSION = emis + vec3(0.45, 0.75, 1.0) * edge * 0.8 + col * 0.12;
+	ALPHA = xray_alpha;")
+		_xray_sh = Shader.new()
+		_xray_sh.code = code
+	return _xray_sh
+
+func _update_xray(delta: float) -> void:
+	if ghost:
+		return
+	_xray_k = move_toward(_xray_k, 1.0 if underwater and not _dying else 0.0, delta * 6.0)
+	if _xray_k <= 0.001:
+		if _xray:
+			_xray.visible = false
+		return
+	if _xray == null:
+		_xray = MeshInstance3D.new()
+		_xray.mesh = _body.mesh
+		var m := ShaderMaterial.new()
+		m.shader = _xray_shader()
+		m.render_priority = 100
+		_xray.material_override = m
+		_xray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_xray.layers = ball_layer
+		_body.add_child(_xray)
+	_xray.visible = true
+	var xm := _xray.material_override as ShaderMaterial
+	for k in ["look", "eye_open", "squeeze", "happy", "wide", "dead", "grin", "gasp", "pattern_angle"]:
+		xm.set_shader_parameter(k, _mat.get_shader_parameter(k))
+	xm.set_shader_parameter("xray_alpha", 0.9 * _xray_k)
+
 func set_shadows(on: bool) -> void:
 	shadows_default = on
 	if _env_light:
@@ -371,6 +417,7 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	elif not _dying:
 		_mat.set_shader_parameter("dissolve", 0.0)
 		_frame.scale = Vector3.ONE
+	_update_xray(delta)
 	_glow_flash = maxf(_glow_flash - delta * 3.5, 0.0)
 	_mat.set_shader_parameter("glow", _glow_flash + (1.0 - _materialize) * 1.5)
 	if _env_light:

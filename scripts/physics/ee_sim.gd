@@ -319,16 +319,22 @@ func is_key_active(color: StringName) -> bool:
 
 ## Seconds until the key expires (EE keys last 5 s: (offset - timer)/30 >= 5).
 func key_time_left(color: StringName) -> float:
-	if not _keys.get(color, false):
+	if not _keys.get(color, false) or key_expiry_pending(color):
 		return 0.0
 	return maxf(0.0, 5.0 - (_offset - float(_keys_timer[color])) / 30.0)
 
 
-## True while a key's 5 s are over but EE keeps it active because turning it off would trap the
-## player inside a door of that colour (PlayState.switchKey/keysquene). It turns off on the first
-## tick after the player has fully left the door tiles. key_time_left() is 0 meanwhile.
+## True while a key's time is up but EE keeps it active because turning it off would trap the
+## player inside a door of that colour (PlayState.switchKey + keysquene: the off-switch is reverted,
+## which also restarts the key timer, and retried every frame). The key turns off in the same tick
+## the player's box fully leaves the door tiles. key_time_left() reports 0 meanwhile.
 func key_expiry_pending(color: StringName) -> bool:
-	return _keys.get(color, false) and ((_offset - float(_keys_timer[color])) / 30.0) >= 5.0
+	if not _keys.get(color, false):
+		return false
+	for k: Array in _keys_queue:
+		if k[0] == color and k[1] == false:
+			return true
+	return false
 
 
 ## Current dynamic solidity of a layer-0 tile for the local player (doors/gates/coin doors).

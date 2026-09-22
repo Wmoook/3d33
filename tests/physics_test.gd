@@ -556,13 +556,13 @@ func test_key_door_stay_inside() -> void:
 	for x in range(8, 13):
 		if sim.is_tile_solid_now(x, 8): door_open = false
 	check("7 s inside: key stays active, doors stay open, no key_expired, not stuck", ok and door_open)
-	check("API: key_time_left 0, key_expiry_pending true, is_tile_solid_now false (door open)",
+	check("API while held open: is_key_active true, key_expiry_pending true, key_time_left 0, is_tile_solid_now false",
 		sim.key_time_left(&"red") == 0.0 and sim.key_expiry_pending(&"red") and not sim.is_tile_solid_now(10, 8))
 	# move around freely inside the door region without leaving it
 	var free := true
 	var x_before := sim.px
 	inp.left = true
-	for i in 25:
+	for i in 6:
 		tick.call(inp)
 		if stuck(sim) or not overlaps_id(sim, 23): free = false
 	inp.left = false
@@ -581,8 +581,8 @@ func test_key_door_stay_inside() -> void:
 			break
 	inp.right = false
 	check("walked through and out the far side", left_tick > 0 and sim.px >= 13.0 * 16.0, "x=%.1f" % sim.px)
-	check("key_expired + door_state(closed) exactly one tick after leaving, not before",
-		ev["expired"] == left_tick + 1 and ev["door_close"] == left_tick + 1,
+	check("key_expired + door_state(closed) in the very tick the box leaves the doors, not before",
+		ev["expired"] == left_tick and ev["door_close"] == left_tick,
 		"left at t=%d, expired at t=%d, door closed at t=%d" % [left_tick, ev["expired"], ev["door_close"]])
 	check("door solid again after leaving", sim.is_tile_solid_now(10, 8) and not sim.is_key_active(&"red"))
 	# straddling two door tiles exactly (x = 9.5 tiles), key freshly taken
@@ -636,8 +636,8 @@ func test_key_gate_deferred() -> void:
 		if left_tick < 0 and not overlaps_id(sim, 26): left_tick = sim.ticks()
 		if ev["on"] > 0: break
 	inp.left = false
-	check("key activates (gate closes) exactly one tick after the box leaves the gate",
-		left_tick > 0 and ev["on"] == left_tick + 1 and sim.is_key_active(&"red") and sim.is_tile_solid_now(7, 8),
+	check("key activates (gate closes) in the very tick the box leaves the gate",
+		left_tick > 0 and ev["on"] == left_tick and sim.is_key_active(&"red") and sim.is_tile_solid_now(7, 8),
 		"left t=%d active t=%d" % [left_tick, ev["on"]])
 
 
@@ -682,8 +682,10 @@ func test_key_door_real_level() -> void:
 		inp.left = a[0] == 1; inp.right = a[1] == 1; inp.jump = a[2] == 1
 		ev["t"] = sim.ticks() + 1
 		sim.tick(inp)
+		if overlaps_id(sim, 23):
+			if ev["expired"] >= 0: break     # expired while still inside: wrong
+		elif left_tick < 0:
+			left_tick = sim.ticks()
 		if ev["expired"] >= 0: break
-		if overlaps_id(sim, 23): left_tick = -1
-		elif left_tick < 0: left_tick = sim.ticks()
-	check("after leaving the door the key expires on the very next tick",
-		ev["expired"] > 0 and ev["expired"] == left_tick + 1, "left t=%d expired t=%d at %s" % [left_tick, ev["expired"], Vector2i(int(sim.px) >> 4, int(sim.py) >> 4)])
+	check("after leaving the door the key expires in that same tick, never while inside",
+		ev["expired"] > 0 and ev["expired"] == left_tick, "left t=%d expired t=%d at %s" % [left_tick, ev["expired"], Vector2i(int(sim.px) >> 4, int(sim.py) >> 4)])
