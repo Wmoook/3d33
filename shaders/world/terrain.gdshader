@@ -17,6 +17,13 @@ uniform float height_margin = 16.0;
 uniform float htpt = 16.0;
 uniform float time_scale = 1.0;
 uniform vec3 keys_open = vec3(0.0);
+// trial chambers (Forgotten Veil): carved runes on the back wall of each trial room
+uniform sampler2D rune_atlas : filter_linear_mipmap, repeat_disable;   // 4x4 cells, L = groove
+uniform sampler2D trial_tex : filter_nearest, repeat_disable;          // R8 per tile: trial index (0 none)
+uniform vec4 rune_pos[16];
+uniform vec4 rune_col[16];
+uniform float rune_state[16];
+uniform float rune_size = 4.6;
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -246,6 +253,32 @@ void fragment() {
 		detail_scale = 0.22;
 	}
 
+	// carved trial rune: only on back-wall / cave layers (always behind the foreground mass)
+	vec3 rune_emit = vec3(0.0);
+	vec3 rune_n = vec3(0.0);
+	if (layer != 0) {
+		int tr = int(texelFetch(trial_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
+		if (tr > 0 && tr <= 16) {
+			vec4 rp = rune_pos[tr - 1];
+			vec2 ruv = (vec2(wp.x, wp.y) - rp.xy) / rune_size + 0.5;
+			ruv.y = 1.0 - ruv.y;
+			if (all(greaterThan(ruv, vec2(0.0))) && all(lessThan(ruv, vec2(1.0)))) {
+				vec2 cellp = vec2(float((tr - 1) % 4), float((tr - 1) / 4));
+				vec2 auv = (cellp + ruv) / 4.0;
+				float g = textureLod(rune_atlas, auv, 0.6).r;
+				float e = 1.0 / 512.0;
+				float gx = textureLod(rune_atlas, auv + vec2(e, 0.0), 0.6).r - textureLod(rune_atlas, auv - vec2(e, 0.0), 0.6).r;
+				float gy = textureLod(rune_atlas, auv + vec2(0.0, e), 0.6).r - textureLod(rune_atlas, auv - vec2(0.0, e), 0.6).r;
+				rune_n = vec3(gx, -gy, 0.0) * 2.0;              // groove walls
+				albedo *= 1.0 - g * 0.75;                        // groove AO
+				float st = rune_state[tr - 1];
+				float breath = 0.55 + 0.45 * sin(TIME * 1.3 + float(tr) * 1.7);
+				float glow = st < 0.5 ? 0.35 + 0.35 * breath : 0.45 + (st - 1.0) * 3.0;
+				float core = smoothstep(0.75, 1.0, g);            // the glow lives deep inside the groove
+				rune_emit = rune_col[tr - 1].rgb * core * glow * 0.35;
+			}
+		}
+	}
 	vec3 dn = triplanar_normal(detail_nrm, wp, gn, detail_scale);
 	float dh = triplanar_h(detail_hgt, wp, gn, detail_scale);
 	float up = clamp(gn.y, 0.0, 1.0);
@@ -338,6 +371,21 @@ void fragment() {
 		albedo = mix(albedo, vec3(0.75, 0.85, 0.95), foam * 0.8);
 		rough = mix(0.04, 0.5, foam);
 		spec = 0.8;
+		if (fld.b > 0.5 || s.w < 1.2) {
+			// water held in suspension (splash droplets, thin falling sheets): translucent deep blue orb with
+			// internal flow streaks running down, caustic sparkle, wobbling normals, bright fresnel rim
+			vec3 vd = normalize(CAMERA_POSITION_WORLD - wp);
+			vec2 wob = vec2(sin(t * 3.1 + p.y * 4.0 + p.x), cos(t * 2.7 + p.x * 3.3 - p.y)) * 0.18;
+			n = normalize(gn + vec3(wob, 0.0) * smoothstep(0.2, 0.9, gn.z));
+			float flow = fbm2(vec2(p.x * 2.0, p.y * 0.7 - t * 1.6)) * 0.5 + 0.5;
+			float fr = pow(1.0 - clamp(dot(n, vd), 0.0, 1.0), 2.5);
+			vec3 deep = srgb_to_lin(vec3(0.12, 0.36, 0.78));
+			albedo = deep * mix(0.35, 0.6, flow) * (1.0 - fr * 0.5);
+			float spark = smoothstep(0.985, 1.0, ridge(p * 1.2 + wob * 2.0 + vec2(0.0, t * 0.6)));
+			emit = srgb_to_lin(vec3(0.25, 0.55, 1.0)) * (0.08 + 0.2 * flow) + vec3(0.8, 0.92, 1.0) * (fr * 0.6 + spark * 0.35);
+			rough = 0.03;
+			spec = 1.0;
+		}
 	} else if (mat == M_CORRUPT) {
 		float vein = smoothstep(0.975, 0.997, ridge(p * 0.32 + fbm2(p * 0.21) * 1.4));
 		float pulse = 0.5 + 0.5 * sin(t * 1.4 - length(p - vec2(210.0, 100.0)) * 0.12);
@@ -534,6 +582,8 @@ void fragment() {
 	// outside the level (the margin ring): fade to dark rock
 	float outside = max(max(-p.x, p.x - level_size.x), max(-p.y, p.y - level_size.y));
 	albedo *= mix(1.0, 0.7, smoothstep(0.0, 3.0, outside));
+	emit += rune_emit;
+	n = normalize(n + rune_n);
 	ALBEDO = albedo * ao;
 	ROUGHNESS = rough;
 	METALLIC = metal;

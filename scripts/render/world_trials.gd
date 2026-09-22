@@ -13,6 +13,13 @@ var W := 0
 var H := 0
 var trial_map := PackedByteArray()   # 0 none, 1..16
 var coins: Array[Vector2i] = []
+var rune_pos: Array[Vector4] = []   # world xy of each rune centre
+var rune_col: Array[Vector4] = []
+var sim: Object
+var _terrain: WorldTerrain
+var _state := PackedFloat32Array()   # 0 open trial, 1 conquered
+var _flare := PackedFloat32Array()   # seconds since conquered (for the one-off flare)
+const RUNE_SIZE := 4.6
 
 func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	W = lvl.width
@@ -25,6 +32,66 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		_flood(coins[k], k + 1, terrain)
 	for k in coins.size():
 		_decorate(coins[k], k, terrain)
+	_terrain = terrain
+	_state.resize(coins.size())
+	_flare.resize(coins.size())
+	_flare.fill(99.0)
+	_push_to_terrain()
+
+## Uploads rune atlas, per-tile trial map, centres and colours to the terrain material.
+func _push_to_terrain() -> void:
+	var m := _terrain.material
+	var n := 4
+	var cell := 128
+	var atlas := Image.create(n * cell, n * cell, false, Image.FORMAT_L8)
+	for k in coins.size():
+		var g := _glyph_texture(k).get_image()
+		g.clear_mipmaps()
+		g.convert(Image.FORMAT_RGBA8)
+		var l := Image.create(cell, cell, false, Image.FORMAT_L8)
+		for y in cell:
+			for x in cell:
+				l.set_pixel(x, y, Color(g.get_pixel(x, y).a, 0, 0))
+		atlas.blit_rect(l, Rect2i(0, 0, cell, cell), Vector2i((k % n) * cell, (k / n) * cell))
+	atlas.generate_mipmaps()
+	m.set_shader_parameter("rune_atlas", ImageTexture.create_from_image(atlas))
+	m.set_shader_parameter("trial_tex", ImageTexture.create_from_image(Image.create_from_data(W, H, false, Image.FORMAT_R8, trial_map)))
+	var pos := PackedVector4Array()
+	var col := PackedVector4Array()
+	for k in 16:
+		pos.append(rune_pos[k] if k < rune_pos.size() else Vector4())
+		col.append(rune_col[k] if k < rune_col.size() else Vector4())
+	m.set_shader_parameter("rune_pos", pos)
+	m.set_shader_parameter("rune_col", col)
+	m.set_shader_parameter("rune_size", RUNE_SIZE)
+	_push_state()
+
+func _push_state() -> void:
+	var st := PackedFloat32Array()
+	st.resize(16)
+	for k in mini(16, coins.size()):
+		# < 1: open trial (breathing), 1..2: conquered (flare decays from 2 to 1 over ~1.5 s)
+		st[k] = 0.0 if _state[k] < 0.5 else 1.0 + clampf(1.0 - _flare[k] / 1.5, 0.0, 1.0)
+	_terrain.material.set_shader_parameter("rune_state", st)
+
+func _process(delta: float) -> void:
+	if sim == null or not sim.has_method(&"is_coin_collected") or _terrain == null:
+		return
+	var changed := false
+	for k in coins.size():
+		var done: bool = sim.is_coin_collected(coins[k].x, coins[k].y)
+		if done and _state[k] < 0.5:
+			_state[k] = 1.0
+			_flare[k] = 0.0
+			changed = true
+		elif not done and _state[k] > 0.5:
+			_state[k] = 0.0
+			changed = true
+		if _flare[k] < 2.0:
+			_flare[k] += delta
+			changed = true
+	if changed:
+		_push_state()
 
 func trial_count() -> int:
 	return coins.size()
@@ -92,25 +159,11 @@ func _pedestal(c: Vector2i, terrain: WorldTerrain) -> int:
 
 func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	var col: Color = PALETTE[k % PALETTE.size()]
-	var glyph := _glyph_texture(k)
 	var centre := Vector3(c.x + 0.5, -c.y - 0.5, 0.0)
 	var wall := _open_spot(c, k + 1)   # coins often sit in 1-tile nooks: put the rune where it can be seen
-	# carved glyph on the back wall behind the coin (projects onto whatever is behind: bg wall / cave)
-	var d := Decal.new()
-	d.name = "TrialGlyph%d" % (k + 1)
-	d.texture_albedo = glyph
-	d.texture_emission = glyph
-	d.emission_energy = 2.0
-	d.modulate = col
-	d.albedo_mix = 0.55
-	d.size = Vector3(4.6, 4.5, 4.6)           # decal projects along its local -Y (depth 4.5)
-	d.rotation_degrees = Vector3(90.0, 0.0, 0.0)   # local -Y -> world -Z (into the back wall)
-	d.position = Vector3(wall.x, wall.y, -3.4)   # only the back wall behind the room
-	d.normal_fade = 0.4   # only faces looking at the camera (the back wall), never the cliffs
-	d.upper_fade = 0.1
-	d.lower_fade = 0.1
-	d.cull_mask = 1   # terrain layer only
-	add_child(d)
+	# the carved rune itself lives in the terrain shader (back-wall layers only, depth-correct)
+	rune_pos.append(Vector4(wall.x, wall.y, 0.0, 0.0))
+	rune_col.append(Vector4(col.r, col.g, col.b, 1.0))
 	# pedestal ring on the top of the solid below the coin
 	var py := _pedestal(c, terrain)
 	if py >= 0:
@@ -118,9 +171,10 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 		ring.name = "TrialRing%d" % (k + 1)
 		ring.texture_albedo = _ring_texture()
 		ring.texture_emission = ring.texture_albedo
-		ring.emission_energy = 1.2
+		ring.emission_energy = 0.35
 		ring.modulate = col
-		ring.albedo_mix = 0.4
+		ring.albedo_mix = 0.7
+		ring.modulate = col.darkened(0.55)
 		ring.size = Vector3(2.2, 1.6, 3.0)
 		ring.normal_fade = 0.6   # only the up-facing pedestal top
 		ring.position = Vector3(c.x + 0.5, -py + 0.2, -0.6)
@@ -130,7 +184,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	var s := SpotLight3D.new()
 	s.name = "TrialShaft%d" % (k + 1)
 	s.light_color = col.lerp(Color.WHITE, 0.4)
-	s.light_energy = 1.6
+	s.light_energy = 1.1
 	s.spot_range = 9.0
 	s.spot_angle = 16.0
 	s.spot_angle_attenuation = 1.6

@@ -158,7 +158,8 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		+ relief * smoothstep(0.0, 0.8, s_front);
 	zf = max(zf, 0.13 * round_prof(sf / 0.14));
 	// tiny islands: domed, lumpy pebble / crystal forms instead of flat plugs
-	zf += fld.b * (0.38 * round_prof(s_front / 0.6) + fbm2(p * 3.0) * 0.08) * step(0.0, sf);
+	zf += fld.b * (0.3 * round_prof(s_front / 0.5) + fbm2(p * 3.0) * 0.05) * step(0.0, sf);
+	zf = mix(zf, Z_FG_TOP * 1.35 * sqrt(clamp(s_front / 0.5, 0.0, 1.0)), fld.b * 0.7);   // specks: spherical caps
 	if (sf >= 0.0) {
 		return zf;
 	}

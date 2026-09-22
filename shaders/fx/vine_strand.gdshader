@@ -3,7 +3,7 @@ shader_type spatial;
 // Mesh: unit quad spanning y in [-1, 0] (top at the node, bottom at the next); INSTANCE_CUSTOM.x = width
 // at the top, y = width at the bottom, z = shade variation. Lit, darker along the edges for a readable
 // silhouette against the bright sky and pale stone.
-render_mode cull_disabled, diffuse_burley, specular_schlick_ggx, shadows_disabled;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform vec3 stem : source_color = vec3(0.16, 0.3, 0.07);
 uniform vec3 stem_dark : source_color = vec3(0.06, 0.12, 0.03);

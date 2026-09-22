@@ -427,16 +427,14 @@ func _build_dapples() -> void:
 			d.size = Vector3(sz, 8.0, sz)
 			d.rotation.x = PI * 0.5            # project along -z (onto the terrain face and back walls)
 			d.texture_albedo = shade_tex
-			d.texture_emission = fleck_tex
-			d.emission_energy = 0.35 if layer == 0 else 0.22
-			d.albedo_mix = 0.55 if layer == 0 else 0.35
-			d.modulate = Color(1.0, 0.95, 0.82)
+			if layer == 0:
+				d.texture_emission = fleck_tex   # sun flecks only on the main layer
+				d.emission_energy = 0.45
+			d.albedo_mix = 1.0 if layer == 0 else 0.6
+			d.modulate = Color(1.0, 1.0, 1.0)
 			d.upper_fade = 0.2
 			d.lower_fade = 0.2
-			d.distance_fade_enabled = true
-			d.distance_fade_begin = 40.0
-			d.distance_fade_length = 10.0
-			d.cull_mask = 1
+			d.cull_mask = 1   # (no distance fade: the gameplay camera sits ~40 units away; _process culls by focus)
 			d.visible = false
 			var base := Vector3(cx, -cy, 0.0)
 			d.position = base
@@ -464,12 +462,12 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 			edge = edge * edge * (3.0 - 2.0 * edge)
 			var c := n.get_noise_2d(x, y) * 0.5 + 0.5          # low near cell centres (light holes)
 			var m := n2.get_noise_2d(x, y) * 0.5 + 0.5
-			var hole := 1.0 - smoothstep(0.18, 0.34, c + (m - 0.5) * 0.25)
+			var hole := 1.0 - smoothstep(0.2, 0.28, c + (m - 0.5) * 0.25)
 			if flecks:
 				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
 				img.set_pixel(x, y, Color(1.0 * a, 0.85 * a, 0.55 * a, a))
 			else:
-				img.set_pixel(x, y, Color(0.05, 0.07, 0.02, (1.0 - hole) * edge * 0.6))
+				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.85))
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 

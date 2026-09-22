@@ -3,7 +3,7 @@ shader_type spatial;
 // beating up/down (bird). Vertex COLOR.r = wing weight (0 body .. 1 tip), COLOR.g = pattern mask
 // (1 = tinted wing field, 0 = dark vein / edge). INSTANCE_CUSTOM: x = flap phase, y = hue, z = kind
 // (0 butterfly, 1 bird), w = flap amplitude (0 folded/perched .. 1).
-render_mode cull_disabled, diffuse_burley, specular_disabled, shadows_disabled;
+render_mode cull_disabled, diffuse_burley, specular_disabled;
 
 varying vec3 v_tint;
 varying float v_pat;

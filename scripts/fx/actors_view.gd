@@ -65,7 +65,7 @@ func build(lvl: EELevel, s) -> void:
 	life.odyssey = is_odyssey()
 	if not is_odyssey():
 		light = FxLightMap.new()
-		light.build(lvl, world)
+		light.build(lvl, world, overlays.maps.img)
 		life.light = light
 	add_child(life)
 	life.build(lvl, overlays.maps)

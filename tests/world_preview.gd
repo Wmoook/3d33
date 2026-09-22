@@ -57,9 +57,21 @@ const FV_SPOTS := {
 	"aqueducts": Vector2(262, 188),
 	"vaults": Vector2(60, 182),
 	"trial1": Vector2(-1, 1),
+	"trial2": Vector2(-1, 2),
+	"trial3": Vector2(-1, 3),
+	"trial4": Vector2(-1, 4),
 	"trial5": Vector2(-1, 5),
+	"trial6": Vector2(-1, 6),
+	"trial7": Vector2(-1, 7),
+	"trial8": Vector2(-1, 8),
 	"trial9": Vector2(-1, 9),
+	"trial10": Vector2(-1, 10),
+	"trial11": Vector2(-1, 11),
+	"trial12": Vector2(-1, 12),
 	"trial13": Vector2(-1, 13),
+	"trial14": Vector2(-1, 14),
+	"trial15": Vector2(-1, 15),
+	"trial16": Vector2(-1, 16),
 }
 
 var level_id := "odyssey"

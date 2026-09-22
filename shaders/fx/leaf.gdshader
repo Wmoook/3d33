@@ -1,7 +1,7 @@
 shader_type spatial;
 // Drifting leaf / petal particle: pointed-oval silhouette with a midrib, flutters (flips edge-on and back)
 // as it falls. Colour from the process material (initial colour ramp). Alpha-scissored, lit by the sun.
-render_mode cull_disabled, diffuse_burley, specular_disabled, shadows_disabled;
+render_mode cull_disabled, diffuse_burley, specular_disabled;
 
 uniform float flutter = 5.0;
 

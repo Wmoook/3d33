@@ -139,6 +139,8 @@ func _finish() -> void:
 	is_built = true
 	if sim:
 		doors.sim = sim
+		if trials:
+			trials.sim = sim
 	print("WorldView built in %d ms %s" % [build_ms, str(timings)])
 	built.emit()
 
@@ -146,6 +148,8 @@ func set_sim(s) -> void:
 	sim = s
 	if doors:
 		doors.sim = s
+	if trials:
+		trials.sim = s
 
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	if not is_built:

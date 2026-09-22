@@ -1,7 +1,7 @@
 shader_type spatial;
 // Leaf on a hanging vine (FxVines MultiMesh): pointed-oval blade with a dark rim and midrib, colour from
 // INSTANCE_CUSTOM.rgb, lit and slightly translucent to the sun. The quad pivots at its stem (top edge).
-render_mode cull_disabled, diffuse_burley, specular_disabled, shadows_disabled;
+render_mode cull_disabled, diffuse_burley, specular_disabled;
 
 varying vec3 v_col;
 
@@ -20,5 +20,5 @@ void fragment() {
 	c = mix(c, v_col * 0.28, rim);
 	ALBEDO = c;
 	ROUGHNESS = 0.75;
-	BACKLIGHT = v_col * 0.5;
+	BACKLIGHT = v_col * 0.15;
 }

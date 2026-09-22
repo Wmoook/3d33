@@ -26,6 +26,7 @@ const SPOTS := [
 	["vines_spire", Vector2(190, 60)],
 	["vine_part", Vector2(190, 60)],
 	["grove_dapple", Vector2(30, 40)],
+	["grove_nodapple", Vector2(30, 40)],
 	["falls_glint", Vector2(140, 160)],
 ]
 var game
@@ -67,7 +68,15 @@ func _ready() -> void:
 		if s[0] == "switch_on":
 			game.sim._switches[1] = true
 			game.sim.sim_event.emit(&"switch", {"kind": &"purple", "id": 1, "on": true})
+		if game.actors.veil:
+			for dp in game.actors.veil._dapples:
+				dp.node.set_meta("off", s[0] == "grove_nodapple")
 		await _wait(2.0)
+		if game.actors.veil and s[0] == "grove_nodapple":
+			for dp in game.actors.veil._dapples:
+				dp.node.visible = false
+			for i in 3:
+				await get_tree().process_frame
 		if s[0] == "piano_hit":
 			for k in 4:
 				var pt := Vector2i(396 + (k % 2), 27 + k * 2)

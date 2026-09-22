@@ -16,6 +16,8 @@ vis=os.environ.get("VISIBLE")=="1"
 pos=['window/size/initial_position_type=1'] if vis else ['window/size/initial_position_type=0','window/size/initial_position=Vector2i(20000, 20000)']
 over={"display":(['window/size/no_focus=false'] if vis else ['window/size/no_focus=true'])+pos+['window/size/mode=0','window/size/always_on_top=false'],
       "audio":['driver/driver="Dummy"']}
+if vis:
+    over["autoload"]=['VisibleFix="*res://visible_fix.gd"']
 for sec,lines in over.items():
     m=re.search(r"^\[%s\]\s*$"%sec,src,re.M)
     if m: src=src[:m.end()]+"\n"+"\n".join(lines)+src[m.end():]

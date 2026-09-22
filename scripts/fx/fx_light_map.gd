@@ -5,16 +5,17 @@ extends RefCounted
 ## atmosphere preset) so FX agree with the world's backdrops; otherwise falls back to column sky visibility.
 ##   SUN   = sky-connected open air (birds, butterflies, leaves, dust motes)
 ##   SHADE = roofed air near daylight (fireflies)
-##   DARK  = enclosed air at least DARK_R tiles from any sunlit tile (bats)
+##   DARK  = enclosed air at least DARK_R tiles from any sunlit tile and not under a tree canopy (bats)
 
 enum { SUN, SHADE, DARK }
 const DARK_R := 6
+const CANOPY_R := 12
 
 var W := 0
 var H := 0
 var cls := PackedByteArray()
 
-func build(lvl: EELevel, world: Node) -> void:
+func build(lvl: EELevel, world: Node, minimap: Image = null) -> void:
 	W = lvl.width
 	H = lvl.height
 	cls.resize(W * H)
@@ -44,8 +45,20 @@ func build(lvl: EELevel, world: Node) -> void:
 			d[y * W + x] = mini(d[y * W + x], d[(y - 1) * W + x] + 1)
 		for y in range(H - 2, -1, -1):
 			d[y * W + x] = mini(d[y * W + x], d[(y + 1) * W + x] + 1)
+	# canopy: green painted tiles within CANOPY_R above make it a forest floor (shaded), never a bat cave
+	var canopy := PackedByteArray()
+	canopy.resize(W * H)
+	if minimap != null:
+		for x in W:
+			var last := -1000
+			for y in H:
+				var c := minimap.get_pixel(x, y)
+				if c.s > 0.35 and c.h > 0.2 and c.h < 0.45 and c.v > 0.2:
+					last = y
+				if y - last <= CANOPY_R:
+					canopy[y * W + x] = 1
 	for i in W * H:
-		cls[i] = SUN if sky[i] == 1 else (DARK if d[i] >= DARK_R else SHADE)
+		cls[i] = SUN if sky[i] == 1 else (DARK if d[i] >= DARK_R and canopy[i] == 0 else SHADE)
 
 func at(x: int, y: int) -> int:
 	if x < 0 or y < 0 or x >= W or y >= H:

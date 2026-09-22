@@ -138,7 +138,7 @@ func _new_strand(s: Vector3, idx: int) -> Dictionary:
 	for k in n:
 		var hk := FxInteractiveBlocks._tile_hash(Vector2i(idx, 100 + k))
 		leaves.append({"node": 1 + int(hk.x * (NODES - 2)), "side": 1.0 if hk.y < 0.5 else -1.0,
-			"size": 0.32 + hk.z * 0.18, "col": Color(0.16 + hk.x * 0.12, 0.36 + hk.y * 0.16, 0.07 + hk.z * 0.05)})
+			"size": 0.32 + hk.z * 0.18, "col": Color(0.1 + hk.x * 0.08, 0.26 + hk.y * 0.12, 0.05 + hk.z * 0.04)})
 	return {"pts": pts, "prev": prev, "seg": seg, "anchor": Vector2(s.x, s.y), "ph": h.y * TAU,
 		"w": 0.11 + h.z * 0.05, "leaves": leaves, "shade": h.z}
 
