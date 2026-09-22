@@ -34,6 +34,7 @@ func _ready() -> void:
 		sim.prev_px = sim.px; sim.prev_py = sim.py
 		sim.speed_x = 0.0; sim.speed_y = 0.0
 		await get_tree().physics_frame
+	game.collision_overlay.visible = false
 	await _wait(2.5)
 	_shot(nm)
 	game.collision_overlay.visible = true
