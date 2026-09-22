@@ -23,6 +23,10 @@ const SPOTS := [
 	["channels", Vector2(230, 190)],
 	["finish", Vector2(392, 74)],
 	["ruins", Vector2(40, 92)],
+	["vines_spire", Vector2(190, 60)],
+	["vine_part", Vector2(190, 60)],
+	["grove_dapple", Vector2(30, 40)],
+	["falls_glint", Vector2(140, 160)],
 ]
 var game
 func _ready() -> void:
@@ -49,6 +53,17 @@ func _ready() -> void:
 		var t: Vector2 = s[1]
 		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
+		if s[0] == "vine_part" and game.actors.vines:
+			# park the ball on the vine anchor nearest the spot, a bit below it, so it pushes the strand aside
+			var best := Vector3.ZERO
+			var bd := INF
+			for v: Vector3 in game.actors.vines._sites:
+				var d := Vector2(v.x, -v.y).distance_to(t)
+				if d < bd:
+					bd = d
+					best = v
+			game.sim.px = (best.x - 0.5) * 16.0; game.sim.py = (-best.y + 1.0) * 16.0
+			game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		if s[0] == "switch_on":
 			game.sim._switches[1] = true
 			game.sim.sim_event.emit(&"switch", {"kind": &"purple", "id": 1, "on": true})

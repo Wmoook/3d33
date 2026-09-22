@@ -162,7 +162,7 @@ func _draw() -> void:
 		var ca := clampf(_caption_t / 0.5, 0.0, 1.0) * clampf((3.2 - _caption_t) / 0.9, 0.0, 1.0)
 		var cf := UITheme.title(0, 700)
 		var cw := UITheme.spaced_width(cf, _caption, 26, 8.0)
-		var cp := Vector2(W * 0.5 - cw * 0.5, 176)
+		var cp := Vector2(W * 0.5 - cw * 0.5, 372)   # below the zone card, so both can coexist
 		UITheme.draw_scrim(self, Vector2(W * 0.5, cp.y - 9), Vector2(cw + 320.0, 110.0), 0.45 * ca)
 		UITheme.draw_spaced(self, cf, cp + Vector2(0, 2), _caption, 26, 8.0, Color(0, 0, 0, 0.5 * ca))
 		UITheme.draw_spaced(self, cf, cp, _caption, 26, 8.0, Color(UITheme.GOLD, 0.95 * ca))

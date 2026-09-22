@@ -23,6 +23,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	coins.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x if a.x != b.x else a.y < b.y)
 	for k in coins.size():
 		_flood(coins[k], k + 1, terrain)
+	for k in coins.size():
 		_decorate(coins[k], k, terrain)
 
 func trial_count() -> int:
@@ -58,6 +59,27 @@ func _flood(c: Vector2i, idx: int, terrain: WorldTerrain) -> void:
 		if trial_map[i] == 0:
 			trial_map[i] = idx
 
+## Most open spot of this trial's room within 7 tiles of the coin (centre of the largest 5x5 air patch).
+func _open_spot(c: Vector2i, idx: int) -> Vector2:
+	var best := Vector2(c.x + 0.5, -c.y + 0.7)
+	var best_n := -1
+	for dy in range(-7, 8):
+		for dx in range(-7, 8):
+			var x := c.x + dx
+			var y := c.y + dy
+			if get_trial_at(Vector2i(x, y)) != idx:
+				continue
+			var n := 0
+			for oy in range(-2, 3):
+				for ox in range(-2, 3):
+					if get_trial_at(Vector2i(x + ox, y + oy)) == idx:
+						n += 1
+			n = n * 100 - (dx * dx + dy * dy)
+			if n > best_n:
+				best_n = n
+				best = Vector2(x + 0.5, -y - 0.5)
+	return best
+
 ## Nearest solid tile straight below the coin (the pedestal), within 12 tiles.
 func _pedestal(c: Vector2i, terrain: WorldTerrain) -> int:
 	for dy in range(1, 12):
@@ -72,6 +94,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	var col: Color = PALETTE[k % PALETTE.size()]
 	var glyph := _glyph_texture(k)
 	var centre := Vector3(c.x + 0.5, -c.y - 0.5, 0.0)
+	var wall := _open_spot(c, k + 1)   # coins often sit in 1-tile nooks: put the rune where it can be seen
 	# carved glyph on the back wall behind the coin (projects onto whatever is behind: bg wall / cave)
 	var d := Decal.new()
 	d.name = "TrialGlyph%d" % (k + 1)
@@ -82,7 +105,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	d.albedo_mix = 0.55
 	d.size = Vector3(4.6, 4.5, 4.6)           # decal projects along its local -Y (depth 4.5)
 	d.rotation_degrees = Vector3(90.0, 0.0, 0.0)   # local -Y -> world -Z (into the back wall)
-	d.position = centre + Vector3(0.0, 1.2, -3.4)   # only the back wall behind the room
+	d.position = Vector3(wall.x, wall.y, -3.4)   # only the back wall behind the room
 	d.normal_fade = 0.4   # only faces looking at the camera (the back wall), never the cliffs
 	d.upper_fade = 0.1
 	d.lower_fade = 0.1

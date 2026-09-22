@@ -46,6 +46,7 @@ const FV_SPOTS := {
 	"halls": Vector2(55, 100),
 	"falls": Vector2(142, 150),
 	"spire_top": Vector2(197, 42),
+	"skybar": Vector2(195, 25),
 	"spire_mid": Vector2(197, 115),
 	"gardens": Vector2(224, 100),
 	"twin_spire": Vector2(252, 92),
@@ -78,6 +79,7 @@ var _redkey := false
 var _nomoon := false
 var _nokey := false
 var _nodoors := false
+var _hide := ""
 var sim: EESim
 
 func _ready() -> void:
@@ -97,6 +99,8 @@ func _ready() -> void:
 			_mode = 2; _suffix = "_zones"
 		elif a == "nomoonshadow":
 			_nomoon = true; _suffix += "_nomoon"
+		elif a.begins_with("hide="):
+			_hide = a.substr(5); _suffix += "_no" + _hide
 		elif a == "nodoors":
 			_nodoors = true; _suffix += "_nodoors"
 		elif a == "nokey":
@@ -133,6 +137,10 @@ func _ready() -> void:
 	world.set_debug_mode(_mode)
 	if _nomoon:
 		world.lights.moon.shadow_enabled = false
+	if _hide != "":
+		var n := world.find_child(_hide, true, false)
+		if n: n.visible = false
+		else: print("HIDE: no node ", _hide)
 	if _nodoors:
 		world.doors.visible = false
 	if _nokey:

@@ -14,7 +14,7 @@ src=src.replace('config/name="EX Odyssey"','config/name="EX Odyssey"\nconfig/use
 import os
 vis=os.environ.get("VISIBLE")=="1"
 pos=['window/size/initial_position_type=1'] if vis else ['window/size/initial_position_type=0','window/size/initial_position=Vector2i(20000, 20000)']
-over={"display":['window/size/no_focus=true']+pos+['window/size/mode=0','window/size/always_on_top=false'],
+over={"display":(['window/size/no_focus=false'] if vis else ['window/size/no_focus=true'])+pos+['window/size/mode=0','window/size/always_on_top=false'],
       "audio":['driver/driver="Dummy"']}
 for sec,lines in over.items():
     m=re.search(r"^\[%s\]\s*$"%sec,src,re.M)

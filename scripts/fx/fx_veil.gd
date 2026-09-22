@@ -3,8 +3,9 @@ extends Node3D
 ## Daylight scenic FX for levels other than Odyssey (first: Forgotten Veil), all derived from the level's
 ## own art via FxOverlayMaps: waterfalls (foaming falling sheet over every tall narrow water column, mist
 ## and spray at the base, splash rings where it plunges into a pool), sunbeam dust motes in sunlit air,
-## and drifting leaves / petals under the tree canopies. Expensive pieces are chunked and switched by
-## distance to the camera focus.
+## drifting leaves / petals under the tree canopies, dappled leaf light (moving shadow/light decals) under
+## the canopies, and sun glints twinkling on water surfaces and the wet stone around the falls. Expensive
+## pieces are chunked and switched by distance to the camera focus.
 
 const FALL_SHADER := preload("res://shaders/fx/waterfall.gdshader")
 const MIX_SHADER := preload("res://shaders/fx/soft_mix.gdshader")
@@ -27,6 +28,7 @@ var _foliage := PackedByteArray()
 var _falls: Array = []        # [{center: Vector2, sheet, mist, spray, ring}]
 var _fall_mats: Array[ShaderMaterial] = []
 var _leaf_chunks: Array = []  # [{node, center}]
+var _dapples: Array = []     # [{node: Decal, center: Vector2, base: Vector3, ph, amp}]
 var _motes: GPUParticles3D
 var _mote_w := 0.0
 var _cull_t := 0.0
@@ -49,9 +51,12 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	_find_foliage()
 	_build_falls()
 	_build_leaves()
+	_build_dapples()
+	_build_glints()
 	_motes = _mote_emitter()
 	add_child(_motes)
-	print("FxVeil: %d ms, falls %d, leaf chunks %d" % [Time.get_ticks_msec() - t0, _falls.size(), _leaf_chunks.size()])
+	print("FxVeil: %d ms, falls %d, leaf chunks %d, dapples %d, glints %d" % [Time.get_ticks_msec() - t0, _falls.size(),
+		_leaf_chunks.size(), _dapples.size(), _glint_count])
 
 func sunny(x: int, y: int) -> bool:
 	if light:
@@ -392,6 +397,138 @@ func _leaf_emitter(width: float, n: int) -> GPUParticles3D:
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return p
 
+# ------------------------------------------------------------------------------------------ dappled light
+
+const DAPPLE_CHUNK := 14
+
+## Leaf-light under canopies: per canopy chunk two drifting decals (a shade pattern with light holes that
+## darkens albedo + warm emissive sun flecks) projected onto the terrain and back walls below it.
+## cull_mask = 1 (terrain) so the ball is never dappled.
+func _build_dapples() -> void:
+	var bins := {}
+	for y in range(2, H - 1):
+		for x in W:
+			if is_foliage(x, y) and (sunny(x, y - 1) or sunny(x, y - 2)):
+				var k := Vector2i(x / DAPPLE_CHUNK, y / DAPPLE_CHUNK)
+				bins[k] = bins.get(k, 0) + 1
+	if bins.is_empty():
+		return
+	var shade_tex := _dapple_texture(false)
+	var fleck_tex := _dapple_texture(true)
+	for k: Vector2i in bins:
+		if bins[k] < 10:
+			continue
+		var cx := (k.x + 0.5) * DAPPLE_CHUNK
+		var cy := (k.y + 0.5) * DAPPLE_CHUNK + 4.0   # light falls through onto what lies beneath
+		for layer in 2:
+			var d := Decal.new()
+			d.name = "Dapple"
+			var sz := DAPPLE_CHUNK + 6.0 + layer * 3.0
+			d.size = Vector3(sz, 8.0, sz)
+			d.rotation.x = PI * 0.5            # project along -z (onto the terrain face and back walls)
+			d.texture_albedo = shade_tex
+			d.texture_emission = fleck_tex
+			d.emission_energy = 0.9 if layer == 0 else 0.6
+			d.albedo_mix = 0.55 if layer == 0 else 0.35
+			d.modulate = Color(1.0, 0.95, 0.82)
+			d.upper_fade = 0.2
+			d.lower_fade = 0.2
+			d.distance_fade_enabled = true
+			d.distance_fade_begin = 40.0
+			d.distance_fade_length = 10.0
+			d.cull_mask = 1
+			d.visible = false
+			var base := Vector3(cx, -cy, 0.0)
+			d.position = base
+			add_child(d)
+			var h := FxInteractiveBlocks._tile_hash(k + Vector2i(layer * 17, 3))
+			_dapples.append({"node": d, "center": Vector2(cx, cy), "base": base, "ph": h.x * TAU,
+				"amp": 0.35 + layer * 0.25, "rot": 0.02 + h.y * 0.03})
+
+func _dapple_texture(flecks: bool) -> ImageTexture:
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	n.frequency = 0.045
+	n.seed = 7
+	var n2 := FastNoiseLite.new()
+	n2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	n2.frequency = 0.02
+	n2.seed = 11
+	var S := 256
+	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
+	for y in S:
+		for x in S:
+			var u := Vector2(x - S * 0.5, y - S * 0.5) / (S * 0.5)
+			var edge := clampf(1.0 - u.length(), 0.0, 1.0)
+			edge = edge * edge * (3.0 - 2.0 * edge)
+			var c := n.get_noise_2d(x, y) * 0.5 + 0.5          # low near cell centres (light holes)
+			var m := n2.get_noise_2d(x, y) * 0.5 + 0.5
+			var hole := 1.0 - smoothstep(0.18, 0.34, c + (m - 0.5) * 0.25)
+			if flecks:
+				img.set_pixel(x, y, Color(1.0, 0.85, 0.55, hole * edge))
+			else:
+				img.set_pixel(x, y, Color(0.05, 0.07, 0.02, (1.0 - hole) * edge * 0.6))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+# ------------------------------------------------------------------------------------------ sun glints
+
+var _glint_count := 0
+
+## Tiny twinkling sun stars on sunlit water surfaces, the falls, and the wet stone within 2 tiles of them.
+func _build_glints() -> void:
+	var pos: Array[Vector3] = []
+	var cust: Array[Color] = []
+	for t in maps.water_surface:
+		if not sunny(t.x, t.y - 1):
+			continue
+		for k in 2:
+			var h := FxInteractiveBlocks._tile_hash(t + Vector2i(k * 31, 5))
+			pos.append(Vector3(t.x + h.x, -t.y + 0.05 - h.y * 0.35, 0.95))
+			cust.append(Color(h.z, 1.2 + h.x * 1.8, 0.8 + h.y * 0.4, 0))
+	var wet := {}
+	for t in maps.stream_tiles:
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				var q := t + Vector2i(dx, dy)
+				if q.x < 0 or q.y < 0 or q.x >= W or q.y >= H or wet.has(q):
+					continue
+				if not FxOverlayMaps.is_open(lvl, q.x, q.y) and maps.stream[q.y * W + q.x] == 0:
+					wet[q] = true
+	for q: Vector2i in wet:
+		var h := FxInteractiveBlocks._tile_hash(q + Vector2i(3, 91))
+		if h.x > 0.45:
+			continue
+		pos.append(Vector3(q.x + h.y, -q.y - h.z, 0.9))
+		cust.append(Color(h.z, 0.8 + h.y * 1.4, 0.55, 0))
+	for t in maps.stream_tiles:
+		var h := FxInteractiveBlocks._tile_hash(t + Vector2i(51, 12))
+		if h.x < 0.35:
+			pos.append(Vector3(t.x + h.y, -t.y - h.z, 0.96))
+			cust.append(Color(h.z, 2.0 + h.y * 2.0, 0.7, 0))
+	if pos.is_empty():
+		return
+	var q := QuadMesh.new()
+	q.size = Vector2(0.55, 0.55)
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/sun_glint.gdshader")
+	q.material = m
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = q
+	mm.instance_count = pos.size()
+	for i in pos.size():
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, pos[i]))
+		mm.set_instance_custom_data(i, cust[i])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "SunGlints"
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	_glint_count = pos.size()
+
 # ------------------------------------------------------------------------------------------ sun motes
 
 func _mote_emitter() -> GPUParticles3D:
@@ -451,11 +588,23 @@ func _process(delta: float) -> void:
 		_cull_t = CULL_PERIOD
 		for c in _leaf_chunks:
 			c.node.emitting = (c.center as Vector2).distance_to(ft) < ACTIVE_RADIUS
+		for dp in _dapples:
+			dp.node.visible = (dp.center as Vector2).distance_to(ft) < ACTIVE_RADIUS + 6.0
 		for fl in _falls:
 			var near: bool = (fl.center as Vector2).distance_to(ft) < ACTIVE_RADIUS + fl.h * 0.5
 			fl.mist.emitting = near
 			fl.spray.emitting = near
 			fl.veil.emitting = near
+	# leaves stir: the dapple decals drift and turn slowly, the two layers out of step
+	var tn := Time.get_ticks_msec() * 0.001
+	for dp in _dapples:
+		var d: Decal = dp.node
+		if not d.visible:
+			continue
+		var a: float = dp.amp
+		d.position = dp.base + Vector3(sin(tn * 0.5 + dp.ph) * a + sin(tn * 1.3 + dp.ph * 2.0) * a * 0.3,
+			cos(tn * 0.4 + dp.ph) * a * 0.5, 0.0)
+		d.rotation.y = sin(tn * dp.rot * 10.0 + dp.ph) * 0.08
 	# dust motes fade in with the share of sunlit open air around the camera
 	var n := 0
 	var hit := 0

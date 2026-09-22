@@ -206,7 +206,10 @@ func _draw() -> void:
 	var cfg := current_cfg()
 	var eb := _spaced_caps(str(cfg.get("eyebrow", "")))
 	var ef := UITheme.hud_medium(9)
-	draw_string(ef, Vector2(0, cy - 150), eb, HORIZONTAL_ALIGNMENT_CENTER, W, 20, Color(1, 1, 1, 0.55 * _k(0.7, 1.6) * a))
+	var ek := _k(0.7, 1.6) * a
+	UITheme.draw_scrim(self, Vector2(cx, cy - 157), Vector2(ef.get_string_size(eb, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 300.0, 70.0), 0.45 * ek)
+	draw_string(ef, Vector2(0, cy - 148), eb, HORIZONTAL_ALIGNMENT_CENTER, W, 20, Color(0, 0, 0, 0.5 * ek))
+	draw_string(ef, Vector2(0, cy - 150), eb, HORIZONTAL_ALIGNMENT_CENTER, W, 20, Color(1, 1, 1, 0.78 * ek))
 	# rule + diamond
 	var rk := _k(2.3, 1.4)
 	var rl := 330.0 * rk
@@ -252,7 +255,11 @@ func _draw() -> void:
 			prompt = "ENTER   TRAVEL  TO  " + _spaced_caps(str(selected_cfg().get("title", "")))
 		elif multi:
 			prompt = "ENTER   PLAY          LEFT / RIGHT   CHOOSE  LEVEL"
-		draw_string(pf, Vector2(0, py), prompt, HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(1, 1, 1, pk * (1.0 - _attract_k * 0.0)))
+		var pw := pf.get_string_size(prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+		UITheme.draw_scrim(self, Vector2(W * 0.5, py - 8), Vector2(pw + 360.0, 96.0), 0.65 * _k(4.2, 1.0) * o)
+		var pv := (0.78 + 0.22 * sin((_t - 4.2) * 2.6)) * _k(4.2, 1.0) * o
+		draw_string(pf, Vector2(0, py + 2), prompt, HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(0, 0, 0, 0.6 * pv))
+		draw_string(pf, Vector2(0, py), prompt, HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(1, 0.97, 0.9, pv))
 	# footer in letterbox
 	var fa := _k(1.2, 1.5) * o * 0.45
 	draw_string(UITheme.hud_medium(3), Vector2(48, H - 38), str(cfg.get("credit", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(1, 1, 1, fa))

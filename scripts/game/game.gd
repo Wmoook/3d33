@@ -17,7 +17,9 @@ const LEVEL_TEXT := {
 		"map_caption": "the map of the odyssey", "quote": "\"The Devil hath taken thy Soul...  Go, and Return!\""},
 	"forgotten_veil": {"victory_eyebrow": "FORGOTTEN  VEIL", "victory_title": "THE VEIL IS LIFTED", "map_title": "FORGOTTEN VEIL",
 		"map_caption": "the map of the forgotten veil", "quote": "\"Sixteen trials. Only the worthy return.\"",
-		"tagline": "Sixteen trials.  Only the worthy return.", "trials": "1"},
+		"tagline": "Sixteen trials.  Only the worthy return.", "trials": "1",
+		# sunlit exteriors to open the title flyover on (tile space): twin spires + vine bridges, falls, grove canopy
+		"intro_keys": [[204, 68, 46.0], [248, 72, 50.0], [152, 146, 44.0], [48, 26, 52.0]]},
 }
 var cfg: Dictionary = ODYSSEY_CFG
 const SIM_PATH := "res://scripts/physics/ee_sim.gd"
@@ -374,6 +376,13 @@ var _title_idle := 0.0
 
 func _setup_cinematic() -> void:
 	var route := _route_keys()
+	var intro: Array = LEVEL_TEXT.get(str(cfg.get("id", "")), {}).get("intro_keys", [])
+	if not intro.is_empty() and route.size() >= 4:
+		var pre := []
+		for k in intro:
+			pre.append({"pos": Vector2(k[0], k[1]), "zoom": float(k[2])})
+		route[0]["cut"] = true    # cut from the showcase into the route
+		route = pre + route
 	if route.size() >= 4:
 		rig.set_cinematic_path(route)
 		print("[game] title flyover follows %s (%d keys)" % [cfg.get("route_waypoints", ""), route.size()])
