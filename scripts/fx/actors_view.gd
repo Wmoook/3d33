@@ -77,6 +77,11 @@ func create_ghost_ball() -> Node3D:
 	g.ball_layer = 1
 	return g
 
+## Settings > Graphics "High-contrast gameplay glyphs".
+func set_high_contrast(on: bool) -> void:
+	if blocks:
+		blocks.set_high_contrast(on)
+
 func get_player_node() -> Node3D:
 	return player
 

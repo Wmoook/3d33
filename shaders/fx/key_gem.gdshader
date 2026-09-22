@@ -9,7 +9,8 @@ uniform vec3 gem_color : source_color = vec3(1.0, 0.23, 0.23);
 uniform float glow = 1.1;
 uniform float active = 0.0;
 uniform float bob = 0.05;
-uniform float twinkle = 0.0;      // crowns: sparkle instead of pulse
+uniform float twinkle = 0.0;
+uniform float hc = 0.0;          // high-contrast accessibility: +50% size and emission      // crowns: sparkle instead of pulse
 uniform vec3 ball_pos = vec3(-1000.0);
 uniform vec4 flares[4];           // xy = world pos, z = age (s), w = strength
 
@@ -41,7 +42,7 @@ void vertex() {
 	float c = cos(spin), s = sin(spin);
 	VERTEX.xz = mat2(vec2(c, s), vec2(-s, c)) * VERTEX.xz;
 	NORMAL.xz = mat2(vec2(c, s), vec2(-s, c)) * NORMAL.xz;
-	VERTEX *= 1.0 + v_flare * 0.3 + v_near * 0.08;
+	VERTEX *= (1.0 + v_flare * 0.3 + v_near * 0.08) * (1.0 + hc * 0.5);
 	VERTEX.y += sin(TIME * 1.8 + v_ph) * bob / max(length(MODEL_MATRIX[1].xyz), 0.01);
 }
 
@@ -55,5 +56,5 @@ void fragment() {
 	SPECULAR = 0.8;
 	vec3 hot = mix(gem_color, vec3(1.0), 0.4);
 	// touch flare stays in the key hue (a white-hot core blew out into a flare with the dark gem as a pupil)
-	EMISSION = gem_color * glow * k * (0.7 + fres * 0.8) + gem_color * v_near * 0.3 + mix(gem_color, hot, 0.35) * v_flare * 1.4;
+	EMISSION = (1.0 + hc * 0.5) * gem_color * glow * k * (0.7 + fres * 0.8) + gem_color * v_near * 0.3 + mix(gem_color, hot, 0.35) * v_flare * 1.4;
 }

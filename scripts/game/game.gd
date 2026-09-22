@@ -754,7 +754,9 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 
 ## Accessibility: brighter/bigger gameplay glyphs (keys, arrows, dots) via ActorsView when it supports it.
 func _apply_high_contrast() -> void:
-	if actors and actors.has_method(&"set_high_contrast"):
+	if actors and actors.has_method(&"set_glyph_boost"):
+		actors.set_glyph_boost(1.5 if settings.high_contrast else 1.0)
+	elif actors and actors.has_method(&"set_high_contrast"):
 		actors.set_high_contrast(settings.high_contrast)
 
 func _apply_audio_settings() -> void:

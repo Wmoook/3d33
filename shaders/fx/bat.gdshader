@@ -21,7 +21,7 @@ void vertex() {
 
 void fragment() {
 	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 2.0);
-	ALBEDO = vec3(0.045, 0.035, 0.05);
+	ALBEDO = vec3(0.012, 0.01, 0.014);
 	ROUGHNESS = 0.7;
-	EMISSION = vec3(0.22, 0.18, 0.3) * (0.3 + fres * 1.2) + vec3(1.0, 0.12, 0.05) * v_eye * 2.5;
+	EMISSION = vec3(0.16, 0.13, 0.22) * fres * fres * 0.9 + vec3(1.0, 0.12, 0.05) * v_eye * 2.5;
 }

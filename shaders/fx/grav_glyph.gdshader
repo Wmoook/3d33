@@ -8,6 +8,7 @@ uniform vec3 color : source_color = vec3(1.0, 0.72, 0.2);
 uniform float intensity = 1.25;
 uniform float outline = 0.0;
 uniform vec3 ball_pos = vec3(-1000.0);
+uniform float hc = 0.0;   // high-contrast accessibility: +50% size and emission
 
 varying float v_k;
 
@@ -17,6 +18,7 @@ void vertex() {
 	float ang = INSTANCE_CUSTOM.y;
 	vec2 d = vec2(cos(ang), sin(ang));
 	float kind = INSTANCE_CUSTOM.z;
+	VERTEX *= 1.0 + hc * 0.5;
 	// travelling pulse along the flow direction (and a slow breathe for dots)
 	float wave = sin(dot(o.xy, d) * 1.4 - TIME * 4.0);
 	float near = smoothstep(9.0, 1.5, distance(o.xy, ball_pos.xy));
@@ -34,6 +36,6 @@ void fragment() {
 	if (outline > 0.5) {
 		ALBEDO = vec3(0.03, 0.018, 0.005);
 	} else {
-		ALBEDO = color * intensity * v_k;
+		ALBEDO = color * intensity * v_k * (1.0 + hc * 0.5);
 	}
 }
