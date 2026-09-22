@@ -238,7 +238,62 @@ func _frames(n: int) -> void:
 		await get_tree().process_frame
 
 # ======================================================================= title / intro
+const ROUTE_PATH := "res://scripts/physics/route_waypoints.json"
+
 func _setup_cinematic() -> void:
+	var route := _route_keys()
+	if route.size() >= 4:
+		rig.set_cinematic_path(route)
+		print("[game] title flyover follows %s (%d keys)" % [ROUTE_PATH, route.size()])
+		return
+	_setup_cinematic_default()
+
+## Title flyover along the physics route (the actual path through the level), if physics provides it.
+## Accepts [[x,y],...], [{x,y},...] or {"waypoints": [...]}, in tiles or EE pixels (auto-detected);
+## resampled to evenly spaced keyframes (~24 tiles apart) with a gentle zoom breathing.
+func _route_keys() -> Array:
+	if not FileAccess.file_exists(ROUTE_PATH):
+		return []
+	var d = JSON.parse_string(FileAccess.get_file_as_string(ROUTE_PATH))
+	if d is Dictionary:
+		for k in ["waypoints", "route", "points", "path"]:
+			if d.has(k):
+				d = d[k]
+				break
+	if not (d is Array) or d.is_empty():
+		return []
+	var pts: Array[Vector2] = []
+	var max_c := 0.0
+	for w in d:
+		var v := Vector2.INF
+		if w is Array and w.size() >= 2:
+			v = Vector2(float(w[0]), float(w[1]))
+		elif w is Dictionary:
+			if w.has("x") and w.has("y"):
+				v = Vector2(float(w.x), float(w.y))
+			elif w.has("tile"):
+				var t = w.tile
+				v = Vector2(float(t[0]), float(t[1])) if t is Array else Vector2.INF
+			elif w.has("px") and w.has("py"):
+				v = Vector2(float(w.px), float(w.py)) / 16.0
+		if v != Vector2.INF:
+			pts.append(v)
+			max_c = maxf(max_c, maxf(v.x, v.y))
+	if pts.size() < 2:
+		return []
+	if max_c > float(maxi(level.width, level.height)) * 1.5:  # pixels -> tiles
+		for i in pts.size():
+			pts[i] = pts[i] / 16.0
+	var keys := [{"pos": pts[0], "zoom": 44.0}]
+	var acc := 0.0
+	for i in range(1, pts.size()):
+		acc += pts[i].distance_to(pts[i - 1])
+		if acc >= 24.0:
+			acc = 0.0
+			keys.append({"pos": pts[i], "zoom": 44.0 + 10.0 * sin(keys.size() * 0.9)})
+	return keys
+
+func _setup_cinematic_default() -> void:
 	# Tile-space keyframes (y down) touring the painting: surface -> sign -> inferno -> corruption ->
 	# brimstone -> ice -> demon -> drowned forge -> bones -> maelstrom -> back.
 	rig.set_cinematic_path([
@@ -352,7 +407,8 @@ func _process(delta: float) -> void:
 					f = 1.0
 				_render_pos = _player_world_pos(f)
 				var vel := Vector2(sim.px - sim.prev_px, -(sim.py - sim.prev_py)) * (100.0 / 16.0)
-				rig.follow(_render_pos, vel, delta)
+				var gd: Vector2i = sim.gravity_dir if "gravity_dir" in sim else Vector2i(0, 1)
+				rig.follow(_render_pos, vel, delta, Vector2(gd.x, -gd.y))
 				_update_world_actors(_render_pos, delta)
 			if state == State.INTRO:
 				_intro_t += delta

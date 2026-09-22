@@ -21,6 +21,7 @@ const ACTION_NAMES := ["-", "L", "R", "U", "D", "J", "LJ", "RJ"]
 const LEGS := [
 	["spawn -> red doors -> east surface -> top of the purple tentacle (394,24)", Vector2i(394, 24), "tile", Vector2i(394, 24), 8, "coarse"],
 	["down the tentacle chute (jump DOWN through the up-arrows) -> cave (387,44)", Vector2i(387, 44), "tile", Vector2i(387, 44), 2, "fine"],
+	["cave -> west through the red-door band (296-303, 36-44) behind the right-arrow wall", Vector2i(293, 45), "tile", Vector2i(293, 45), 4, "medium"],
 	["underground -> portal 53 (7,75) -> hub (16,10)", Vector2i(7, 75), "portal_to", Vector2i(16, 10), 8, "coarse"],
 	["hub -> left sky -> portal 60 (52,1) -> (321,137)", Vector2i(52, 1), "portal_to", Vector2i(321, 137), 8, "coarse"],
 	["blue keys -> blue door pocket -> gold coin (331,141)", Vector2i(331, 141), "coins", 1, 4, "coarse"],
@@ -39,8 +40,19 @@ func _init() -> void:
 	sim.sim_event.connect(_on_event)
 	var budget := int(OS.get_environment("ROUTE_LEG_NODES")) if OS.get_environment("ROUTE_LEG_NODES") != "" else 400000
 	var all_actions: Array = []    # [action, macro] pairs
+	var first_leg := 0
+	# ROUTE_RESUME=1: continue after the last leg that succeeded in a previous run
+	if OS.get_environment("ROUTE_RESUME") == "1" and FileAccess.file_exists("user://route_partial.json"):
+		var pj: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("user://route_partial.json"))
+		first_leg = int(pj["next_leg"])
+		var inp0 := EEInput.new()
+		for pr in pj["actions"]:
+			all_actions.append([int(pr[0]), int(pr[1])])
+			_apply(ACTIONS[int(pr[0])], int(pr[1]), inp0)
+		print("resumed at leg %d after %d macros, pos %s" % [first_leg, all_actions.size(), Vector2i((int(sim.px) + 8) >> 4, (int(sim.py) + 8) >> 4)])
 	var snap := sim.snapshot()
-	for leg in LEGS:
+	for li in range(first_leg, LEGS.size()):
+		var leg: Array = LEGS[li]
 		var lt := Time.get_ticks_msec()
 		print("LEG: ", leg[0])
 		var target: Vector2i = leg[1]
@@ -59,6 +71,8 @@ func _init() -> void:
 		for a in res[0]:
 			all_actions.append([a, leg[4]])
 		print("  leg done: %d macros, %.1fs" % [res[0].size(), (Time.get_ticks_msec() - lt) / 1000.0])
+		var pf := FileAccess.open("user://route_partial.json", FileAccess.WRITE)
+		pf.store_string(JSON.stringify({"next_leg": li + 1, "actions": all_actions})); pf.close()
 	_write_outputs(all_actions)
 	print("total %.1fs" % [(Time.get_ticks_msec() - t0) / 1000.0])
 	_cleanup()
@@ -111,11 +125,17 @@ func _h(dist: PackedInt32Array, dist2: PackedInt32Array) -> int:
 
 
 var _fine := false
+var _medium := false
+var reached_cells := {}
 
 func _key() -> int:
 	if _fine:
 		return hash([int(sim.px * 2.0), int(sim.py * 2.0), int(round(sim.speed_x * 4.0)), int(round(sim.speed_y * 4.0)),
 			sim.gravity_dir, sim.current_tile, sim.coins, sim.is_key_active(&"blue"), sim.is_key_active(&"red")])
+	if _medium:
+		var tl := sim.key_time_left(&"red")
+		return hash([int(sim.px) >> 2, int(sim.py) >> 2, int(round(sim.speed_x)), int(round(sim.speed_y)),
+			sim.gravity_dir, sim.current_tile, sim.coins, int(ceil(tl)), sim.is_key_active(&"blue"), sim.on_ground])
 	var k := 0
 	for c in [&"red", &"blue"]:
 		var tl := sim.key_time_left(c)
@@ -129,6 +149,7 @@ func _key() -> int:
 func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt32Array, budget: int) -> Array:
 	var macro: int = leg[4]
 	_fine = leg[5] == "fine"
+	_medium = leg[5] == "medium"
 	var inp := EEInput.new()
 	var parent := PackedInt32Array([-1])
 	var act := PackedByteArray([0])
@@ -183,6 +204,7 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 			# novelty first: a node that reaches a never-seen (tile, key state) is expanded before
 			# any revisit; within each class, closest-to-target first
 			var tk := hash([(int(sim.px) + 8) >> 4, (int(sim.py) + 8) >> 4, sim.coins, sim.is_key_active(&"blue")])
+			reached_cells[[(int(sim.px) + 8) >> 4, (int(sim.py) + 8) >> 4]] = true
 			if tiles_seen.has(tk):
 				h += 1000000
 			else:
@@ -199,6 +221,10 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 			print("    expanded %d nodes %d queued %d  best h %d  current h %d at %s" % [expanded, parent.size(), queued, best_h, hb,
 				Vector2i((int(sim.px) + 8) >> 4, (int(sim.py) + 8) >> 4)])
 	print("  search exhausted: expanded %d, %d distinct (tile,coin,bluekey) cells" % [expanded, tiles_seen.size()])
+	var cells := []
+	for c: Array in reached_cells: cells.append(c)
+	var jf := FileAccess.open("user://route_reached.json", FileAccess.WRITE)
+	jf.store_string(JSON.stringify(cells)); jf.close()
 	return []
 
 

@@ -125,7 +125,7 @@ func _build_fire() -> void:
 		var size := Vector2(mx - mn) + Vector2.ONE
 		var wc := Vector3(center.x, -center.y, 0.0)
 		var e := _embers(size)
-		e.position = Vector3(mn.x + size.x * 0.5, -(mn.y + size.y * 0.5), 0.1)
+		e.position = Vector3(mn.x + size.x * 0.5, -(mn.y + 0.2), 0.1)
 		e.emitting = false
 		add_child(e)
 		_ember_chunks.append({"node": e, "center": center})
@@ -160,41 +160,51 @@ func _build_fire() -> void:
 		_lights.append(l)
 		_light_site_of.append(-1)
 
+## Sparse glowing specks that drift up from the fire tops and wobble, with a short velocity tail.
 func _embers(size: Vector2) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = clampi(int(size.x * size.y * 0.25), 12, 70)
-	p.lifetime = 2.6
-	p.preprocess = 2.0
+	p.amount = clampi(int(size.x * 0.9), 4, 24)
+	p.lifetime = 1.8
+	p.preprocess = 1.5
+	p.randomness = 0.7
 	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
-	p.visibility_aabb = AABB(Vector3(-size.x, -size.y, -2), Vector3(size.x * 2, size.y * 2 + 10, 4))
+	p.visibility_aabb = AABB(Vector3(-size.x, -2, -2), Vector3(size.x * 2, 10, 4))
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(size.x * 0.5, size.y * 0.5, 0.3)
+	pm.emission_box_extents = Vector3(size.x * 0.5, 0.3, 0.3)
 	pm.direction = Vector3(0, 1, 0)
-	pm.spread = 25.0
-	pm.initial_velocity_min = 1.0
-	pm.initial_velocity_max = 3.2
-	pm.gravity = Vector3(0, 0.6, 0)
+	pm.spread = 30.0
+	pm.initial_velocity_min = 0.6
+	pm.initial_velocity_max = 1.8
+	pm.gravity = Vector3(0, 0.4, 0)
 	pm.turbulence_enabled = true
-	pm.turbulence_noise_strength = 2.5
-	pm.turbulence_noise_scale = 3.0
-	pm.turbulence_influence_min = 0.1
-	pm.turbulence_influence_max = 0.3
-	pm.damping_min = 0.3
-	pm.damping_max = 0.8
-	pm.scale_min = 0.5
-	pm.scale_max = 1.2
+	pm.turbulence_noise_strength = 3.0
+	pm.turbulence_noise_scale = 2.0
+	pm.turbulence_noise_speed_random = 0.5
+	pm.turbulence_influence_min = 0.25
+	pm.turbulence_influence_max = 0.5
+	pm.damping_min = 0.5
+	pm.damping_max = 1.0
+	pm.scale_min = 0.6
+	pm.scale_max = 1.3
 	var c := Curve.new()
-	c.add_point(Vector2(0, 0.2)); c.add_point(Vector2(0.15, 1.0)); c.add_point(Vector2(1, 0))
+	c.add_point(Vector2(0, 0.3)); c.add_point(Vector2(0.2, 1.0)); c.add_point(Vector2(1, 0))
 	var ct := CurveTexture.new(); ct.curve = c
 	pm.scale_curve = ct
 	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
-	g.colors = PackedColorArray([Color(1.0, 0.9, 0.5, 1), Color(1.0, 0.45, 0.08, 1), Color(0.6, 0.08, 0.0, 0)])
+	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	g.colors = PackedColorArray([Color(1.0, 0.85, 0.45, 1), Color(1.0, 0.45, 0.1, 1), Color(0.6, 0.1, 0.0, 0)])
 	var gt := GradientTexture1D.new(); gt.gradient = g
 	pm.color_ramp = gt
 	p.process_material = pm
-	p.draw_pass_1 = _sprite(0.07, true, 5.0)
+	var q := QuadMesh.new()
+	q.size = Vector2(0.06, 0.12)   # a speck with a short tail, not a streak
+	var m := ShaderMaterial.new()
+	m.shader = PARTICLE_SHADER
+	m.set_shader_parameter("intensity", 6.0)
+	m.set_shader_parameter("streak", 1.0)
+	q.material = m
+	p.draw_pass_1 = q
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return p
 

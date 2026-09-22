@@ -8,9 +8,9 @@ uniform sampler2D field_lin : filter_linear, repeat_disable;
 uniform sampler2D field_near : filter_nearest, repeat_disable;
 uniform vec2 level_size = vec2(400.0, 200.0);
 uniform vec3 col_core : source_color = vec3(1.0, 0.86, 0.45);
-uniform vec3 col_edge : source_color = vec3(1.0, 0.6, 0.24);
+uniform vec3 col_edge : source_color = vec3(0.9, 0.7, 0.4);
 uniform vec3 col_dot : source_color = vec3(0.75, 0.9, 1.0);
-uniform float intensity = 0.75;
+uniform float intensity = 0.5;
 uniform float flow_speed = 1.0;
 uniform vec3 ball_pos = vec3(-1000.0);  // currents brighten and quicken around the ball
 
@@ -48,10 +48,10 @@ float streaks(vec2 w, vec2 d, float seed, float t) {
 		float across = abs(fract(q / lw) - 0.5) * 2.0;
 		float prof = pow(max(1.0 - across, 0.0), (k == 0) ? 5.0 : 8.0);
 		float sp = (2.6 + h * 2.2) * flow_speed;
-		float len = 1.2 + h2 * 1.6;
+		float len = 2.2 + h2 * 2.0;   // spacing between specks along a lane
 		float ph = fract((s - t * sp) / len + h * 9.0);
 		// comet: pattern moves toward +s, so the bright head sits at ph -> 1 and the tail trails behind
-		float comet = pow(ph, 3.0) * (1.0 - smoothstep(0.92, 0.995, ph)) * step(0.62, h2);
+		float comet = smoothstep(0.82, 0.97, ph) * (1.0 - smoothstep(0.97, 1.0, ph)) * step(0.72, h2);
 		acc += prof * comet * ((k == 0) ? 1.0 : 0.6);
 	}
 	return acc;

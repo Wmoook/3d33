@@ -14,7 +14,11 @@ const MAX_YAW := 3.2                 # degrees of parallax tilt at full look-ahe
 const MAX_PITCH_TILT := 2.0
 const LOOK_AHEAD_TIME := 0.22        # seconds of velocity projected ahead
 const LOOK_AHEAD_MAX := Vector2(4.5, 3.0)
-const FRAME_UP := 0.9                # player sits slightly below center
+const FRAME_UP := 0.9                # player sits slightly "below" center (relative to gravity)
+const FALL_LOOK_START := 9.0         # tiles/s along gravity before the extra fall look-ahead kicks in
+const FALL_LOOK_GAIN := 0.3          # extra tiles of look-ahead per tile/s above the start speed
+const FALL_LOOK_MAX := 6.0
+const GRAV_SMOOTH := 1.6             # rate (1/s) at which gravity-relative framing follows gravity changes
 const ZOOM_MIN := 20.0
 const ZOOM_MAX := 60.0
 
@@ -30,6 +34,8 @@ var trauma := 0.0
 var _focus_vel := Vector3.ZERO
 var _look := Vector2.ZERO
 var _tilt := Vector2.ZERO
+var _grav := Vector2(0, -1)          # smoothed gravity direction (world axes, y up)
+var _fall_look := Vector2.ZERO
 var _smooth_boost := 0.0             # extra smoothing during intro swoop (decays)
 var _noise := FastNoiseLite.new()
 var _t := 0.0
@@ -73,20 +79,30 @@ func snap_to(world_pos: Vector3) -> void:
 	focus = _clamp_focus(Vector3(world_pos.x, world_pos.y + FRAME_UP, 0.0))
 	_focus_vel = Vector3.ZERO
 	_look = Vector2.ZERO
+	_fall_look = Vector2.ZERO
 
 ## Switch to follow mode; with swoop=true the camera glides from wherever it is (title -> gameplay).
 func begin_follow(swoop: bool) -> void:
 	mode = Mode.FOLLOW
 	_smooth_boost = 1.1 if swoop else 0.0
 
-## world_pos: interpolated player center; vel: tiles/second (world axes, y up).
-func follow(world_pos: Vector3, vel: Vector2, delta: float) -> void:
+## world_pos: interpolated player center; vel: tiles/second (world axes, y up);
+## gravity: current gravity direction (world axes, y up; zero for dots / god mode keeps the last one).
+func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = Vector2(0, -1)) -> void:
 	_t += delta
 	zoom = _damp(zoom, target_zoom, 7.0, delta)
 	var la := Vector2(clampf(vel.x * LOOK_AHEAD_TIME, -LOOK_AHEAD_MAX.x, LOOK_AHEAD_MAX.x),
 		clampf(vel.y * LOOK_AHEAD_TIME * 0.6, -LOOK_AHEAD_MAX.y, LOOK_AHEAD_MAX.y * 0.5))
 	_look = _look.lerp(la, 1.0 - exp(-2.2 * delta))
-	var target := Vector3(world_pos.x + _look.x, world_pos.y + FRAME_UP + _look.y, 0.0)
+	# Gravity-relative framing is smoothed so arrow fields (rapid gravity flips) never jitter the camera.
+	if gravity.length_squared() > 0.01:
+		_grav = _grav.slerp(gravity.normalized(), 1.0 - exp(-GRAV_SMOOTH * delta)).normalized()
+	# Long falls: frame the terrain coming up along gravity.
+	var v_g := vel.dot(_grav)
+	var fl := _grav * clampf((v_g - FALL_LOOK_START) * FALL_LOOK_GAIN, 0.0, FALL_LOOK_MAX)
+	_fall_look = _fall_look.lerp(fl, 1.0 - exp(-(3.0 if fl.length() > _fall_look.length() else 1.2) * delta))
+	var up := -_grav * FRAME_UP
+	var target := Vector3(world_pos.x + _look.x + _fall_look.x + up.x, world_pos.y + _look.y + _fall_look.y + up.y, 0.0)
 	target = _clamp_focus(target)
 	# Teleports (portals, respawn far away): don't drag the camera across the map.
 	if focus.distance_to(target) > 30.0 and _smooth_boost <= 0.0:
@@ -95,7 +111,8 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float) -> void:
 	_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
 	var st := follow_smooth + _smooth_boost * _smooth_boost * 1.1
 	focus = _smooth_damp(focus, target, st, delta)
-	var tilt_target := Vector2(_look.x / LOOK_AHEAD_MAX.x * MAX_YAW, _look.y / LOOK_AHEAD_MAX.y * MAX_PITCH_TILT)
+	var tl := _look + _fall_look * 0.5
+	var tilt_target := Vector2(clampf(tl.x / LOOK_AHEAD_MAX.x, -1.0, 1.0) * MAX_YAW, clampf(tl.y / LOOK_AHEAD_MAX.y, -1.0, 1.0) * MAX_PITCH_TILT)
 	_tilt = _tilt.lerp(tilt_target, 1.0 - exp(-3.0 * delta))
 	trauma = maxf(0.0, trauma - delta * 1.5)
 	_apply_transform(_tilt)

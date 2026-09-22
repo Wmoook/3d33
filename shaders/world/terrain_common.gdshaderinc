@@ -163,7 +163,11 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 	if (sw >= 0.0) {
 		back = zb;
 	} else {
-		back = mix(zbase, cave_depth(p, fld), smoothstep(0.0, -0.0625, sw));
+		// cave floor rises into a rounded skirt around every solid so small features sit on rock
+		// slopes instead of extruding as long rods to the far wall
+		float skirt = smoothstep(0.0, 3.2, -s.w);
+		float cave = mix(-2.3 - fbm2(p * 0.7) * 0.3, cave_depth(p, fld), skirt * skirt * (3.0 - 2.0 * skirt));
+		back = mix(zbase, cave, smoothstep(0.0, -0.0625, sw));
 	}
 	return mix(0.0, back, smoothstep(0.0, -0.0625, sf));
 }
