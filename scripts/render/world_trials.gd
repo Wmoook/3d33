@@ -77,12 +77,13 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	d.name = "TrialGlyph%d" % (k + 1)
 	d.texture_albedo = glyph
 	d.texture_emission = glyph
-	d.emission_energy = 1.6
+	d.emission_energy = 3.0
 	d.modulate = col
 	d.albedo_mix = 0.55
-	d.size = Vector3(3.2, 4.5, 3.2)           # decal projects along its local -Y (depth 4.5)
+	d.size = Vector3(4.6, 4.5, 4.6)           # decal projects along its local -Y (depth 4.5)
 	d.rotation_degrees = Vector3(90.0, 0.0, 0.0)   # local -Y -> world -Z (into the back wall)
 	d.position = centre + Vector3(0.0, 1.2, -3.4)   # only the back wall behind the room
+	d.normal_fade = 0.4   # only faces looking at the camera (the back wall), never the cliffs
 	d.upper_fade = 0.1
 	d.lower_fade = 0.1
 	d.cull_mask = 1   # terrain layer only
@@ -98,6 +99,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 		ring.modulate = col
 		ring.albedo_mix = 0.4
 		ring.size = Vector3(2.2, 1.6, 3.0)
+		ring.normal_fade = 0.6   # only the up-facing pedestal top
 		ring.position = Vector3(c.x + 0.5, -py + 0.2, -0.6)
 		ring.cull_mask = 1
 		add_child(ring)

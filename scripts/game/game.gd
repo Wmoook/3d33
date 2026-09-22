@@ -611,7 +611,8 @@ func _check_piano() -> void:
 func _trial_complete() -> void:
 	var n := int(sim.coins)
 	var left := maxi(0, _coins_total - n)
-	zone_card.show_zone("TRIAL %s COMPLETE" % roman(n), "%d trials remain" % left if left > 0 else "The way is open")
+	var rem := ("1 trial remains" if left == 1 else "%d trials remain" % left) if left > 0 else "The way is open"
+	zone_card.show_zone("TRIAL %s COMPLETE" % roman(n), rem)
 	audio.play("trial", -3.0, 0.0)
 	var z := rig.target_zoom
 	rig.target_zoom = maxf(CameraRig.ZOOM_MIN, z * 0.88)
@@ -829,7 +830,7 @@ func _update_hud() -> void:
 		for cd in _coin_doors:
 			if vr.has_point(Vector2(cd[0]) + Vector2(0.5, 0.5)) and sim.is_tile_solid_now(cd[0].x, cd[0].y):
 				_coin_door_seen = true
-				hud.toast("COIN DOOR", "needs %d gold coins  -  you have %d" % [cd[1], int(sim.coins)], 5.0)
+				hud.toast("COIN DOOR", "needs %d gold %s  -  you have %d" % [cd[1], "coin" if cd[1] == 1 else "coins", int(sim.coins)], 5.0)
 				break
 	var ptile := Vector2(_render_pos.x, -_render_pos.y)
 	var cf := Vector2(rig.focus.x, -rig.focus.y)
@@ -907,7 +908,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
 			if _trials():
-				victory.subline = "All %d trials conquered" % _coins_total if int(sim.coins) >= _coins_total else "%d of %d trials conquered" % [int(sim.coins), _coins_total]
+				victory.subline = ("All %d trials conquered" % _coins_total) if int(sim.coins) >= _coins_total else ("%d of %d %s conquered" % [int(sim.coins), _coins_total, "trial" if _coins_total == 1 else "trials"])
 			victory.show_stats({"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
 				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0})
 

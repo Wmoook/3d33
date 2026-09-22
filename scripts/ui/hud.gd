@@ -115,7 +115,7 @@ func _draw() -> void:
 	var spin := cos(_t * 2.2)
 	_coin_row(Vector2(78, 72), int(_s.coins), int(_s.coins_total), false, spin, _pop_gold)
 	if str(_s.coin_label) != "":
-		draw_string(UITheme.hud_medium(5), Vector2(112, 48), str(_s.coin_label), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(UITheme.GOLD, 0.75))
+		draw_string(UITheme.hud(5), Vector2(113, 50), str(_s.coin_label), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(UITheme.GOLD, 0.95))
 	if rows > 1:
 		_coin_row(Vector2(78, 134), int(_s.blue), int(_s.blue_total), true, cos(_t * 2.2 + 1.3), _pop_blue)
 	if _s.crown:
@@ -163,6 +163,7 @@ func _draw() -> void:
 		var cf := UITheme.title(0, 700)
 		var cw := UITheme.spaced_width(cf, _caption, 26, 8.0)
 		var cp := Vector2(W * 0.5 - cw * 0.5, 176)
+		UITheme.draw_scrim(self, Vector2(W * 0.5, cp.y - 9), Vector2(cw + 320.0, 110.0), 0.45 * ca)
 		UITheme.draw_spaced(self, cf, cp + Vector2(0, 2), _caption, 26, 8.0, Color(0, 0, 0, 0.5 * ca))
 		UITheme.draw_spaced(self, cf, cp, _caption, 26, 8.0, Color(UITheme.GOLD, 0.95 * ca))
 		draw_line(Vector2(cp.x - 70, cp.y - 9), Vector2(cp.x - 16, cp.y - 9), Color(UITheme.GOLD, 0.6 * ca), 1.2, true)
@@ -187,8 +188,7 @@ func _draw() -> void:
 	if show_hints:
 		var ha := clampf(1.0 - (_hint_t - 14.0) / 2.0, 0.0, 1.0) * clampf(_hint_t / 1.5, 0.0, 1.0)
 		if ha > 0.0:
-			for i in 8:
-				draw_rect(Rect2(0, size.y - 110 + i * 11, 1100, 110 - i * 11), Color(0, 0, 0, 0.035 * ha))
+			UITheme.draw_scrim(self, Vector2(520, size.y - 50), Vector2(1500, 170), 0.45 * ha)
 			var hy := size.y - 44
 			var x := 44.0
 			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["H", "ghost"], ["F3", "collision"], ["ESC", "menu"]]:

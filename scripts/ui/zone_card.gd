@@ -40,15 +40,12 @@ func _draw() -> void:
 	var a := a_in * a_out
 	var cx := size.x * 0.5
 	var cy := size.y * 0.24
-	# soft dark band behind the text for legibility on bright scenes
-	for i in 8:
-		var h := 190.0 - i * 20.0
-		var w := size.x * (0.9 - i * 0.06)
-		draw_rect(Rect2(cx - w * 0.5, cy - h * 0.5 - 4, w, h), Color(0, 0, 0, 0.07 * a))
 	var spacing := lerpf(34.0, 14.0, a_in) + (1.0 - a_out) * 10.0
 	var f := UITheme.title(0, 700)
 	var fs := 66
 	var tw := UITheme.spaced_width(f, _name, fs, spacing)
+	# one feathered scrim sized to the text (no panels): legible on bright sky and dark caves alike
+	UITheme.draw_scrim(self, Vector2(cx, cy - 2), Vector2(tw + 520.0, 260.0), 0.55 * a)
 	var gold := Color(UITheme.GOLD.r, UITheme.GOLD.g, UITheme.GOLD.b, a)
 	# rules
 	var rule_len := 170.0 * _ease(clampf((_t - 0.15) / IN_T, 0.0, 1.0))

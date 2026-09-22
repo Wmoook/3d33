@@ -76,6 +76,30 @@ static func warm_glyphs(ci: CanvasItem) -> void:
 	for sz in [44, 42, 24, 26, 20, 22]:
 		ci.draw_string(hud(), Vector2(-4000, -4000), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, faint)
 
+## One soft, feathered black scrim (elliptical gaussian falloff, no edges). Draw it scaled to the text:
+## draw_scrim(ci, center, size, alpha). Reads on bright skies without showing any panel shape.
+static func scrim_tex() -> Texture2D:
+	if _cache.has("scrim"):
+		return _cache["scrim"]
+	var w := 256
+	var h := 128
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			var dx := (x + 0.5 - w * 0.5) / (w * 0.5)
+			var dy := (y + 0.5 - h * 0.5) / (h * 0.5)
+			var d2 := dx * dx + dy * dy
+			var a := clampf(exp(-d2 * 3.2) - exp(-3.2), 0.0, 1.0) / (1.0 - exp(-3.2))
+			img.set_pixel(x, y, Color(0, 0, 0, a))
+	var t := ImageTexture.create_from_image(img)
+	_cache["scrim"] = t
+	return t
+
+static func draw_scrim(ci: CanvasItem, center: Vector2, sz: Vector2, alpha: float) -> void:
+	if alpha <= 0.001:
+		return
+	ci.draw_texture_rect(scrim_tex(), Rect2(center - sz * 0.5, sz), false, Color(1, 1, 1, alpha))
+
 static func glass_box(radius: int = 14, alpha: float = 0.55) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(GLASS.r, GLASS.g, GLASS.b, alpha)
