@@ -18,6 +18,8 @@ const SPOTS := [
 	["keytouch", Vector2(89, 10)],
 	["cave_shadow_on", Vector2(216, 69)],
 	["cave_shadow_off", Vector2(216, 69)],
+	["cave_diag_on", Vector2(216, 69)],
+	["cave_diag_off", Vector2(216, 69)],
 	["hc_off", Vector2(262, 150)],
 	["hc_on", Vector2(262, 150)],
 ]
@@ -46,7 +48,10 @@ func _ready() -> void:
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		game.actors.overlays.visible = s[0] != "inferno_nooverlay"
 		game.actors.set_high_contrast(s[0] == "hc_on")
-		game.actors.set_ball_shadows(s[0] != "cave_shadow_off")
+		game.actors.set_ball_shadows(not s[0].ends_with("_off") or not s[0].begins_with("cave"))
+		if s[0].begins_with("cave_diag"):
+			game.actors.player._halo.visible = false
+			game.world.lights.visible = false   # isolate the ball light
 		if s[0] == "ghost" and ghost == null:
 			ghost = game.actors.create_ghost_ball()
 			game.actors.get_parent().add_child(ghost)
@@ -57,6 +62,13 @@ func _ready() -> void:
 			game.sim.sim_event.emit(&"key", {"color": &"red", "tile": Vector2i(86, 12)})
 			for i in 8:
 				await get_tree().process_frame
+		if s[0].begins_with("cave"):
+			var L: OmniLight3D = game.actors.player._env_light
+			if s[0].begins_with("cave_diag"):
+				L.light_energy = 6.0
+				await get_tree().process_frame
+				await RenderingServer.frame_post_draw
+			print("ball light shadow=", L.shadow_enabled, " energy=", L.light_energy, " range=", L.omni_range, " mask=", L.shadow_caster_mask, " cull=", L.light_cull_mask)
 		get_viewport().get_texture().get_image().save_png("user://fx_game_%s.png" % s[0])
 		print("saved fx_game_", s[0])
 	get_tree().quit()

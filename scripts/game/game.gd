@@ -883,6 +883,9 @@ func _apply_quality() -> void:
 	# Geometry/shadow cost dominates (tests/game_perf.tscn): scale shadow atlas + mesh LOD with the preset.
 	vp.positional_shadow_atlas_size = [2048, 4096, 8192, 8192][q]
 	vp.mesh_lod_threshold = [4.0, 2.5, 1.5, 1.0][q]
+	# Actors' ball-light shadows: HIGH/ULTRA only.
+	if actors and actors.has_method(&"set_ball_shadows"):
+		actors.set_ball_shadows(q >= 2)
 	# World's shadowed key light (a SpotLight): shadows only at ULTRA (world's suggestion for HIGH).
 	var key_light := world.get_node_or_null(^"Lights/KeyLight") as Light3D if world else null
 	if key_light:

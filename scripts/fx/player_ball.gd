@@ -94,9 +94,9 @@ func _ready() -> void:
 	# Light the ball carries: lights the world around it (not the ball itself) with shadows.
 	_env_light = OmniLight3D.new()
 	_env_light.light_color = Color(1.0, 0.8, 0.5)
-	_env_light.light_energy = 1.0
+	_env_light.light_energy = 2.2
 	_env_light.omni_range = 6.0
-	_env_light.omni_attenuation = 2.0
+	_env_light.omni_attenuation = 1.4
 	# Shadows on at High/Ultra (world supplies a cheap shadow-only terrain proxy); presets toggle set_shadows().
 	_env_light.shadow_enabled = shadows_default
 	_env_light.shadow_bias = 0.06
@@ -422,7 +422,7 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 	_glow_flash = maxf(_glow_flash - delta * 3.5, 0.0)
 	_mat.set_shader_parameter("glow", _glow_flash + (1.0 - _materialize) * 1.5)
 	if _env_light:
-		_env_light.light_energy = (1.0 + _glow_flash * 2.0) * (0.25 if _dying else 1.0)
+		_env_light.light_energy = (2.2 + _glow_flash * 2.0) * (0.25 if _dying else 1.0)
 
 var _last_fall := 0.0
 var _pending_respawn_fx := false
