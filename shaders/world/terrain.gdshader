@@ -315,6 +315,14 @@ void fragment() {
 		rough = 0.12;
 		spec = 0.55;
 		n = fn;
+		if (art == 3) {
+			// sealed blue-key pond: hard glassy lid with pulsing blue rune veins and a crisp edge highlight
+			float veinb = smoothstep(0.975, 0.997, ridge(p * 0.4 + vec2(fbm2(p * 0.2), fbm2(p * 0.2 + 4.0)) * 1.2));
+			float edgeb = 1.0 - smoothstep(0.0, 0.12, max(s.x, 0.0));
+			emit += vec3(0.3, 0.55, 1.0) * (veinb * (0.35 + 0.3 * sin(TIME * 1.1 + p.x * 0.15)) + edgeb * 0.6);
+			rough = 0.04;
+			spec = 0.9;
+		}
 	} else if (mat == M_WATER) {
 		// deep glossy water: dark body, light shafts + caustics near the surface, foam on the top face
 		vec2 wv = vec2(fbm2(p * vec2(0.6, 1.4) + vec2(t * 0.3, 0.0)), fbm2(p * vec2(0.6, 1.4) + vec2(-t * 0.22, 3.0) + 9.0));

@@ -14,8 +14,12 @@ const ACTIONS := [
 	# left, right, up, down, jump
 	[0, 0, 0, 0, 0], [1, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0],
 	[0, 0, 0, 0, 1], [1, 0, 0, 0, 1], [0, 1, 0, 0, 1],
+	# extended alphabet (ROUTE_ACTIONS=full): up/down combos matter in side gravity and dots
+	[1, 0, 1, 0, 0], [0, 1, 1, 0, 0], [1, 0, 0, 1, 0], [0, 1, 0, 1, 0],
+	[0, 0, 1, 0, 1], [0, 0, 0, 1, 1], [1, 0, 1, 0, 1], [0, 1, 1, 0, 1], [1, 0, 0, 1, 1], [0, 1, 0, 1, 1],
 ]
-const ACTION_NAMES := ["-", "L", "R", "U", "D", "J", "LJ", "RJ"]
+const ACTION_NAMES := ["-", "L", "R", "U", "D", "J", "LJ", "RJ", "UL", "UR", "DL", "DR", "UJ", "DJ", "ULJ", "URJ", "DLJ", "DRJ"]
+var n_actions := 8
 const MAX_REPS := 12
 
 ## Legs: [name, heuristic target tile, predicate, predicate arg, macro ticks, state-key resolution]
@@ -39,12 +43,17 @@ func _init() -> void:
 	lvl = EELevel.load_file("res://levels/ex_crew_odyssey.eelvl")
 	sim = EESim.new(lvl)
 	sim.sim_event.connect(_on_event)
+	if OS.get_environment("ROUTE_ACTIONS") == "full":
+		n_actions = ACTIONS.size()
 	var budget := int(OS.get_environment("ROUTE_LEG_NODES")) if OS.get_environment("ROUTE_LEG_NODES") != "" else 400000
 	# ROUTE_LOCAL="sx,sy,gx,gy,macro,mode": debug a single leg from a tile position to a goal tile
 	if OS.get_environment("ROUTE_LOCAL") != "":
 		var a := OS.get_environment("ROUTE_LOCAL").split(",")
 		sim.px = int(a[0]) * 16.0; sim.py = int(a[1]) * 16.0
 		sim.prev_px = sim.px; sim.prev_py = sim.py
+		var settle := EEInput.new()
+		for t in 60: sim.tick(settle)       # come to rest (fall to the floor)
+		print("LOCAL start (%.1f,%.1f)" % [sim.px, sim.py])
 		var g := Vector2i(int(a[2]), int(a[3]))
 		var leg := ["local", g, "tile", g, int(a[4]), a[5]]
 		_build_open(false)
@@ -239,7 +248,7 @@ func _search(start: Array, leg: Array, dist: PackedInt32Array, dist2: PackedInt3
 		if heads[hb] >= arr.size():
 			buckets.erase(hb); heads.erase(hb); hs.pop_front()
 		expanded += 1
-		for a in ACTIONS.size():
+		for a in n_actions:
 			sim.restore(node[1])
 			events.clear()
 			_apply(ACTIONS[a], macro, inp)

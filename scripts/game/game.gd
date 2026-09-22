@@ -218,6 +218,7 @@ func _boot() -> void:
 	_capture_authored_env()
 	_apply_quality()
 	_setup_cinematic()
+	rig.cinematic_cut.connect(func(): _fade_flash(0.6))
 	_render_pos = _player_world_pos(1.0)
 	loading.set_progress(0.96, "Lighting the torches")
 	minimap.warmup(6)
@@ -272,6 +273,11 @@ func _frames(n: int) -> void:
 
 # ======================================================================= title / intro
 const ROUTE_PATH := "res://scripts/physics/route_waypoints.json"
+const ATTRACT_REPLAY := "res://scripts/physics/route_descent.eerp"
+const ATTRACT_IDLE := 20.0
+var _attract := false
+var _attract_rep
+var _title_idle := 0.0
 
 func _setup_cinematic() -> void:
 	var route := _route_keys()
@@ -360,6 +366,9 @@ func _setup_cinematic_default() -> void:
 
 func _enter_title() -> void:
 	state = State.TITLE
+	_title_idle = 0.0
+	_attract = false
+	title.attract = false
 	get_tree().paused = false
 	rig.begin_cinematic()
 	title.restart_intro()
@@ -370,6 +379,40 @@ func _enter_title() -> void:
 	get_tree().create_timer(1.2).timeout.connect(func():
 		if state == State.TITLE:
 			audio.play("title_hit", -2.0, 0.0))
+
+## Attract mode: after ATTRACT_IDLE s on the title, the real ball plays physics' bit-exact recorded descent
+## (scripts/physics/route_descent.eerp) with the camera following it; any key starts a fresh game.
+func _start_attract() -> bool:
+	if _attract_rep == null:
+		if not (ResourceLoader.exists("res://scripts/physics/ee_replay.gd") and FileAccess.file_exists(ATTRACT_REPLAY)):
+			_title_idle = -1e9   # nothing to play; don't retry
+			return false
+		_attract_rep = load("res://scripts/physics/ee_replay.gd").load_file(ATTRACT_REPLAY)
+		if _attract_rep == null:
+			_title_idle = -1e9
+			return false
+	_attract_rep.start(sim)     # sim.reset() + rewind
+	_attract = true
+	title.attract = true
+	rig.begin_follow(true)
+	rig.target_zoom = settings.zoom
+	_fade_flash(0.7)
+	return true
+
+func _stop_attract() -> void:
+	_attract = false
+	_title_idle = 0.0
+	title.attract = false
+	sim.reset()
+	if ghost:
+		ghost.on_reset()
+	if state == State.TITLE:
+		rig.begin_cinematic()
+		_fade_flash(0.7)
+
+func _fade_flash(t: float) -> void:
+	_fade.modulate.a = 1.0
+	create_tween().tween_property(_fade, "modulate:a", 0.0, t)
 
 func _start_play(swoop: bool) -> void:
 	state = State.INTRO if swoop else State.PLAYING
@@ -402,6 +445,10 @@ func _quit_to_title() -> void:
 
 # ======================================================================= loop
 func _physics_process(_delta: float) -> void:
+	if state == State.TITLE and _attract:
+		if not _attract_rep.step(sim):
+			_stop_attract()
+		return
 	if state != State.PLAYING or get_tree().paused or sim == null or victory.visible:
 		return
 	_fill_input()
@@ -464,9 +511,20 @@ func _process(delta: float) -> void:
 	var paused := get_tree().paused
 	match state:
 		State.TITLE:
-			rig.cinematic(delta, 0.07)
-			_render_pos = _player_world_pos(1.0)
-			_update_world_actors(rig.focus, delta)
+			if _attract:
+				var fa := 1.0 if ("teleported" in sim and sim.teleported) else Engine.get_physics_interpolation_fraction()
+				_render_pos = _player_world_pos(fa)
+				var va := Vector2(sim.px - sim.prev_px, -(sim.py - sim.prev_py)) * (100.0 / 16.0)
+				var ga: Vector2i = sim.gravity_dir if "gravity_dir" in sim else Vector2i(0, 1)
+				rig.follow(_render_pos, va, delta, Vector2(ga.x, -ga.y))
+				_update_world_actors(_render_pos, delta)
+			else:
+				rig.cinematic(delta, 0.07)
+				_render_pos = _player_world_pos(1.0)
+				_update_world_actors(rig.focus, delta)
+				_title_idle += delta
+				if _title_idle > ATTRACT_IDLE and title.accept_input:
+					_start_attract()
 		State.INTRO, State.PLAYING:
 			if not paused:
 				var f := 1.0 if _snap_render else Engine.get_physics_interpolation_fraction()
@@ -661,6 +719,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if title.accept_input and _is_any_press(event):
 				get_viewport().set_input_as_handled()
 				audio.play("ui_select", -2.0, 0.0)
+				if _attract:
+					_stop_attract()
+					rig.snap_to(_player_world_pos(1.0))
 				title.dismiss()
 				_start_play(true)
 		State.PLAYING:
@@ -854,5 +915,8 @@ func debug_state() -> Dictionary:
 
 func press_start() -> void:
 	if state == State.TITLE:
+		if _attract:
+			_stop_attract()
+			rig.snap_to(_player_world_pos(1.0))
 		title.dismiss()
 		_start_play(true)

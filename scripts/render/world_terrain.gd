@@ -343,7 +343,8 @@ func _classify() -> void:
 				# key-door tiles that are part of the painting (demon body, pink flesh tube, upper pond):
 				# sculpted as the surrounding terrain mass; hidden while their key is active
 				solid[i] = 1
-				var am := WorldPalette.M_WATER if WorldPalette.RECT_UPPER_LAKE.has_point(Vector2i(x, y)) else WorldPalette.M_FLESH
+				# blue door pond: frozen glassy crystal (reads SOLID, unlike lake water); others: sculpted flesh
+				var am := WorldPalette.M_ICE if art_door[i] == 3 else WorldPalette.M_FLESH
 				mat_ids[i] = am
 				fgb[i * 4] = mc.r8; fgb[i * 4 + 1] = mc.g8; fgb[i * 4 + 2] = mc.b8; fgb[i * 4 + 3] = am
 				has_fg[i] = 1

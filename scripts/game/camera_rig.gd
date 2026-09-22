@@ -163,7 +163,7 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 	var p2: Dictionary = _cine_keys[(i + 1) % n]
 	var p3: Dictionary = _cine_keys[(i + 2) % n]
 	# Camera cuts (portal jumps / loop wrap): never fly across the map; jump to the next key instead.
-	var wrap_cut := (i + 1) % n == 0 and p1.pos.distance_to(p2.pos) > 30.0
+	var wrap_cut: bool = (i + 1) % n == 0 and (p1.pos as Vector2).distance_to(p2.pos) > 30.0
 	if p2.get("cut", false) or wrap_cut:
 		_cine_s = floorf(_cine_s) + 1.0
 		cinematic_cut.emit()

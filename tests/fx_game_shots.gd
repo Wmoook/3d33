@@ -16,6 +16,8 @@ const SPOTS := [
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
 	["keytouch", Vector2(89, 10)],
+	["cave_shadow_on", Vector2(111, 60)],
+	["cave_shadow_off", Vector2(111, 60)],
 	["hc_off", Vector2(262, 150)],
 	["hc_on", Vector2(262, 150)],
 ]
@@ -44,6 +46,7 @@ func _ready() -> void:
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		game.actors.overlays.visible = s[0] != "inferno_nooverlay"
 		game.actors.set_high_contrast(s[0] == "hc_on")
+		game.actors.set_ball_shadows(s[0] != "cave_shadow_off")
 		if s[0] == "ghost" and ghost == null:
 			ghost = game.actors.create_ghost_ball()
 			game.actors.get_parent().add_child(ghost)

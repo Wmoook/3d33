@@ -39,6 +39,8 @@ var _title_mat: ShaderMaterial
 var _vig: ColorRect
 var _vig_mat: ShaderMaterial
 var accept_input := false
+var attract := false          # attract-mode demo: big title recedes, a small caption shows
+var _attract_k := 0.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -90,6 +92,7 @@ func _process(delta: float) -> void:
 		if _out > 0.9:
 			visible = false
 			dismissed.emit()
+	_attract_k = move_toward(_attract_k, 1.0 if attract else 0.0, delta * 1.2)
 	_title_mat.set_shader_parameter("sheen", fmod(_t * 0.16, 1.6) - 0.3)
 	_vig_mat.set_shader_parameter("amount", _k(0.0, 1.5) * _outk())
 	queue_redraw()
@@ -112,7 +115,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, H - bar, W, bar), Color.BLACK)
 	var cx := W * 0.5
 	var cy := H * 0.47
-	var a := o
+	var a := o * (1.0 - _attract_k)
 	# eyebrow
 	var eb := "A  REIMAGINING  OF  EX  CREW  ODYSSEY"
 	var ef := UITheme.hud_medium(9)
@@ -130,13 +133,18 @@ func _draw() -> void:
 	# subtitle (the level's own text)
 	var sub := "The Devil hath taken thy Soul...  Go, and Return!"
 	draw_string(UITheme.serif_italic(500), Vector2(0, cy + 96), sub, HORIZONTAL_ALIGNMENT_CENTER, W, 42, Color(0.96, 0.9, 0.82, 0.92 * _k(3.0, 1.6) * a))
+	# attract-mode caption
+	if _attract_k > 0.01:
+		var ak := _attract_k * o
+		UITheme.draw_spaced(self, UITheme.title(0, 800), Vector2(52, 176), "EX ODYSSEY", 44, 8.0, Color(UITheme.GOLD, 0.9 * ak))
+		draw_string(UITheme.serif_italic(500), Vector2(54, 214), "the descent  -  a recorded run", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1, 0.93, 0.85, 0.7 * ak))
 	# press any key
 	if _t > 4.2:
-		var pk := _k(4.2, 1.0) * (0.55 + 0.45 * sin((_t - 4.2) * 2.6)) * a
+		var pk := _k(4.2, 1.0) * (0.55 + 0.45 * sin((_t - 4.2) * 2.6)) * o
 		var pf := UITheme.hud(10)
 		draw_string(pf, Vector2(0, H * 0.8), "PRESS  ANY  KEY", HORIZONTAL_ALIGNMENT_CENTER, W, 24, Color(1, 1, 1, pk))
 	# footer in letterbox
-	var fa := _k(1.2, 1.5) * a * 0.45
+	var fa := _k(1.2, 1.5) * o * 0.45
 	draw_string(UITheme.hud_medium(3), Vector2(48, H - 38), "Based on  \"EX Crew Odyssey\"  -  Everybody Edits", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(1, 1, 1, fa))
 	draw_string(UITheme.hud_medium(3), Vector2(W - 548, H - 38), "ARROWS / WASD   SPACE   G   M   ESC", HORIZONTAL_ALIGNMENT_RIGHT, 500, 17, Color(1, 1, 1, fa))
 
@@ -152,7 +160,7 @@ func _draw_title() -> void:
 	var text := "EX ODYSSEY"
 	var tw := UITheme.spaced_width(f, text, fs, spacing)
 	var p := Vector2(W * 0.5 - tw * 0.5, cy)
-	var a := k * o
+	var a := k * o * (1.0 - _attract_k)
 	_title_mat.set_shader_parameter("y0", (cy - fs * 0.72) / H)
 	_title_mat.set_shader_parameter("y1", (cy + 4.0) / H)
 	# soft glow halo + drop shadow, then the gradient face

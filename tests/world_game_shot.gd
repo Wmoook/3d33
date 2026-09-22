@@ -10,10 +10,13 @@ func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	var at := Vector2i(145, 50)
 	var nm := "tunnel"
+	var key := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("at="):
 			var v := a.substr(3).split(",")
 			at = Vector2i(int(v[0]), int(v[1]))
+		elif a.begins_with("key="):
+			key = a.substr(4)
 		elif a.begins_with("name="):
 			nm = a.substr(5)
 	GameScript.boot_options = {"no_save": true, "quality": 3}
@@ -34,6 +37,8 @@ func _ready() -> void:
 		sim.prev_px = sim.px; sim.prev_py = sim.py
 		sim.speed_x = 0.0; sim.speed_y = 0.0
 		await get_tree().physics_frame
+	if key != "":
+		sim._set_key(StringName(key), true)
 	await _wait(2.5)
 	var ov: Node3D = game.collision_overlay
 	var parent := ov.get_parent()
