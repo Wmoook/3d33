@@ -26,12 +26,10 @@ var ball_vel := Vector2.ZERO
 var _prev_ball := Vector2(-1000, 0)
 
 ## Odyssey keeps its hand-placed life (bats in cave zones, surface fireflies, corruption wisps).
-## Other levels: fireflies only in shaded interiors (roofed open air), fish in the art's water; no bats/wisps.
+## Other levels place life by light (FxLightMap): bats roost only in DARK enclosed air, fireflies only in
+## SHADE (roofed air near daylight), fish in the art's water; no wisps. Day creatures live in FxDayLife.
 var odyssey := true
-## Optional world zone lookup (WorldView.get_zone_at): tiles whose zone is listed in no_firefly_zones
-## never get fireflies (e.g. sunlit surface zones).
-var zone_fn: Callable
-var no_firefly_zones: Array[StringName] = []
+var light: FxLightMap
 
 var _open := PackedByteArray()
 var _sky_top := PackedInt32Array()
@@ -113,6 +111,9 @@ func _deep_at(x: int, y: int) -> bool:
 func open_at(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < W and y < H and _open[y * W + x] == 1
 
+func _bat_air(x: int, y: int) -> bool:
+	return open_at(x, y) and (odyssey or light.at(x, y) != FxLightMap.SUN)
+
 func _water(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < W and y < H and maps.water[y * W + x] == 1
 
@@ -123,8 +124,10 @@ func _find_sites() -> void:
 			var h := FxInteractiveBlocks._tile_hash(Vector2i(x, y))
 			var z := WorldPalette.zone_at(x, y) if odyssey else -1
 			if not odyssey:
-				if _open[i] == 1 and y > _sky_top[x] and h.y < 0.3 and not _water(x, y) and _shaded(x, y):
+				if _open[i] == 1 and h.y < 0.25 and not _water(x, y) and light.at(x, y) == FxLightMap.SHADE and _grounded(x, y):
 					_add_site(_ff_sites, _ff_bucket, Vector2i(x, y))
+				if _open[i] == 1 and _open[i - W] == 0 and h.x < 0.2 and not _water(x, y) and lvl.fg[i] == 0 						and open_at(x, y + 1) and open_at(x, y + 2) and light.at(x, y) == FxLightMap.DARK 						and light.at(x, y + 2) == FxLightMap.DARK:
+					_add_site(_roosts, _roost_bucket, Vector2i(x, y))
 			elif _open[i] == 1 and _open[i - W] == 0 and y > _sky_top[x] and z != WorldPalette.Z_SURFACE \
 					and z != WorldPalette.Z_LAKE and h.x < 0.2 and not _water(x, y) 					and lvl.fg[i] == 0 and open_at(x, y + 1) and open_at(x, y + 2):
 				_add_site(_roosts, _roost_bucket, Vector2i(x, y))
@@ -139,25 +142,12 @@ func _find_sites() -> void:
 			if _deep_at(x, y) and _deep_at(x, y - 1) and _deep_at(x - 1, y) and _deep_at(x + 1, y) and h.z < 0.3:
 				_add_site(_fish_sites, _fish_bucket, Vector2i(x, y))
 
-## Non-Odyssey firefly site: roofed within 6 tiles above, ground within 4 below, not in a sunlit zone.
-func _shaded(x: int, y: int) -> bool:
-	var roof := false
-	for k in range(1, 7):
-		if not open_at(x, y - k):
-			roof = true
-			break
-	if not roof:
-		return false
-	var ground := false
+## Ground within 4 tiles below (fireflies hover over floors, not in the middle of shafts).
+func _grounded(x: int, y: int) -> bool:
 	for k in range(1, 5):
 		if not open_at(x, y + k):
-			ground = true
-			break
-	if not ground:
-		return false
-	if zone_fn.is_valid() and not no_firefly_zones.is_empty():
-		return not no_firefly_zones.has(StringName(zone_fn.call(Vector2i(x, y))))
-	return true
+			return true
+	return false
 
 func _add_site(arr: Array[Vector2i], bucket: Dictionary, t: Vector2i) -> void:
 	var k := Vector2i(t.x / BUCKET, t.y / BUCKET)
@@ -383,14 +373,14 @@ func _update_bats(delta: float) -> void:
 				if sp > maxsp:
 					b.vel = b.vel / sp * maxsp
 				var np: Vector2 = b.pos + b.vel * delta
-				if not open_at(int(np.x), int(np.y)):
-					# bounce off rock
-					if not open_at(int(np.x), int(b.pos.y)):
+				if not _bat_air(int(np.x), int(np.y)):
+					# bounce off rock (and, on day levels, off daylight: bats never leave the dark)
+					if not _bat_air(int(np.x), int(b.pos.y)):
 						b.vel.x = -b.vel.x
-					if not open_at(int(b.pos.x), int(np.y)):
+					if not _bat_air(int(b.pos.x), int(np.y)):
 						b.vel.y = -b.vel.y
 					np = b.pos + b.vel * delta
-					if not open_at(int(np.x), int(np.y)):
+					if not _bat_air(int(np.x), int(np.y)):
 						np = b.pos
 				b.pos = np
 		b.flap += delta * (22.0 if b.state != 0 else 0.0)

@@ -7,7 +7,7 @@ extends Node
 const SFX_DIR := "res://assets/audio/sfx/"
 const MUSIC_DIR := "res://assets/audio/music/"
 const SFX_NAMES := ["jump", "land", "coin", "blue_coin", "key", "key_expired", "portal", "death", "respawn",
-	"crown", "gravity", "ui_move", "ui_select", "title_hit", "zone"]
+	"crown", "gravity", "ui_move", "ui_select", "title_hit", "zone", "trial"]
 const BEDS := ["title", "surface", "cave", "hell", "corruption", "ice", "lake", "veil_title", "day", "falls", "temple"]
 ## Per-bed trim (dB) so beds sit at similar loudness.
 const BED_GAIN := {&"temple": -3.5, &"falls": -1.0}

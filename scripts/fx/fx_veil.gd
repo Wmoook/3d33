@@ -19,6 +19,7 @@ const CHUNK := 12
 
 var lvl: EELevel
 var maps: FxOverlayMaps
+var light: FxLightMap     # optional: world-accurate sunlit air
 var W := 0
 var H := 0
 var _sky_top := PackedInt32Array()
@@ -53,6 +54,8 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	print("FxVeil: %d ms, falls %d, leaf chunks %d" % [Time.get_ticks_msec() - t0, _falls.size(), _leaf_chunks.size()])
 
 func sunny(x: int, y: int) -> bool:
+	if light:
+		return light.at(x, y) == FxLightMap.SUN
 	return x >= 0 and x < W and y >= 0 and y < _sky_top[x]
 
 ## Canopy / grass pixels of the painting (green minimap hues), fg or bg.

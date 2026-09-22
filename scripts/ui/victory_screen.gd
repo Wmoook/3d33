@@ -7,6 +7,8 @@ signal closed
 
 var title_text := "ODYSSEY COMPLETE"
 var eyebrow_text := "THE  SOUL  RETURNS"
+var subline := ""                     # e.g. "All 16 trials conquered"
+var stat_keys: Array = ["time", "coins", "blue", "deaths"]
 var stats := {"time": 0.0, "coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "deaths": 0}
 var _t := -1.0
 var _out := -1.0
@@ -72,10 +74,17 @@ func _draw() -> void:
 	var rk := _k(1.0, 1.0) * o
 	draw_line(Vector2(c.x - 300 * rk, c.y + 36), Vector2(c.x + 300 * rk, c.y + 36), Color(UITheme.GOLD, 0.7 * rk), 1.5, true)
 	var t: float = stats.time
-	var cols := [["TIME", "%02d:%05.2f" % [int(t / 60.0), fmod(t, 60.0)]],
-		["COINS", "%d / %d" % [stats.coins, stats.coins_total]],
-		["BLUE COINS", "%d / %d" % [stats.blue, stats.blue_total]],
-		["DEATHS", str(stats.deaths)]]
+	var all_cols := {"time": ["TIME", "%02d:%05.2f" % [int(t / 60.0), fmod(t, 60.0)]],
+		"coins": ["COINS", "%d / %d" % [stats.coins, stats.coins_total]],
+		"trials": ["TRIALS", "%d / %d" % [stats.coins, stats.coins_total]],
+		"blue": ["BLUE COINS", "%d / %d" % [stats.blue, stats.blue_total]],
+		"deaths": ["DEATHS", str(stats.deaths)]}
+	var cols := []
+	for k in stat_keys:
+		cols.append(all_cols[k])
+	if subline != "":
+		draw_string(UITheme.serif_italic(500), Vector2(0, c.y + 118), subline, HORIZONTAL_ALIGNMENT_CENTER, W, 30,
+			Color(1, 0.94, 0.85, 0.85 * _k(1.1, 0.8) * o))
 	var cw := 260.0
 	var x0 := c.x - cw * cols.size() * 0.5
 	for i in cols.size():

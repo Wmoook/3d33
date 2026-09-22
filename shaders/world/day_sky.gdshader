@@ -20,7 +20,9 @@ uniform vec3 cave_top = vec3(0.5, 0.55, 0.6);
 uniform vec3 cave_bottom = vec3(0.05, 0.05, 0.06);
 
 float h2(vec2 p) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 float n2(vec2 p) {
 	vec2 i = floor(p);
@@ -101,7 +103,7 @@ void sky() {
 			* smoothstep(0.0, 0.03, uv.y) * smoothstep(1.0, 0.97, uv.y);
 		c = mix(g, c, inside);
 		float wisp = n2(vec2(w.x * 0.04 + TIME * 0.01, w.y * 0.1)) * n2(vec2(w.x * 0.09 - TIME * 0.006, w.y * 0.18 + 3.0));
-		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.4, 0.75, wisp) * 0.2 * skyness);
+		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.25, 0.8, wisp) * 0.14 * mix(1.0, skyness, inside));
 		float s = max(dot(d, sd), 0.0);
 		c += vec3(1.0, 0.85, 0.6) * (pow(s, 6.0) * 0.1 + pow(s, 60.0) * 0.25);
 		COLOR = c * brightness;

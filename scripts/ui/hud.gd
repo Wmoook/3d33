@@ -16,7 +16,7 @@ void fragment() {
 """
 
 var _s := {"coins": 0, "coins_total": 0, "blue": 0, "blue_total": 0, "keys": {}, "time": 0.0, "god": false,
-	"crown": false, "zone": "", "visible": true, "best": -1.0}
+	"crown": false, "zone": "", "visible": true, "best": -1.0, "coin_label": ""}
 var _t := 0.0
 var _pop_gold := 0.0
 var _pop_blue := 0.0
@@ -27,10 +27,19 @@ var show_hints := true
 var _vignette: ColorRect
 var _vig_mat: ShaderMaterial
 var _vig_amount := 0.0
+var _caption := ""
+var _caption_t := -1.0
 var _toast_title := ""
 var _toast_text := ""
 var _toast_t := -1.0
 var _toast_len := 4.0
+
+## Small centred caption (e.g. "TRIAL VII" when entering a trial room); fades in, holds, fades out.
+func caption(text: String) -> void:
+	if text == _caption and _caption_t >= 0.0 and _caption_t < 2.5:
+		return
+	_caption = text
+	_caption_t = 0.0
 
 ## Small one-off message pill (e.g. "COIN DOOR  needs 16 gold coins"), top-center under the god pill.
 func toast(title_s: String, text: String, secs: float = 4.0) -> void:
@@ -79,6 +88,10 @@ func _process(delta: float) -> void:
 	_alpha = lerpf(_alpha, 1.0 if _s.visible else 0.0, 1.0 - exp(-5.0 * delta))
 	_vig_amount = maxf(0.0, _vig_amount - delta * 1.2)
 	_vig_mat.set_shader_parameter("amount", _vig_amount)
+	if _caption_t >= 0.0:
+		_caption_t += delta
+		if _caption_t > 3.2:
+			_caption_t = -1.0
 	if _toast_t >= 0.0:
 		_toast_t += delta
 		if _toast_t > _toast_len:
@@ -101,6 +114,8 @@ func _draw() -> void:
 	draw_style_box(UITheme.glass_box(16, 0.5), panel)
 	var spin := cos(_t * 2.2)
 	_coin_row(Vector2(78, 72), int(_s.coins), int(_s.coins_total), false, spin, _pop_gold)
+	if str(_s.coin_label) != "":
+		draw_string(UITheme.hud_medium(5), Vector2(112, 48), str(_s.coin_label), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(UITheme.GOLD, 0.75))
 	if rows > 1:
 		_coin_row(Vector2(78, 134), int(_s.blue), int(_s.blue_total), true, cos(_t * 2.2 + 1.3), _pop_blue)
 	if _s.crown:
@@ -142,6 +157,16 @@ func _draw() -> void:
 		sb.set_border_width_all(2)
 		draw_style_box(sb, pr)
 		draw_string(UITheme.hud(6), Vector2(pr.position.x, pr.position.y + 29), "GOD MODE", HORIZONTAL_ALIGNMENT_CENTER, pw, 22, UITheme.GOLD)
+	# ---- trial caption (top-center, below the pills)
+	if _caption_t >= 0.0 and _caption != "":
+		var ca := clampf(_caption_t / 0.5, 0.0, 1.0) * clampf((3.2 - _caption_t) / 0.9, 0.0, 1.0)
+		var cf := UITheme.title(0, 700)
+		var cw := UITheme.spaced_width(cf, _caption, 26, 8.0)
+		var cp := Vector2(W * 0.5 - cw * 0.5, 176)
+		UITheme.draw_spaced(self, cf, cp + Vector2(0, 2), _caption, 26, 8.0, Color(0, 0, 0, 0.5 * ca))
+		UITheme.draw_spaced(self, cf, cp, _caption, 26, 8.0, Color(UITheme.GOLD, 0.95 * ca))
+		draw_line(Vector2(cp.x - 70, cp.y - 9), Vector2(cp.x - 16, cp.y - 9), Color(UITheme.GOLD, 0.6 * ca), 1.2, true)
+		draw_line(Vector2(cp.x + cw + 16, cp.y - 9), Vector2(cp.x + cw + 70, cp.y - 9), Color(UITheme.GOLD, 0.6 * ca), 1.2, true)
 	# ---- toast (top-center)
 	if _toast_t >= 0.0:
 		var ta := clampf(_toast_t / 0.4, 0.0, 1.0) * clampf((_toast_len - _toast_t) / 0.8, 0.0, 1.0)

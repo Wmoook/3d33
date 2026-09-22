@@ -15,8 +15,9 @@ const ODYSSEY_CFG := {"id": "odyssey", "title": "EX ODYSSEY", "eyebrow": "A REIM
 const LEVEL_TEXT := {
 	"odyssey": {"victory_eyebrow": "THE  SOUL  RETURNS", "victory_title": "ODYSSEY COMPLETE", "map_title": "EX CREW ODYSSEY",
 		"map_caption": "the map of the odyssey", "quote": "\"The Devil hath taken thy Soul...  Go, and Return!\""},
-	"forgotten_veil": {"victory_eyebrow": "THE  VEIL  IS  LIFTED", "victory_title": "VEIL UNCOVERED", "map_title": "FORGOTTEN VEIL",
-		"map_caption": "the map of the forgotten veil", "quote": "\"Beyond the falls, the old temple still waits.\""},
+	"forgotten_veil": {"victory_eyebrow": "FORGOTTEN  VEIL", "victory_title": "THE VEIL IS LIFTED", "map_title": "FORGOTTEN VEIL",
+		"map_caption": "the map of the forgotten veil", "quote": "\"Sixteen trials. Only the worthy return.\"",
+		"tagline": "Sixteen trials.  Only the worthy return.", "trials": "1"},
 }
 var cfg: Dictionary = ODYSSEY_CFG
 const SIM_PATH := "res://scripts/physics/ee_sim.gd"
@@ -150,6 +151,20 @@ func _level_text(key: String, fallback: String) -> String:
 	var t: Dictionary = LEVEL_TEXT.get(str(cfg.get("id", "")), {})
 	return str(t.get(key, fallback))
 
+## Levels framed as a gauntlet of challenge rooms (FV: every gold coin is a trial).
+func _trials() -> bool:
+	return _level_text("trials", "") != ""
+
+static func roman(n: int) -> String:
+	var vals := [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+		[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]
+	var out := ""
+	for v in vals:
+		while n >= v[0]:
+			out += v[1]
+			n -= v[0]
+	return out
+
 func _is_day() -> bool:
 	return str(cfg.get("time_of_day", "night")) == "day"
 
@@ -170,10 +185,17 @@ func _build_ui() -> void:
 	title = TitleScreen.new()
 	title.visible = false
 	_ui.add_child(title)
-	title.set_levels(LevelCatalog.all() if ResourceLoader.exists("res://scripts/core/level_catalog.gd") else [cfg], str(cfg.id))
+	var cfgs: Array = LevelCatalog.all() if ResourceLoader.exists("res://scripts/core/level_catalog.gd") else [cfg]
+	for c in cfgs:   # per-level taglines when a config has no subtitle (FV: "Sixteen trials...")
+		var lt: Dictionary = LEVEL_TEXT.get(str(c.get("id", "")), {})
+		if str(c.get("subtitle", "")) == "" and lt.has("tagline"):
+			c["subtitle"] = lt.tagline
+	title.set_levels(cfgs, str(cfg.id))
 	victory = VictoryScript.new()
 	victory.title_text = _level_text("victory_title", str(cfg.get("title", "")) + " COMPLETE")
 	victory.eyebrow_text = _level_text("victory_eyebrow", "THE  END")
+	if _trials():
+		victory.stat_keys = ["time", "deaths"]
 	tutorial = TutorialScript.new()
 	tutorial.done = settings.tutorial.duplicate()
 	tutorial.completed.connect(func(id: String):
@@ -585,6 +607,36 @@ func _check_piano() -> void:
 	if id == 77:
 		audio.play_piano(int(level.get_extra(c.x, c.y).get("rotation", 0)))
 
+## FV: a gold coin = a completed trial room: zone-card style banner, triumphant chime, gentle camera ease-in.
+func _trial_complete() -> void:
+	var n := int(sim.coins)
+	var left := maxi(0, _coins_total - n)
+	zone_card.show_zone("TRIAL %s COMPLETE" % roman(n), "%d trials remain" % left if left > 0 else "The way is open")
+	audio.play("trial", -3.0, 0.0)
+	var z := rig.target_zoom
+	rig.target_zoom = maxf(CameraRig.ZOOM_MIN, z * 0.88)
+	get_tree().create_timer(1.4).timeout.connect(func():
+		if _victory_zoom < 0.0:
+			rig.target_zoom = z)
+
+## "TRIAL n" caption when entering a trial room, if the world exposes trials (get_trial_at(tile) -> int, 0 = none).
+var _trial_cur := 0
+var _trial_cand := 0
+var _trial_cand_t := 0.0
+func _update_trial_caption(delta: float) -> void:
+	if world == null or not world.has_method(&"get_trial_at"):
+		return
+	var t: int = int(world.get_trial_at(EECoords.world_to_tile(_render_pos)))
+	if t != _trial_cand:
+		_trial_cand = t
+		_trial_cand_t = 0.0
+	_trial_cand_t += delta
+	if t != _trial_cur and _trial_cand_t > 0.4:
+		_trial_cur = t
+		if t > 0:
+			var total: int = int(world.trial_count()) if world.has_method(&"trial_count") else _coins_total
+			hud.caption("TRIAL %s  OF  %s" % [roman(t), roman(total)])
+
 func _fill_input() -> void:
 	if "god_toggle" in input:
 		input.god_toggle = false
@@ -766,7 +818,9 @@ func _update_hud() -> void:
 		_key_last[c] = left
 		keys[c] = [left, _key_dur.get(c, maxf(left, 1.0))]
 	var z := _zone_info
-	hud.set_state({"coins": int(sim.coins), "coins_total": _coins_total, "blue": int(sim.blue_coins),
+	if _trials():
+		_update_trial_caption(get_process_delta_time())
+	hud.set_state({"coin_label": "TRIALS" if _trials() else "", "coins": int(sim.coins), "coins_total": _coins_total, "blue": int(sim.blue_coins),
 		"blue_total": _blue_total, "keys": keys, "time": _run_time(), "god": bool(sim.in_god_mode),
 		"crown": bool(sim.has_crown), "zone": z.name})
 	var he := rig.half_extents()
@@ -785,6 +839,8 @@ func _update_hud() -> void:
 func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 	match kind:
 		&"coin", &"blue_coin":
+			if kind == &"coin" and _trials() and state == State.PLAYING:
+				_trial_complete()
 			var now := Time.get_ticks_msec()
 			_coin_combo = mini(_coin_combo + 1, 8) if now - _coin_last_ms < 1400 else 0
 			_coin_last_ms = now
@@ -850,6 +906,8 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			_victory_zoom = rig.target_zoom
 			rig.target_zoom = maxf(CameraRig.ZOOM_MIN, rig.target_zoom * 0.8)
 			var new_best: bool = ghost.on_complete(int(data.get("ticks", sim.run_ticks if "run_ticks" in sim else _play_ticks)))
+			if _trials():
+				victory.subline = "All %d trials conquered" % _coins_total if int(sim.coins) >= _coins_total else "%d of %d trials conquered" % [int(sim.coins), _coins_total]
 			victory.show_stats({"new_best": new_best, "best": ghost.best_ticks * 0.01, "time": _run_time(), "coins": int(sim.coins), "coins_total": _coins_total,
 				"blue": int(sim.blue_coins), "blue_total": _blue_total, "deaths": int(sim.deaths) if "deaths" in sim else 0})
 

@@ -61,7 +61,7 @@ func _find_sites() -> void:
 				if veil.is_foliage(x + d.x, y + d.y):
 					near_leaf = true
 					break
-			if near_leaf and h.x < 0.08 and (veil.sunny(x, y) or h.y < 0.3):
+			if near_leaf and h.x < 0.1 and veil.sunny(x, y):
 				_add(_bfly_sites, _bfly_bucket, Vector2i(x, y))
 			# perch: sunlit open tile standing on solid ground with a little headroom
 			if veil.sunny(x, y) and not _open(x, y + 1) and _open(x, y - 1) and h.z < 0.045:
@@ -221,7 +221,7 @@ func _update_butterflies(delta: float, t: float) -> void:
 		var jit := Vector2(sin(t * 9.0 + b.ph * 3.0), cos(t * 7.3 + b.ph * 5.0)) * 1.6
 		b.vel = b.vel.lerp((target - b.pos) * 1.2 + jit, delta * 3.0)
 		var np: Vector2 = b.pos + b.vel * delta
-		if _open(int(np.x), int(np.y)):
+		if _open(int(np.x), int(np.y)) and veil.sunny(int(np.x), int(np.y)):   # day creatures stay in daylight
 			b.pos = np
 		else:
 			b.vel = -b.vel * 0.5

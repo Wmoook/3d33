@@ -20,8 +20,8 @@ var cfg := {}
 var level_id := "odyssey"
 ## WorldView (zones). Found as a sibling named "WorldView" when the shell doesn't call set_world().
 var world: Node
-## Zones where fireflies never appear (sunlit surface zones of day levels).
-const SUNLIT_ZONES: Array[StringName] = [&"surface", &"sky", &"canopy", &"forest", &"meadow", &"summit", &"sunlit"]
+## Sun / shade / dark per tile (non-Odyssey levels): gates every creature and daylight FX.
+var light: FxLightMap
 
 ## Per-level config (res://levels/config/<id>.json), called BEFORE build(). Odyssey (id "odyssey" or no
 ## config) keeps every hand-tuned region exactly as before.
@@ -62,14 +62,16 @@ func build(lvl: EELevel, s) -> void:
 	life = FxAmbientLife.new()
 	life.name = "AmbientLife"
 	life.odyssey = is_odyssey()
-	if world and world.has_method(&"get_zone_at"):
-		life.zone_fn = Callable(world, &"get_zone_at")
-		life.no_firefly_zones = SUNLIT_ZONES
+	if not is_odyssey():
+		light = FxLightMap.new()
+		light.build(lvl, world)
+		life.light = light
 	add_child(life)
 	life.build(lvl, overlays.maps)
 	if not is_odyssey():
 		veil = FxVeil.new()
 		veil.name = "Veil"
+		veil.light = light
 		add_child(veil)
 		veil.build(lvl, overlays.maps)
 		day_life = FxDayLife.new()
