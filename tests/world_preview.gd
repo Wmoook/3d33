@@ -97,6 +97,7 @@ func _ready() -> void:
 		world.lights.moon.shadow_enabled = false
 	if _nodoors:
 		world.doors.visible = false
+		world.backdrop.get_node("MoonOccluder").visible = false
 	if _nokey:
 		world.lights.key_light.visible = false
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)

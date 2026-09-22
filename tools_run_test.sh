@@ -17,5 +17,6 @@ for sec,lines in over.items():
     else: src+="\n[%s]\n"%sec+"\n".join(lines)+"\n"
 open(r"C:/Users/super/ex-odyssey-test/project.godot","w",encoding="utf8").write(src)
 PY
-[ -d "$T/.godot" ] || "$G" --headless --audio-driver Dummy --path "$T" --import >/dev/null 2>&1
+# always refresh import + global class cache (new class_name scripts appear constantly)
+"$G" --headless --audio-driver Dummy --path "$T" --import >/dev/null 2>&1
 exec "$G" --audio-driver Dummy --position 20000,20000 --path "$T" "$@"
