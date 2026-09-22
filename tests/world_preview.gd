@@ -55,6 +55,10 @@ const FV_SPOTS := {
 	"sanctum": Vector2(330, 152),
 	"aqueducts": Vector2(262, 188),
 	"vaults": Vector2(60, 182),
+	"trial1": Vector2(-1, 1),
+	"trial5": Vector2(-1, 5),
+	"trial9": Vector2(-1, 9),
+	"trial13": Vector2(-1, 13),
 }
 
 var level_id := "odyssey"
@@ -134,6 +138,14 @@ func _ready() -> void:
 	if _nokey:
 		world.lights.key_light.visible = false
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	if world.trials:
+		var sizes := []
+		for k in world.trial_count():
+			var c := 0
+			for v in world.trials.trial_map:
+				if v == k + 1: c += 1
+			sizes.append([world.trials.coins[k], c])
+		print("TRIALS ", world.trial_count(), " ", sizes)
 	print("NEAR SILHOUETTES %d" % world.decor.near_silhouette_count)
 	print("CAVE PROPS %d, inside sky mask: %d %s" % [world.decor.cave_prop_count, world.decor.cave_props_in_sky,
 		"OK" if world.decor.cave_props_in_sky == 0 else "FAIL"])
@@ -196,7 +208,10 @@ func _run() -> void:
 		await _run_perf()
 		return
 	for nm in _names:
-		var focus := _place(_spots[nm])
+		var spot: Vector2 = _spots[nm]
+		if spot.x < 0 and world.trials and world.trial_count() >= int(spot.y):
+			spot = Vector2(world.trials.coins[int(spot.y) - 1])
+		var focus := _place(spot)
 		world.update_focus(focus, 10.0)   # snap the atmosphere blend to this spot
 		var t0 := Time.get_ticks_usec()
 		for f in _settle:

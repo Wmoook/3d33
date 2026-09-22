@@ -21,6 +21,7 @@ var atmosphere: WorldAtmosphere
 var decor: WorldDecor
 var backdrop: WorldBackdrop
 var zones: WorldZones
+var trials: WorldTrials
 var is_built := false
 var build_ms := 0
 var timings := {}
@@ -62,6 +63,7 @@ func _steps(lvl: EELevel) -> Array:
 		["Sculpting stone and earth", _step_terrain],
 		["Forging the key doors", _step_doors],
 		["Charting the depths", _step_zones],
+		["Marking the trial chambers", _step_trials],
 		["Raising the far hills", _step_backdrop],
 		["Growing grass and roots", _step_decor],
 		["Lighting the fires", _step_lights],
@@ -89,6 +91,15 @@ func _step_zones() -> void:
 	terrain.set_zone_map(zones.tile_zone)
 	terrain.set_visual_map(zones.visual)
 	timings["zones"] = Time.get_ticks_msec() - t
+
+func _step_trials() -> void:
+	if WorldPalette.is_odyssey():
+		return
+	var t := Time.get_ticks_msec()
+	trials = WorldTrials.new()
+	_add(trials, "Trials")
+	trials.build(level, terrain)
+	timings["trials"] = Time.get_ticks_msec() - t
 
 func _step_backdrop() -> void:
 	var t := Time.get_ticks_msec()
@@ -165,6 +176,13 @@ func get_environment() -> Environment:
 ## Named zone at a tile (EE tile coords, y down). O(1).
 func get_zone_at(tile: Vector2i) -> StringName:
 	return zones.zone_at(tile) if zones else &"underworld"
+
+## Trial chambers (Forgotten Veil's challenge rooms): 1..trial_count() for a tile inside a room, else 0.
+func get_trial_at(tile: Vector2i) -> int:
+	return trials.get_trial_at(tile) if trials else 0
+
+func trial_count() -> int:
+	return trials.trial_count() if trials else 0
 
 ## {name, title, subtitle, music_mood, reverb, visual}
 func get_zone_info(zone: StringName) -> Dictionary:

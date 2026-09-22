@@ -13,7 +13,10 @@ const SPOTS := [
 	["piano_hit", Vector2(393, 30)],
 	["magenta", Vector2(214, 41)],
 	["coindoor", Vector2(50, 53)],
-	["coins", Vector2(26, 68)],
+	["coins", Vector2(23, 68)],
+	["coin_collect", Vector2(23, 68)],
+	["bluecoin", Vector2(202, 23)],
+	["bats", Vector2(330, 150)],
 	["invisible", Vector2(186, 113)],
 	["forest", Vector2(40, 46)],
 	["spire", Vector2(200, 30)],
@@ -56,6 +59,10 @@ func _ready() -> void:
 				game.sim.sim_event.emit(&"piano", {"tile": pt, "note": game.sim.get_tile_number(pt.x, pt.y)})
 				for i in 5:
 					await get_tree().process_frame
+		if s[0] == "coin_collect":
+			game.sim.sim_event.emit(&"coin", {"tile": Vector2i(26, 70)})
+			for i in 14:
+				await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png("user://fx_fv_%s%s.png" % [s[0], tag])
 		print("saved fx_fv_", s[0])
 	get_tree().quit()

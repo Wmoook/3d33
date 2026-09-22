@@ -83,15 +83,16 @@ func _draw() -> void:
 	for k in stat_keys:
 		cols.append(all_cols[k])
 	if subline != "":
-		draw_string(UITheme.serif_italic(500), Vector2(0, c.y + 118), subline, HORIZONTAL_ALIGNMENT_CENTER, W, 30,
+		draw_string(UITheme.serif_italic(500), Vector2(0, c.y + 128), subline, HORIZONTAL_ALIGNMENT_CENTER, W, 30,
 			Color(1, 0.94, 0.85, 0.85 * _k(1.1, 0.8) * o))
+	var sy := 46.0 if subline != "" else 0.0
 	var cw := 260.0
 	var x0 := c.x - cw * cols.size() * 0.5
 	for i in cols.size():
 		var ka := _k(1.3 + i * 0.15, 0.8) * o
 		var x := x0 + i * cw
-		draw_string(UITheme.hud_medium(6), Vector2(x, c.y + 142), cols[i][0], HORIZONTAL_ALIGNMENT_CENTER, cw, 18, Color(1, 1, 1, 0.5 * ka))
-		draw_string(UITheme.hud(), Vector2(x, c.y + 192), cols[i][1], HORIZONTAL_ALIGNMENT_CENTER, cw, 44, Color(1, 0.95, 0.85, ka))
+		draw_string(UITheme.hud_medium(6), Vector2(x, c.y + 142 + sy), cols[i][0], HORIZONTAL_ALIGNMENT_CENTER, cw, 18, Color(1, 1, 1, 0.5 * ka))
+		draw_string(UITheme.hud(), Vector2(x, c.y + 192 + sy), cols[i][1], HORIZONTAL_ALIGNMENT_CENTER, cw, 44, Color(1, 0.95, 0.85, ka))
 	if _t > 2.5:
 		var pk := (0.55 + 0.45 * sin(_t * 2.6)) * o
 		draw_string(UITheme.hud(8), Vector2(0, H * 0.82), "ANY KEY   continue exploring          R   new run", HORIZONTAL_ALIGNMENT_CENTER, W, 22, Color(1, 1, 1, pk))

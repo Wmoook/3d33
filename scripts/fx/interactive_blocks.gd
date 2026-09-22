@@ -485,7 +485,75 @@ func _build_coins() -> void:
 			root.add_child(halo)
 			var sp := _coin_sparkles(id == 101)
 			root.add_child(sp)
-			_coins.append({"root": root, "mesh": mi, "tile": t, "id": id, "collected": false, "ph": randf() * TAU})
+			var glint: ShaderMaterial = null
+			if not odyssey:
+				glint = _hero_relic(root, mi, sp, id == 101, t)
+			_coins.append({"root": root, "mesh": mi, "tile": t, "id": id, "collected": false, "ph": randf() * TAU,
+				"glint": glint, "seen": false})
+
+## Non-Odyssey levels (FV: every gold coin is the prize at the end of a trial room): the coin becomes a
+## floating relic: bigger, a shaft of light falling onto it, a glowing pedestal aura beneath, denser
+## sparkles and a star glint that blooms every few seconds. Blue coins get a softer version.
+func _hero_relic(root: Node3D, coin: MeshInstance3D, sparkles: GPUParticles3D, blue: bool, t: Vector2i) -> ShaderMaterial:
+	var col := Color(0.35, 0.6, 1.0) if blue else Color(1.0, 0.72, 0.28)
+	var k := 0.6 if blue else 1.0
+	coin.scale = Vector3.ONE * (0.7 if blue else 0.8)
+	# god ray: brightest where it lands on the relic, fading upward
+	var ray := MeshInstance3D.new()
+	ray.name = "GodRay"
+	var rq := QuadMesh.new()
+	rq.size = Vector2(1.5, 5.0)
+	ray.mesh = rq
+	var rm := ShaderMaterial.new()
+	rm.shader = BEACON_SHADER
+	rm.set_shader_parameter("color", col.lerp(Color.WHITE, 0.35))
+	rm.set_shader_parameter("intensity", 0.8 * k)
+	ray.material_override = rm
+	ray.position = Vector3(0, 2.1, -0.45)
+	ray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(ray)
+	# pedestal aura: a wide soft ellipse of light under the relic
+	var aura := MeshInstance3D.new()
+	aura.name = "PedestalAura"
+	var aq := QuadMesh.new()
+	aq.size = Vector2(2.4, 0.8)
+	aura.mesh = aq
+	var am := ShaderMaterial.new()
+	am.shader = GLOW_SHADER
+	am.set_shader_parameter("color", col)
+	am.set_shader_parameter("intensity", 0.7 * k)
+	aura.material_override = am
+	aura.position = Vector3(0, -0.5, -0.2)
+	aura.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(aura)
+	sparkles.amount = 10 if blue else 16
+	# star glint (the "chime shimmer")
+	var g := MeshInstance3D.new()
+	g.name = "Glint"
+	var gq := QuadMesh.new()
+	gq.size = Vector2(1.8, 1.8)
+	g.mesh = gq
+	var gm := ShaderMaterial.new()
+	gm.shader = preload("res://shaders/fx/star_glint.gdshader")
+	gm.set_shader_parameter("color", col.lerp(Color.WHITE, 0.4))
+	gm.set_shader_parameter("intensity", 1.6 * k)
+	gm.set_shader_parameter("phase", _tile_hash(t).x * 3.2)
+	g.material_override = gm
+	g.position = Vector3(0.18, 0.2, 0.25)
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(g)
+	# a small warm light so the relic lights its room
+	var l := OmniLight3D.new()
+	l.light_color = col
+	l.light_energy = 0.9 * k
+	l.omni_range = 3.5
+	l.shadow_enabled = false
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 30.0
+	l.distance_fade_length = 8.0
+	l.position = Vector3(0, 0, 0.6)
+	root.add_child(l)
+	return gm
 
 func _coin_sparkles(blue: bool) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
@@ -527,12 +595,23 @@ func _collect(c: Dictionary) -> void:
 	if bursts:
 		bursts.play(&"coin", pos, Vector3.UP, col)
 		bursts.play(&"coin_ring", pos + Vector3(0, 0, 0.1), Vector3.UP, col)
-		bursts.flash(pos, col, 3.0, 0.4, 5.0)
+		if odyssey:
+			bursts.flash(pos, col, 3.0, 0.4, 5.0)
+		else:
+			# relic claimed: a crown of sparks, a big warm flare and a streak to the HUD
+			bursts.play(&"crown", pos, Vector3.UP, col)
+			bursts.flash(pos, col, 6.0 if c.id == 100 else 4.0, 0.7, 9.0)
+	if c.get("glint"):
+		c.glint.set_shader_parameter("pulse_boost", 2.0)
 	_coin_fly.append({"c": c, "t": 0.0, "from": pos})
 
 func _restore_coin(c: Dictionary) -> void:
 	c.collected = false
 	c.root.visible = true
+	for nm in ["GodRay", "PedestalAura"]:
+		var n := c.root.get_node_or_null(nm) as Node3D
+		if n:
+			n.visible = true
 	c.root.scale = Vector3.ONE * _coin_scale
 	c.root.position = EECoords.tile_center(c.tile.x, c.tile.y, -0.1)
 
@@ -781,15 +860,20 @@ func _process(delta: float) -> void:
 ## Collected coins spin up, rise and zip toward the top-left of the screen (where the HUD counter lives).
 func _update_coin_fly(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	var trail_at := Vector3.INF
 	for i in range(_coin_fly.size() - 1, -1, -1):
 		var f: Dictionary = _coin_fly[i]
 		f.t += delta
 		var c: Dictionary = f.c
-		var k: float = f.t / 0.7
+		var k: float = f.t / (0.7 if odyssey else 0.95)
 		if k >= 1.0:
 			c.root.visible = false
+			if c.get("glint"):
+				c.glint.set_shader_parameter("pulse_boost", 0.0)
 			_coin_fly.remove_at(i)
 			continue
+		if c.get("glint"):
+			c.glint.set_shader_parameter("pulse_boost", 2.0 * (1.0 - k))
 		var target: Vector3 = f.from + Vector3(-6, 6, 4)
 		if cam:
 			var vp := get_viewport().get_visible_rect().size
@@ -800,3 +884,31 @@ func _update_coin_fly(delta: float) -> void:
 		c.root.global_position = a.lerp(target, pow(maxf(k - 0.25, 0.0) / 0.75, 2.0))
 		c.mesh.rotation.y += delta * (10.0 + 30.0 * e)
 		c.root.scale = Vector3.ONE * (1.0 + 0.4 * sin(k * PI)) * (1.0 - pow(k, 4.0) * 0.8)
+		if not odyssey:
+			for nm in ["GodRay", "PedestalAura"]:
+				var n := c.root.get_node_or_null(nm) as Node3D
+				if n:
+					n.visible = false   # the relic leaves its shrine; the shaft goes out
+			trail_at = c.root.global_position
+	if not odyssey:
+		_drive_fly_trail(trail_at)
+
+var _fly_trail: GPUParticles3D
+
+## A glittering streak behind a relic coin flying to the HUD (world-space particles, one shared emitter).
+func _drive_fly_trail(at: Vector3) -> void:
+	if _fly_trail == null:
+		_fly_trail = _coin_sparkles(false)
+		_fly_trail.name = "CoinFlyTrail"
+		_fly_trail.amount = 48
+		_fly_trail.lifetime = 0.6
+		_fly_trail.local_coords = false
+		_fly_trail.visibility_aabb = AABB(Vector3(-30, -30, -10), Vector3(60, 60, 20))
+		var pm := _fly_trail.process_material as ParticleProcessMaterial
+		pm.emission_sphere_radius = 0.12
+		pm.gravity = Vector3.ZERO
+		pm.color = Color(1.0, 0.85, 0.5)
+		add_child(_fly_trail)
+	_fly_trail.emitting = at.x != INF
+	if at.x != INF:
+		_fly_trail.global_position = at
