@@ -509,7 +509,7 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 			var hole := 1.0 - smoothstep(t0, t1, vals[y * S + x])
 			if flecks:
 				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
-				img.set_pixel(x, y, Color(1.0 * a, 0.96 * a, 0.86 * a, a)   # warm white, barely warmer than the sun)
+				img.set_pixel(x, y, Color(1.0 * a, 0.96 * a, 0.86 * a, a))   # warm white, barely warmer than the sun
 			else:
 				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.75))
 	img.generate_mipmaps()
