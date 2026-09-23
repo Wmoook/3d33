@@ -32,10 +32,28 @@ void fragment() {
 	float my = texture(mask_tex, uv + vec2(0.0, e.y)).r - texture(mask_tex, uv - vec2(0.0, e.y)).r;
 	float edge = 1.0 - smoothstep(0.5, 0.95, m);
 	vec3 n = normalize(vec3(-mx * 2.2, my * 2.2, 0.35 + 0.65 * (1.0 - edge)));
-	vec3 c = mix(texture(col_tex, uv).rgb, texture(col_smooth, uv).rgb, 0.45);
+	vec3 c = mix(texture(col_tex, uv).rgb, texture(col_smooth, uv).rgb, 0.3);
 	c = pow(c, vec3(2.2));     // minimap colours are sRGB
-	float nz = texture(noise_tex, uv * map_size * 0.07).r;
-	c *= 0.88 + 0.24 * nz;
+	// every tile is a real block: bevelled edges (dark mortar line + lit top-left rim), per-block tone,
+	// weathering noise, and ashlar courses inside grey stone
+	vec2 p = uv * map_size;
+	vec2 f = fract(p);
+	vec2 cell = floor(p);
+	float bev = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+	float mortar = 1.0 - smoothstep(0.02, 0.11, bev);
+	float grey = 1.0 - smoothstep(0.02, 0.08, abs(c.r - c.g) + abs(c.g - c.b));
+	float tone = v_h2(cell + vec2(3.7, 1.3));
+	c *= 0.86 + 0.26 * tone;
+	float nz = texture(noise_tex, p * 0.07).r * 0.6 + texture(noise_tex, p * 0.31 + 0.5).g * 0.4;
+	c *= 0.8 + 0.4 * nz;
+	float course = step(0.5, fract(p.y * 0.5)) * 0.5;
+	float ash = 1.0 - smoothstep(0.02, 0.07, min(abs(fract(p.x * 0.5 + course) - 0.5) * 2.0, abs(fract(p.y * 2.0) - 0.5) * 2.0) * 0.5);
+	c *= 1.0 - grey * ash * 0.18;
+	c *= 1.0 - mortar * 0.35;
+	n = normalize(n + vec3((f.x < 0.12 ? -0.5 : (f.x > 0.88 ? 0.5 : 0.0)), (f.y < 0.12 ? 0.5 : (f.y > 0.88 ? -0.5 : 0.0)), 0.0) * 0.6);
+	// ambient occlusion: darker toward the mass's inside corners and down its body
+	float ao = mix(0.72, 1.0, smoothstep(0.5, 1.0, texture(mask_tex, uv + vec2(0.0, -2.0 / map_size.y)).r) * 0.5 + 0.5 * (1.0 - edge));
+	c *= ao;
 	vec3 sd = normalize(sun_dir);
 	vec3 lit = vista_light(c, n, sd, 1.2, 0.6);
 	lit *= 1.0 - edge * 0.25;

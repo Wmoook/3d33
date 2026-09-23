@@ -858,10 +858,11 @@ func _make_home_keel() -> void:
 ## Distant pieces painted with the level's own blocks (WorldVistaBlocks): kind, map top-left world x/y, z,
 ## world units per tile. Composed to frame the typical views: strong silhouettes on the sides.
 const BLOCK_PIECES := [
-	[0, -40.0, 12.0, -120.0, 2.2],     # ruin island, beyond the grove / falls side
-	[1, 425.0, 45.0, -170.0, 2.0],     # the second great spire, beyond the scroll and the shrine
-	[2, 100.0, -95.0, -260.0, 2.4],    # aqueduct isle with its waterfall, low behind the spires
-	[3, 380.0, -10.0, -290.0, 3.0],    # a far keep beyond the shrine
+	# out beyond the level's sides so they only ever frame the view edges (never behind gameplay)
+	[0, -150.0, 12.0, -120.0, 2.2],    # ruin island, west beyond the grove
+	[1, 445.0, 45.0, -170.0, 2.0],     # the second great spire, east beyond the scroll and the shrine
+	[2, -335.0, -95.0, -260.0, 2.4],   # aqueduct isle with its waterfall, far west
+	[3, 485.0, -10.0, -290.0, 3.0],    # a far keep, far east
 ]
 var ref_dir := "res://assets/ee_ref_fv"
 

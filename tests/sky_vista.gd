@@ -5,7 +5,7 @@ const GameScript := preload("res://scripts/game/game.gd")
 var game
 const SPOTS := {
 	"spire_top": Vector2i(200, 30), "spiregap": Vector2i(222, 70), "falls": Vector2i(150, 140),
-	"pool": Vector2i(150, 165), "logo": Vector2i(320, 45), "keep": Vector2i(300, 70), "grove_top": Vector2i(40, 30), "bottom": Vector2i(160, 196), "bottom_r": Vector2i(330, 196),
+	"pool": Vector2i(150, 165), "logo": Vector2i(320, 45), "keep": Vector2i(300, 70), "grove_top": Vector2i(40, 30), "bottom": Vector2i(160, 196), "bottom_r": Vector2i(330, 196), "shrine": Vector2i(385, 78), "scroll": Vector2i(372, 40),
 }
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)

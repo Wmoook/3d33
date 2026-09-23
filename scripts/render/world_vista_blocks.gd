@@ -271,6 +271,8 @@ func textures(colors: Dictionary) -> Array:
 			var id := fg[y * w + x]
 			if id != 0:
 				var c: Color = colors.get(id, Color(0.5, 0.5, 0.5))
+				if id == HOLE:
+					c = Color(0.17, 0.21, 0.3)   # recessed window: dark blue haze, not flat black
 				col.set_pixel(x, y, Color(c.r, c.g, c.b, 1.0))
 	# dilate colours one tile outward so bilinear edges never pull in black
 	var dil := col.duplicate()
@@ -289,8 +291,8 @@ func textures(colors: Dictionary) -> Array:
 	for y in h * S:
 		for x in w * S:
 			mask.set_pixel(x, y, Color(1, 1, 1) if fg[(y / S) * w + (x / S)] != 0 else Color(0, 0, 0))
-	# soften: shrink + regrow = rounded corners, the same smooth silhouettes the terrain gets
-	mask.resize(w, h, Image.INTERPOLATE_BILINEAR)
+	# soften a little: shrink to 2x + regrow = corners rounded by ~half a tile (crisp crenellations survive)
+	mask.resize(w * 2, h * 2, Image.INTERPOLATE_BILINEAR)
 	mask.resize(w * S, h * S, Image.INTERPOLATE_CUBIC)
 	return [dil, mask]
 
