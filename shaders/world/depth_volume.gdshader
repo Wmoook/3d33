@@ -78,6 +78,9 @@ void fragment() {
 		float joint = min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y));
 		float jl = 1.0 - smoothstep(0.02, 0.08, joint);
 		albedo *= mix(0.82, 1.1, h21(bi + 7.0)) * (1.0 - jl * 0.45);
+		if (mat == M_MARBLE) {
+			albedo = vec3(0.4, 0.36, 0.29) * mix(0.88, 1.05, h21(bi + 3.0));   // V-bird stone: warm grey-cream
+		}
 	} else if (mat == M_EARTH || mat == M_CRAG) {
 		// soil / rock strata on the receding cliff walls
 		float sy = -wp.y * 1.2 + vnoise(q * vec2(0.2, 0.5)) * 1.4;

@@ -405,7 +405,8 @@ void fragment() {
 		spec = 0.4;
 		if (scroll_rect.x >= 0.0) {
 			// day levels (FV V-bird stepping stones): matte weathered pale stone - no glow, calm
-			albedo *= 0.55 * mix(0.85, 1.05, dh);
+			// warm grey-cream, never brighter than the terrain around it
+			albedo = vec3(0.4, 0.36, 0.29) * mix(0.9, 1.05, cloud) * mix(1.0, 0.85, vein) * mix(0.85, 1.05, dh);
 			rough = 0.85;
 			spec = 0.25;
 			n = normalize(mix(gn, dn, 0.5));

@@ -45,6 +45,7 @@ func build_depth(lvl: EELevel, terrain: WorldTerrain, top_at: Callable, mat_at: 
 	var W := lvl.width
 	var H := lvl.height
 	var cols := terrain.fgcol_img
+	var cm := WorldGrass.canopy_map(terrain)
 	var leaf_x: Array[Transform3D] = []
 	var leaf_c: Array[Color] = []
 	var trunk_x: Array[Transform3D] = []
@@ -74,13 +75,15 @@ func build_depth(lvl: EELevel, terrain: WorldTerrain, top_at: Callable, mat_at: 
 						var s := _rng.randf_range(0.8, 1.15) * (1.0 if near else 1.6)
 						_group_push(Vector3i(int(px) / CHUNK, band, 0), kind, Vector3(px, py, pz), s, _vary(base, 0.12))
 						n["near" if near else "mid"] += 1
-					if z < -4.0 and _rng.randf() < BUSH_CHANCE:
+					if z < -4.0 and not cm[ty * W + clampi(int(x), 0, W - 1)] and _rng.randf() < BUSH_CHANCE:
 						_bush(Vector3(x + 0.25, y, z - 0.25), base, leaf_x, leaf_c, 0.9)
 						n.bush += 1
-					elif Z_TOP_BEGIN - z > TREE_MIN_D and _rng.randf() < TREE_CHANCE:
-						var h := _rng.randf_range(2.2, 3.6)
-						if Z_TOP_BEGIN - z < TREE_NEAR_D:
-							h = minf(h, TREE_NEAR_H - 0.9)   # crown cards reach ~0.9 above the trunk top
+					elif Z_TOP_BEGIN - z > TREE_MIN_D and not cm[ty * W + clampi(int(x), 0, W - 1)] and _rng.randf() < TREE_CHANCE:
+						# (never on top of a tree crown's extrusion.) Height grows with depth so the tree stays
+						# below the front silhouette's sight line: <= 2.5 incl. crown within 8 tiles, then +0.35/tile
+						var d := Z_TOP_BEGIN - z
+						var h_max := TREE_NEAR_H + maxf(d - TREE_NEAR_D, 0.0) * 0.35 - 0.9   # crown ~0.9 above trunk
+						var h := minf(_rng.randf_range(2.2, 3.6), h_max)
 						trunk_x.append(Transform3D(Basis().scaled(Vector3(0.22, h, 0.22)), Vector3(x + 0.25, y + h * 0.5, z - 0.25)))
 						for c in 3:
 							_bush(Vector3(x + 0.25 + _rng.randf_range(-0.6, 0.6), y + h + _rng.randf_range(-0.4, 0.5), z - 0.25 + _rng.randf_range(-0.4, 0.4)), base.darkened(0.08), leaf_x, leaf_c, 1.6)

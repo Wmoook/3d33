@@ -66,7 +66,15 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 		var width := float(x1 - x0 + 1)
 		if width < 2.0:
 			continue   # a lone floating block with a dark spike under it reads as a hazard
-		var depth := clampf(sqrt(width) * rng.randf_range(1.3, 2.0), 1.6, 7.0)
+		# pale marble sculptures (the V-birds) get only a tiny weathered-stone stub
+		var marble := 0
+		for i in comp:
+			if terrain.mat_ids[i] == WorldPalette.M_MARBLE:
+				marble += 1
+		var pale := marble * 2 > comp.size()
+		var depth := minf(clampf(sqrt(width) * rng.randf_range(1.3, 2.0), 1.0, 6.0), 1.2 * width)
+		if pale:
+			depth = minf(depth, 0.45 * width)
 		var cx := (x0 + x1 + 1) * 0.5
 		var tip_x := cx + rng.randf_range(-0.2, 0.2) * width
 		var ext := 0.0
@@ -75,7 +83,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 				ext = maxf(ext, dep.depth[bottom[x] * W + x])
 		# the tip sits under the middle of the extruded island (the volume's own underside closes the rest)
 		var z_tip := Z_TIP if ext <= 0.0 else Z_TOP - clampf(ext * 0.5, 1.2, 4.0)
-		_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0)
+		_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0, 1.0 if pale else 0.0)
 		var ybot := 0
 		for x in bottom:
 			ybot = maxi(ybot, bottom[x])
@@ -98,7 +106,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 ## Vertex colour: r = v (0 at the top edge, 1 at the tip), g = random per keel (rune seed).
 ## z0 = z of the sheet's top edge, z1 = tip z; bulge -1 = a back-facing sheet (reversed winding).
 func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, tip_x: float, rng: RandomNumberGenerator,
-		z0: float = Z_TOP, z1: float = Z_TIP, bulge: float = 0.0) -> void:
+		z0: float = Z_TOP, z1: float = Z_TIP, bulge: float = 0.0, pale: float = 0.0) -> void:
 	var rows := 10
 	var seed := rng.randf()
 	var cols: Array[float] = []
@@ -141,6 +149,6 @@ func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, 
 			if bulge < -0.5:
 				order = [[a, va], [b, va], [c, vb], [b, va], [d, vb], [c, vb]]
 			for pv in order:
-				st.set_color(Color(pv[1], seed, 0.0))
+				st.set_color(Color(pv[1], seed, pale))
 				st.set_uv(Vector2((pv[0] as Vector3).x, (pv[0] as Vector3).y))
 				st.add_vertex(pv[0])
