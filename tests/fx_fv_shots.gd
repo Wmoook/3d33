@@ -49,6 +49,8 @@ const SPOTS := [
 	["qa_hall", Vector2(350, 95)],
 	["qa_sanctum", Vector2(300, 140)],
 	["qa_halls", Vector2(85, 90)],
+	["keels", Vector2(40, 18)],
+	["keels_b", Vector2(290, 30)],
 ]
 var game
 func _ready() -> void:

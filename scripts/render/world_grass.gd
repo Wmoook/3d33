@@ -123,7 +123,7 @@ func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
 					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.04, 0.14), -0.01)
 					_push(key, Kind.SHORT, p, _rng.randf_range(0.9, 1.35), _vary(base, 0.12), _rng.randf() * 0.99, up, true)
 					n += 1
-			for side in [-1, 1]:
+			for side: int in [-1, 1]:
 				var j: int = i + side
 				if terrain.solid[j] and not is_leafy(terrain.mat_ids[j]) and terrain.solid[j - W]:
 					for k in 4:
@@ -222,7 +222,7 @@ static func canopy_map(terrain: WorldTerrain) -> PackedByteArray:
 ## Contiguous leafy tiles in the column through (x, y).
 static func _leafy_extent(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> int:
 	var n := 1
-	for dir in [-1, 1]:
+	for dir: int in [-1, 1]:
 		var yy: int = y + dir
 		while yy >= 0 and yy < H and terrain.solid[yy * W + x] and is_leafy(terrain.mat_ids[yy * W + x]):
 			n += 1

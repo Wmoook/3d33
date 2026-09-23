@@ -75,7 +75,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 					n_fringe += 1
 			# outline breakers: small clusters hugging every open side (overhang <= EDGE_OVER) so the crown's
 			# silhouette is leafy instead of the sculpted blob edge
-			for side in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+			for side: Vector2i in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 				var e: float = ext_l if side.x < 0 else (ext_r if side.x > 0 else ext_d)
 				if e >= 0.5:
 					continue
@@ -182,7 +182,7 @@ static func litter_map(terrain: WorldTerrain) -> PackedByteArray:
 			if not terrain.solid[i] or cm[i]:
 				continue
 			var n := 0
-			for d in [-1, 1, -W, W]:
+			for d: int in [-1, 1, -W, W]:
 				var j: int = i + d
 				if j >= 0 and j < W * H and cm[j]:
 					n += 1
@@ -193,7 +193,7 @@ static func litter_map(terrain: WorldTerrain) -> PackedByteArray:
 	for y in H:
 		for x in W:
 			var v := raw[y * W + x]
-			for dx in [-2, -1, 1, 2]:
+			for dx: int in [-2, -1, 1, 2]:
 				var xx: int = clampi(x + dx, 0, W - 1)
 				v = maxf(v, raw[y * W + xx] * (1.0 - absf(dx) * 0.3))
 			if not terrain.solid[y * W + x] or cm[y * W + x]:

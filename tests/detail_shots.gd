@@ -38,17 +38,24 @@ func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	if args.pbr == "1":
 		_patch_terrain(wv)
+	elif wv.terrain.material.get_shader_parameter("pbr_strength") != null:
+		wv.terrain.material.set_shader_parameter("pbr_strength", 0.0)
 	var t1 := Time.get_ticks_msec()
 	var grass: Node3D = null
 	var foliage: Node3D = null
-	if args.grass == "1":
+	var live: bool = wv.get("grass") != null   # world wired the detail layer in itself
+	if live:
+		grass = wv.grass
+		foliage = wv.foliage
+		print("detail: live integration (world_view builds grass + foliage)")
+	if args.grass == "1" and not live:
 		grass = WorldGrass.new()
 		grass.name = "Grass2"
 		wv.add_child(grass)
 		grass.build(wv.level, wv.terrain)
 		_hide_decor(wv, "Grass")
 	var t2 := Time.get_ticks_msec()
-	if args.leaves == "1":
+	if args.leaves == "1" and not live:
 		foliage = WorldFoliage.new()
 		foliage.name = "Foliage2"
 		wv.add_child(foliage)
@@ -61,6 +68,9 @@ func _ready() -> void:
 		print("foliage stats ", foliage.stats)
 	if args.has("probe"):
 		_probe(wv.terrain, args.probe)
+	if live:
+		grass.visible = args.grass == "1"
+		foliage.visible = args.leaves == "1"
 	if args.hud != "1" and game.get("_ui"):
 		game._ui.visible = false
 	game.sim.set_god_mode(true)
@@ -95,6 +105,8 @@ func _hide_decor(wv: WorldView, nm: String) -> void:
 func _patch_terrain(wv: WorldView) -> void:
 	var mat: ShaderMaterial = wv.terrain.material
 	var code: String = mat.shader.code.replace("\r\n", "\n")
+	if code.find("pbr_k = (layer == 2) ? 0.0 : pbr_terrain(") >= 0 and code.find("DETAIL-PATCH") < 0:
+		return   # live: world's shader already runs the detail library
 	if code.find("// DETAIL-PATCH #include") >= 0:
 		# world applied the patch commented out: switch it on
 		code = code.replace('// DETAIL-PATCH #include', '#include')
