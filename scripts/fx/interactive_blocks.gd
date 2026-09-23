@@ -186,15 +186,72 @@ func _build_keys() -> void:
 	for c in KEY_COLORS:
 		_key_active[c] = 0.0
 	for ri in ink:
-		_build_ink(INK_REGIONS[ri][0], ink[ri])
+		if INK_REGIONS[ri][3] < 0.0:
+			_build_trim(ink[ri])
+		else:
+			_build_ink(INK_REGIONS[ri][0], ink[ri])
 
 ## Non-Odyssey art regions where crowns (5) / red keys (6) are the INK of painted lettering
 ## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z, gain]
 const INK_REGIONS := [
 	[Rect2i(350, 0, 48, 72), [5, 6], -0.88, 1.0],   # just above world's flat -0.9 ink floor (confirmed)
-	[Rect2i(300, 14, 46, 29), [5], -0.88, 0.5],    # logo inlays: metal catching light, not ink
+	[Rect2i(300, 14, 46, 29), [5], -0.88, -1.0],   # logo: gain < 0 = gilded edge trim on the letters, not ink (_build_trim)
 ]
 var _ink_mats: Array[ShaderMaterial] = []
+
+const TRIM_Z := 0.82        # the stone letters' front face (terrain front ~0.8)
+const TRIM_ON_STONE := 0.08 # band overlap onto the letter
+const TRIM_IN_AIR := 0.12   # band reach into the (passable) crown tile: within the contract's 0.12 bevel
+
+## ΣX logo: every crown tile edge that touches a solid letter tile gets a narrow bevelled gold band hugging
+## that stone edge (the painting's gold outline), instead of a filled tile floating in the sky.
+func _build_trim(cells: Array) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 0
+	for c in cells:
+		var t: Vector2i = c[0]
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var q: Vector2i = t + d
+			if q.x < 0 or q.y < 0 or q.x >= lvl.width or q.y >= lvl.height:
+				continue
+			if not WorldPalette.is_world_solid(lvl.get_fg(q.x, q.y)):
+				continue
+			# edge between t and q in world space; "out" points from the stone into the crown tile
+			var cx: float = t.x + 0.5 + d.x * 0.5
+			var cy: float = -(t.y + 0.5) - d.y * 0.5
+			var out := Vector2(-d.x, d.y) as Vector2   # world y is up
+			var along := Vector2(out.y, -out.x)
+			var e := Vector2(cx, cy)
+			var a0 := e - along * 0.5 - out * TRIM_ON_STONE
+			var a1 := e + along * 0.5 - out * TRIM_ON_STONE
+			var b0 := e - along * 0.5 + out * TRIM_IN_AIR
+			var b1 := e + along * 0.5 + out * TRIM_IN_AIR
+			var m0 := e - along * 0.5 + out * 0.02
+			var m1 := e + along * 0.5 + out * 0.02
+			var z1 := TRIM_Z + 0.05
+			var nrm_top := Vector3(0, 0, 1)
+			var nrm_bev := Vector3(out.x, out.y, 1.0).normalized()
+			# flat top (on the stone edge) + bevel sloping down into the crown tile
+			_tq(st, Vector3(a0.x, a0.y, z1), Vector3(a1.x, a1.y, z1), Vector3(m1.x, m1.y, z1), Vector3(m0.x, m0.y, z1), nrm_top)
+			_tq(st, Vector3(m0.x, m0.y, z1), Vector3(m1.x, m1.y, z1), Vector3(b1.x, b1.y, TRIM_Z - 0.06), Vector3(b0.x, b0.y, TRIM_Z - 0.06), nrm_bev)
+			n += 1
+	if n == 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.name = "GildedTrim"
+	mi.mesh = st.commit()
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/gold_trim.gdshader")
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	_ink_mats.append(m)
+
+func _tq(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, nrm: Vector3) -> void:
+	for v in [a, b, c, a, c, d]:
+		st.set_normal(nrm)
+		st.add_vertex(v)
 
 func _split_ink(id: int, tiles: Array[Vector2i], ink: Dictionary) -> Array[Vector2i]:
 	var keep: Array[Vector2i] = []

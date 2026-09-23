@@ -37,7 +37,9 @@ const SPOTS := [
 	["scroll", Vector2(372, 30)],
 	["scroll_noink", Vector2(372, 30)],
 	["scroll_far", Vector2(372, 30)],
-	["logo", Vector2(322, 28)],
+	["logo", Vector2(320, 45)],
+	["logo_close", Vector2(318, 30)],
+	["logo_noactors", Vector2(318, 30)],
 	["veils", Vector2(245, 84)],
 	["rainbow", Vector2(141, 164)],
 	["updraft", Vector2(200, 64)],
@@ -117,6 +119,25 @@ func _ready() -> void:
 			all.sort_custom(func(a, c): return Vector2(a.pos.x - b3.x, a.pos.y - b3.y).length() < Vector2(c.pos.x - b3.x, c.pos.y - b3.y).length())
 			print("nearest keels to ball ", b3, ": ", all.slice(0, 6).map(func(e): return e.pos))
 			print("cam ", get_viewport().get_camera_3d().global_position, " focus ", game.actors.keels.focus_override)
+		if s[0] == "logo_noactors":
+			for c in game.actors.get_children():
+				if c.name == OS.get_environment("HIDE_NODE") or OS.get_environment("HIDE_NODE") == "":
+					c.visible = false
+			print("children ", game.actors.get_children().map(func(c): return c.name))
+			var hb := OS.get_environment("HIDE_BLOCK")
+			if hb != "":
+				game.actors.blocks.visible = true
+				for c in game.actors.blocks.get_children():
+					if String(c.name).begins_with(hb):
+						c.visible = false
+			for c in game.actors.blocks.get_children():
+				if not (c is Node3D and String(c.name).begins_with("Coin")):
+					var info := ""
+					if c is MultiMeshInstance3D:
+						info = str(c.multimesh.instance_count)
+					print("blk ", c.name, " ", info)
+			for i in 3:
+				await get_tree().process_frame
 		if s[0] == "scroll_noink":
 			for n in game.actors.blocks.find_children("InkLetters", "", false, false):
 				n.visible = false
