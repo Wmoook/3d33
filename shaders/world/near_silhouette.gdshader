@@ -40,7 +40,7 @@ void fragment() {
 		a = max(a, strand(uv, 0.42, 0.06, 0.5, seed + 3.0, 0.7 + 0.25 * h11(seed)));
 		a = max(a, strand(uv, 0.6, 0.05, 0.5, seed + 7.0, 0.55 + 0.3 * h11(seed + 1.0)));
 	} else if (v_shape.r < 1.5) {
-		float w = 0.3 * pow(1.0 - uv.y, 1.3);
+		float w = 0.3 * pow(clamp(1.0 - uv.y, 0.0, 1.0), 1.3);
 		a = 1.0 - smoothstep(-0.02, softness * 0.1, abs(uv.x - 0.5) - w);
 	} else {
 		float link = abs(fract(uv.y * 10.0) - 0.5);

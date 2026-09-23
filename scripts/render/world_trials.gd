@@ -127,6 +127,7 @@ func _flood(c: Vector2i, idx: int, terrain: WorldTerrain) -> void:
 			trial_map[i] = idx
 
 ## Most open spot of this trial's room within 7 tiles of the coin (centre of the largest 5x5 air patch).
+var _open_count := 0   # open tiles of the 5x5 around the last _open_spot() result
 func _open_spot(c: Vector2i, idx: int) -> Vector2:
 	var best := Vector2(c.x + 0.5, -c.y + 0.7)
 	var best_n := -1
@@ -141,10 +142,11 @@ func _open_spot(c: Vector2i, idx: int) -> Vector2:
 				for ox in range(-2, 3):
 					if get_trial_at(Vector2i(x + ox, y + oy)) == idx:
 						n += 1
-			n = n * 100 - (dx * dx + dy * dy)
-			if n > best_n:
-				best_n = n
+			var score := n * 100 - (dx * dx + dy * dy)
+			if score > best_n:
+				best_n = score
 				best = Vector2(x + 0.5, -y - 0.5)
+				_open_count = n
 	return best
 
 ## Nearest solid tile straight below the coin (the pedestal), within 12 tiles.
@@ -162,6 +164,10 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	var centre := Vector3(c.x + 0.5, -c.y - 0.5, 0.0)
 	var wall := _open_spot(c, k + 1)   # coins often sit in 1-tile nooks: put the rune where it can be seen
 	# the carved rune itself lives in the terrain shader (back-wall layers only, depth-correct)
+	# a tight nook (e.g. a 1-wide shaft) can't show a 4.6-tile rune: it clipped to one dark stroke in a glow
+	var tight := _open_count < 12
+	if tight:
+		wall = Vector2(-1.0e5, -1.0e5)
 	rune_pos.append(Vector4(wall.x, wall.y, 0.0, 0.0))
 	rune_col.append(Vector4(col.r, col.g, col.b, 1.0))
 	# pedestal ring on the top of the solid below the coin
@@ -188,7 +194,7 @@ func _decorate(c: Vector2i, k: int, terrain: WorldTerrain) -> void:
 	s.spot_range = 9.0
 	s.spot_angle = 16.0
 	s.spot_angle_attenuation = 1.6
-	s.light_volumetric_fog_energy = 4.0
+	s.light_volumetric_fog_energy = 0.0 if tight else 4.0   # in a tight shaft the fog glow reads as a white blob
 	s.shadow_enabled = false
 	s.distance_fade_enabled = true
 	s.distance_fade_begin = 50.0

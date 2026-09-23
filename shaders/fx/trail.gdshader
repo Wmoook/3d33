@@ -7,7 +7,7 @@ uniform vec3 tail_color : source_color = vec3(1.0, 0.38, 0.06);
 uniform float intensity = 1.6;
 
 void fragment() {
-	float x = UV.x;
+	float x = clamp(UV.x, 0.0, 1.0);
 	float y = abs(UV.y - 0.5) * 2.0;
 	float core = exp(-y * y * 5.0);
 	float wisp = 0.6 + 0.4 * sin(x * 22.0 - TIME * 30.0 + UV.y * 3.0);

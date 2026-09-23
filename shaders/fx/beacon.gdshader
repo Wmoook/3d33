@@ -7,7 +7,7 @@ uniform float intensity = 1.0;
 
 void fragment() {
 	float x = abs(UV.x - 0.5) * 2.0;
-	float y = 1.0 - UV.y;  // 0 at bottom
+	float y = clamp(1.0 - UV.y, 0.0, 1.0);  // 0 at bottom (clamped: pow() of a hair below 0 is NaN -> a black bar blooming white)
 	float shaft = exp(-x * x * 7.0) * pow(1.0 - y, 2.2);
 	float core = exp(-x * x * 60.0) * pow(1.0 - y, 3.0);
 	float rings = pow(0.5 + 0.5 * sin(y * 18.0 - TIME * 4.0), 12.0) * (1.0 - y) * exp(-x * x * 3.0);

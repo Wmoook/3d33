@@ -82,6 +82,7 @@ var _play_ticks := 0
 var _jump_latch := false
 var _god_request := false
 var _snap_render := false
+var _cam_cut := false   # a portal jump: the camera cuts to the ball instead of gliding across the map
 var _zone: Variant = -2
 var _zone_candidate: Variant = -2
 var _zone_info := {"name": "", "sub": "", "bed": &"cave", "reverb": 0.5}
@@ -608,6 +609,8 @@ func _physics_process(_delta: float) -> void:
 			tutorial.complete("move")
 	if "teleported" in sim:
 		_snap_render = sim.teleported
+		if sim.teleported:
+			_cam_cut = true
 	else:
 		_snap_render = absf(sim.px - sim.prev_px) > 40.0 or absf(sim.py - sim.prev_py) > 40.0
 
@@ -728,6 +731,9 @@ func _process(delta: float) -> void:
 				if state == State.INTRO:
 					f = 1.0
 				_render_pos = _player_world_pos(f)
+				if _cam_cut and state == State.PLAYING:
+					_cam_cut = false
+					rig.snap_to(_render_pos)   # portals are instant: no camera sweep across the map
 				var vel := Vector2(sim.px - sim.prev_px, -(sim.py - sim.prev_py)) * (100.0 / 16.0)
 				var gd: Vector2i = sim.gravity_dir if "gravity_dir" in sim else Vector2i(0, 1)
 				rig.follow(_render_pos, vel, delta, Vector2(gd.x, -gd.y))
@@ -770,6 +776,8 @@ func _player_world_pos(f: float) -> Vector3:
 	var y: float = lerpf(sim.prev_py, sim.py, f)
 	return EECoords.player_center(x, y)
 
+var _zones_seen := {}
+
 func _update_zone(delta: float) -> void:
 	var tile := EECoords.world_to_tile(_render_pos)
 	var z: Variant = _zone_key_at(tile)
@@ -784,7 +792,8 @@ func _update_zone(delta: float) -> void:
 		audio.set_bed(_zone_info.bed, false)
 		audio.set_room(_zone_info.reverb)
 		minimap.zone_name = _zone_info.name
-		if _zone_info.name != "":
+		if _zone_info.name != "" and not _zones_seen.has(_zone_info.name):
+			_zones_seen[_zone_info.name] = true   # the title card only on a zone's FIRST visit per run
 			zone_card.show_zone(_zone_info.name, _zone_info.sub)
 			audio.play("zone", -9.0, 0.0)
 
@@ -909,6 +918,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"portal":
 			audio.play("portal", -5.0)
 			_snap_render = true
+			_cam_cut = true
 		&"crown":
 			audio.play("crown", -3.0, 0.0)
 			hud.flash(UITheme.GOLD, 0.5)

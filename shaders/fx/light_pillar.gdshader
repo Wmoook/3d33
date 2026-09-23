@@ -11,7 +11,7 @@ uniform float burst_h = 0.0;   // 0..1 height reached by the surge
 
 void fragment() {
 	float x = abs(UV.x - 0.5) * 2.0;
-	float h = 1.0 - UV.y;                  // 0 at the foot .. 1 at the top
+	float h = clamp(1.0 - UV.y, 0.0, 1.0);                  // 0 at the foot .. 1 at the top
 	float fade = pow(1.0 - h, 1.6) * smoothstep(0.015, 0.05, h);   // opens above the crown so it never washes it out
 	float shaft = exp(-x * x * 5.0);
 	float core = exp(-x * x * 45.0);

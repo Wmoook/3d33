@@ -632,12 +632,14 @@ func _make_rooms() -> void:
 					room[j] = rid
 					comp.append(j)
 		var r := clampf(2.4 + sqrt(float(comp.size())) * 0.12, ROOM_R_MIN, ROOM_R_MAX)
+		var ag := _above_ground(comp)
 		for i in comp:
 			room_r[i] = r
-			if code[i] >= 20:
-				win[i] = 1
-		if comp.size() >= 80 and _above_ground(comp):
+			if code[i] >= 20 and ag:
+				win[i] = 1   # painted sky in a structure: a window only where the room can see out
+		if comp.size() >= 80 and ag:
 			_rhythm_windows(comp, rid)
+	_drop_tiny_windows()
 	# depths: room tiles cover [R, R + wall]; windows are holes; neighbouring solids reach past the back wall
 	for i in n:
 		if room[i] == 0:
@@ -685,6 +687,39 @@ func _make_rooms() -> void:
 					comp.append(j)
 		windows.append({"tiles": comp, "rect": rect, "r": room_r[start], "stained": (rect.position.x * 7 + rect.position.y * 3) % 4 == 0,
 			"frost": win[start] == 2})
+
+## Painted window patches smaller than 2 x 2 (a stray sky speck in a hall's painting) read as a black slot
+## with a glowing pane, not a window: they stay plain wall.
+func _drop_tiny_windows() -> void:
+	var n := W * H
+	var seen := PackedByteArray(); seen.resize(n)
+	var dropped := 0
+	for start in n:
+		if seen[start] or win[start] != 1:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var rect := Rect2i(start % W, start / W, 1, 1)
+		var qi := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			rect = rect.expand(Vector2i(x + 1, y + 1))
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if win[j] == 1 and not seen[j]:
+					seen[j] = 1
+					comp.append(j)
+		if rect.size.x < 2 or rect.size.y < 2:
+			dropped += 1
+			for i in comp:
+				win[i] = 0
+	timings["tiny_windows_dropped"] = dropped
 
 func _hollow(i: int) -> bool:
 	var h := WorldForest.hollow_mask(terrain)
