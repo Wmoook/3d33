@@ -33,11 +33,14 @@ func build(level: EELevel, light_map: FxLightMap) -> void:
 		_slots.append(slot)
 	print("FxKeels: %d floating undersides" % _sites.size())
 
-## Optional exact keels from world: [{tip: Vector3, width: float}]
+## Exact keels from world (WorldKeels.keel_sites): [{tip, width, depth, rune}]; tips sit at z -3.6, so FX stay
+## deep behind the gameplay air (world: keep FX behind z -1.0 in air tiles).
 func set_keel_sites(sites: Array) -> void:
 	_sites.clear()
 	for s in sites:
-		_sites.append({"pos": s.tip, "w": float(s.get("width", 4.0))})
+		var tip: Vector3 = s.tip
+		_sites.append({"pos": Vector3(tip.x, tip.y, maxf(tip.z, -3.6)), "w": float(s.get("width", 4.0)) * 0.6})
+	print("FxKeels: using %d world keels" % _sites.size())
 
 func _open(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < lvl.width and y < lvl.height and FxOverlayMaps.is_open(lvl, x, y)

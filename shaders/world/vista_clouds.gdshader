@@ -19,7 +19,7 @@ uniform float down = 6.0;
 uniform float near_z = -215.0;     // clouds fade in behind this depth
 uniform float feather = 110.0;
 uniform float coverage = 0.5;
-uniform float fog_density = 0.0016;
+uniform float fog_density = 0.0010;
 uniform float fog_near = 0.12;
 
 varying vec3 v_wpos;
@@ -28,11 +28,12 @@ void vertex() {
 	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
-float field(vec2 xz) {
+// lod: texture footprint of one pixel at ray distance t (grazing rays stretch it)
+float field(vec2 xz, float lod) {
 	vec2 w = vec2(TIME * 0.35, TIME * 0.12);
-	float a = texture(noise_tex, (xz + w) * 0.0034).r;
-	float b = texture(noise_tex, (xz + w * 1.6) * 0.0115 + vec2(0.37, 0.61)).g;
-	float c = texture(noise_tex, (xz + w * 2.0) * 0.031 + vec2(0.13, 0.29)).b;
+	float a = textureLod(noise_tex, (xz + w) * 0.0034, max(lod + log2(0.0034 * 256.0), 0.0)).r;
+	float b = textureLod(noise_tex, (xz + w * 1.6) * 0.0115 + vec2(0.37, 0.61), max(lod + log2(0.0115 * 256.0), 0.0)).g;
+	float c = textureLod(noise_tex, (xz + w * 2.0) * 0.031 + vec2(0.13, 0.29), max(lod + log2(0.031 * 256.0), 0.0)).b;
 	float depth_in = smoothstep(near_z, near_z - feather, xz.y);
 	// denser toward the far ranges, broken near the level so the valley floor shows through
 	float cov = coverage + 0.22 * smoothstep(near_z - 60.0, -600.0, xz.y);
@@ -43,7 +44,12 @@ float field(vec2 xz) {
 float top_h(float t) { return base_y + up * pow(t, 0.55); }
 float bot_h(float t) { return base_y - down * t; }
 
+float lodf(float t, vec3 rd, float pxs) {
+	return log2(max(t * pxs / max(abs(rd.y), 0.08), 1e-4));
+}
+
 void fragment() {
+	float pxs = 2.0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 rd = normalize(v_wpos - cam);
 	// ray vs box
@@ -71,7 +77,7 @@ void fragment() {
 	for (int i = 1; i <= N; i++) {
 		float t = t0 + dt * float(i);
 		vec3 p = cam + rd * t;
-		float f = field(p.xz);
+		float f = field(p.xz, lodf(t, rd, pxs));
 		if (f > 0.004 && p.y < top_h(f) && p.y > bot_h(f)) {
 			th = t;
 			break;
@@ -87,18 +93,19 @@ void fragment() {
 	for (int k = 0; k < 5; k++) {
 		float tm = 0.5 * (lo + hi);
 		vec3 p = cam + rd * tm;
-		float f = field(p.xz);
+		float f = field(p.xz, lodf(tm, rd, pxs));
 		if (f > 0.004 && p.y < top_h(f) && p.y > bot_h(f)) { hi = tm; } else { lo = tm; }
 	}
 	vec3 p = cam + rd * hi;
-	float f = field(p.xz);
+	float lh = lodf(hi, rd, pxs);
+	float f = field(p.xz, lh);
 	vec3 sd = normalize(sun_dir);
 	vec3 col;
 	float e = 3.0;
 	if (p.y >= base_y) {
 		// sunlit billowing top
-		float fx = field(p.xz + vec2(e, 0.0));
-		float fz = field(p.xz + vec2(0.0, e));
+		float fx = field(p.xz + vec2(e, 0.0), lh);
+		float fz = field(p.xz + vec2(0.0, e), lh);
 		float h0 = top_h(f);
 		vec3 n = normalize(vec3(-(top_h(fx) - h0) / e, 1.0, -(top_h(fz) - h0) / e));
 		float ndl = clamp(dot(n, sd) * 0.7 + 0.3, 0.0, 1.0);

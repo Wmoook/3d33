@@ -36,7 +36,7 @@ vec3 vista_sky(vec3 d, vec3 sd) {
 float vista_fog_f(vec3 wpos, vec3 cam, float density, float near_f) {
 	float d = length(wpos - cam);
 	float hy = 0.5 * (wpos.y + cam.y);
-	float hf = mix(1.35, 0.55, smoothstep(-175.0, 40.0, hy));
+	float hf = mix(1.3, 0.45, smoothstep(-175.0, 40.0, hy));
 	float f = 1.0 - exp(-d * density * hf);
 	return clamp(near_f + (1.0 - near_f) * f, 0.0, 1.0);
 }

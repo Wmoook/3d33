@@ -45,13 +45,13 @@ void fragment() {
 	// hazed with depth: the keel belongs to the backdrop
 	c = mix(c, haze, 0.06 + 0.3 * smoothstep(0.35, 1.0, v_v));
 	// levitation rune cracks: thin glowing veins, strongest mid-keel, slow pulse
-	float vein = smoothstep(0.965, 0.995, 1.0 - abs(fbm(p * vec2(0.9, 0.45) + v_seed * 17.0) * 2.0 - 1.0));
+	float vein = smoothstep(0.98, 0.997, 1.0 - abs(fbm(p * vec2(0.9, 0.45) + v_seed * 17.0) * 2.0 - 1.0));
 	float pulse = 0.55 + 0.45 * sin(TIME * 1.1 + v_seed * 20.0 + p.y * 0.4);
 	float band = smoothstep(0.15, 0.4, v_v) * (1.0 - smoothstep(0.75, 0.95, v_v));
 	ALBEDO = c;
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.2;
-	EMISSION = rune_col * vein * band * pulse * 0.9;
+	EMISSION = rune_col * vein * band * pulse * 0.4;
 	vec3 dn = texture(detail_nrm, p * 0.4).xyz * 2.0 - 1.0;
 	NORMAL = normalize(NORMAL + (VIEW_MATRIX * vec4(dn.xy * 0.6, 0.0, 0.0)).xyz);
 }

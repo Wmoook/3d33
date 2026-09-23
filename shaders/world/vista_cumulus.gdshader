@@ -10,7 +10,7 @@ uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform float seed = 0.0;
 uniform float flat_base = 0.3;     // 0 = round puff, 1 = flat-bottomed cumulus
-uniform float fog_density = 0.0017;
+uniform float fog_density = 0.0010;
 uniform float fog_near = 0.1;
 uniform float opacity = 1.0;
 
@@ -33,10 +33,12 @@ float dens(vec2 uv) {
 		vec2 q = (uv - vec2(cx, cy)) / vec2(r * 1.2, r * 1.7);
 		d = max(d, 1.0 - dot(q, q));
 	}
-	float n = texture(noise_tex, uv * vec2(0.9, 0.6) + s).r * 0.6 + texture(noise_tex, uv * vec2(2.3, 1.8) + s * 1.7).g * 0.4;
-	d = d + (n - 0.5) * 0.9;
-	// flatten the base
+	float n = texture(noise_tex, uv * vec2(0.22, 0.16) + s).r * 0.65 + texture(noise_tex, uv * vec2(0.7, 0.55) + s * 1.7).g * 0.35;
+	d = d + (n - 0.5) * 0.7 - 0.05;
+	// flatten the base, and always fade out well inside the quad
 	d *= mix(1.0, smoothstep(0.0, 0.12, uv.y), flat_base);
+	d = min(d, (1.0 - abs(uv.x)) * 3.0);
+	d = min(d, (1.0 - uv.y) * 3.0);
 	return d;
 }
 

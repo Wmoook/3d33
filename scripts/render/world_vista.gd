@@ -31,6 +31,7 @@ var _fn_hill := FastNoiseLite.new()
 var _fn_forest := FastNoiseLite.new()
 var _fn_ridge := FastNoiseLite.new()
 var _fn_big := FastNoiseLite.new()
+var _fn_mass := FastNoiseLite.new()
 var _land_near: MeshInstance3D
 var _land_far: MeshInstance3D
 var _clouds: MeshInstance3D
@@ -79,13 +80,16 @@ func _setup_noise() -> void:
 	_fn_forest.frequency = 0.02
 	_fn_forest.fractal_octaves = 3
 	_fn_ridge.seed = 37
-	_fn_ridge.frequency = 0.0042
+	_fn_ridge.frequency = 0.0034
 	_fn_ridge.fractal_type = FastNoiseLite.FRACTAL_RIDGED
-	_fn_ridge.fractal_octaves = 5
+	_fn_ridge.fractal_octaves = 4
 	_fn_ridge.fractal_gain = 0.5
 	_fn_big.seed = 41
 	_fn_big.frequency = 0.0022
 	_fn_big.fractal_octaves = 2
+	_fn_mass.seed = 53
+	_fn_mass.frequency = 0.0028
+	_fn_mass.fractal_octaves = 3
 	# RGB tileable fbm texture shared by every vista shader (and the sky's cirrus)
 	var chans := []
 	for k in 3:
@@ -191,10 +195,12 @@ func sample(x: float, z: float) -> Vector4:
 	var m := smoothstep(360.0, 540.0, dz + edge)
 	var mtn := 0.0
 	if m > 0.0:
+		# broad massifs (smooth) carved by ridges: alpine ranges, not needles
+		var mass := _fn_mass.get_noise_2d(x, z) * 0.5 + 0.5
 		var r := _fn_ridge.get_noise_2d(x, z) * 0.5 + 0.5
-		r = pow(clampf(r, 0.0, 1.0), 1.5)
-		var amp := 190.0 * (1.0 + 0.4 * smoothstep(600.0, 800.0, dz)) * (0.75 + 0.5 * (_fn_big.get_noise_2d(x, z * 0.5) * 0.5 + 0.5))
-		var hm := FLOOR_Y + 6.0 + r * amp
+		var shape := clampf(mass * 0.6 + r * 0.55 - 0.18, 0.0, 1.0)
+		var amp := 260.0 * (1.0 + 0.35 * smoothstep(600.0, 800.0, dz))
+		var hm := FLOOR_Y + 6.0 + shape * shape * amp
 		h = lerpf(h, maxf(h, hm), m)
 		mtn = m * smoothstep(FLOOR_Y + 40.0, FLOOR_Y + 90.0, h)
 	# forest cover on the hills (not the floor meadows, not the high rock)
@@ -347,15 +353,14 @@ func _tree_mm(nm: String, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]
 	_setup_instance(mmi, nm)
 
 # ------------------------------------------------------------------ ruin spires
-## (x, z, height, width): distant towers of the level's own grey temple architecture.
+## (x, z, height, width): distant towers of the level's own grey temple architecture (wide plinth, slender
+## shaft ringed by ledges, a bulky crown block broken at the top - the Great Spire's silhouette).
 const RUINS := [
-	[176.0, -178.0, 96.0, 15.0],
-	[272.0, -262.0, 150.0, 22.0],
-	[44.0, -246.0, 70.0, 15.0],
-	[338.0, -300.0, 90.0, 17.0],
-	[118.0, -440.0, 175.0, 26.0],
-	[-70.0, -380.0, 120.0, 20.0],
-	[486.0, -410.0, 135.0, 21.0],
+	[282.0, -330.0, 150.0, 20.0],
+	[36.0, -300.0, 95.0, 15.0],
+	[132.0, -470.0, 185.0, 24.0],
+	[-80.0, -430.0, 130.0, 19.0],
+	[470.0, -450.0, 160.0, 21.0],
 ]
 
 func _make_ruins() -> void:
@@ -363,35 +368,43 @@ func _make_ruins() -> void:
 	rng.seed = 77
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var stone := Color(0.50, 0.50, 0.51, 1.0)
+	var stone := Color(0.52, 0.52, 0.53, 1.0)
+	var cap := Color(0.52, 0.52, 0.53, 0.0)
+	var crowns: Array[Vector3] = []
 	for r in RUINS:
 		var x: float = r[0]
 		var z: float = r[1]
 		var ht: float = r[2]
 		var w: float = r[3]
 		var gy := sample(x, z).x
-		var y := gy - 8.0
-		var top := gy + ht
-		var tier := 0
-		while y < top - 8.0:
-			var th := minf(rng.randf_range(20.0, 34.0), top - y)
-			var dep := w * 0.85
-			_box(st, Vector3(x, y + th * 0.5, z), Vector3(w, th, dep), stone)
-			# ledge slab (no windows)
-			_box(st, Vector3(x, y + th + 0.9, z), Vector3(w + 3.0, 1.8, dep + 3.0), Color(stone.r, stone.g, stone.b, 0.0))
-			# side buttresses on the lower tiers
-			if tier < 2:
-				for sx in [-1.0, 1.0]:
-					_box(st, Vector3(x + sx * (w * 0.5 + 1.5), y + th * 0.4, z), Vector3(3.0, th * 0.8, dep * 0.6), stone)
-			y += th + 1.8
-			w *= rng.randf_range(0.78, 0.92)
-			tier += 1
-		# broken crown: a few jagged shards
-		for k in 4:
-			var sw := w * rng.randf_range(0.18, 0.3)
-			var sh := rng.randf_range(4.0, 14.0)
-			var ox := (k - 1.5) / 1.5 * (w * 0.5 - sw * 0.5)
-			_box(st, Vector3(x + ox, y + sh * 0.5, z + rng.randf_range(-1.0, 1.0)), Vector3(sw, sh, w * 0.5), stone)
+		var dep := w * 0.8
+		# plinth
+		var y := gy - 10.0
+		var ph := ht * 0.16 + 10.0
+		_box(st, Vector3(x, y + ph * 0.5, z), Vector3(w * 1.35, ph, dep * 1.3), stone)
+		y += ph
+		_box(st, Vector3(x, y + 1.0, z), Vector3(w * 1.5, 2.0, dep * 1.45), cap)
+		y += 2.0
+		# shaft with ledges
+		var crown_y := gy + ht * 0.72
+		var sw := w * 0.62
+		while y < crown_y - 6.0:
+			var th := minf(rng.randf_range(16.0, 26.0), crown_y - y)
+			_box(st, Vector3(x, y + th * 0.5, z), Vector3(sw, th, dep * 0.7), stone)
+			_box(st, Vector3(x, y + th + 0.8, z), Vector3(sw + 3.5, 1.6, dep * 0.7 + 3.0), cap)
+			y += th + 1.6
+		# bulky crown block with a jutting balcony and a broken, jagged top
+		var ch := gy + ht - y
+		_box(st, Vector3(x, y + 1.2, z), Vector3(w * 1.15, 2.4, dep * 1.1), cap)
+		_box(st, Vector3(x, y + 2.4 + ch * 0.4, z), Vector3(w, ch * 0.8, dep), stone)
+		_box(st, Vector3(x - w * 0.62, y + ch * 0.35, z), Vector3(w * 0.3, 2.0, dep * 0.8), cap)
+		var top := y + 2.4 + ch * 0.8
+		for k in 5:
+			var bw := w * rng.randf_range(0.14, 0.24)
+			var bh := rng.randf_range(2.0, 12.0) * (0.4 if k == 2 else 1.0)
+			var ox := (k - 2.0) / 2.0 * (w * 0.5 - bw * 0.5)
+			_box(st, Vector3(x + ox, top + bh * 0.5, z), Vector3(bw, bh, dep * rng.randf_range(0.5, 0.9)), stone)
+		crowns.append(Vector3(x + w * 0.1, top + 1.0, z))
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
@@ -399,7 +412,7 @@ func _make_ruins() -> void:
 	m.set_shader_parameter("kind", 0)
 	mi.material_override = m
 	_setup_instance(mi, "VistaRuins")
-	# a tree crowning some of the ruins (like the level's own spires)
+	# a tree crowning some of the ruins, like the level's own spires
 	var blob := SphereMesh.new()
 	blob.radius = 0.5
 	blob.height = 1.0
@@ -407,10 +420,9 @@ func _make_ruins() -> void:
 	blob.rings = 5
 	var xf: Array[Transform3D] = []
 	var cols: Array[Color] = []
-	for r in [RUINS[0], RUINS[1], RUINS[4]]:
-		var gy2 := sample(r[0], r[1]).x
-		var tw: float = r[3] * 0.9
-		xf.append(Transform3D(Basis.from_scale(Vector3(tw, tw * 0.75, tw * 0.8)), Vector3(r[0], gy2 + r[2] - 2.0, r[1])))
+	for k in [0, 2, 4]:
+		var tw: float = RUINS[k][3] * 0.85
+		xf.append(Transform3D(Basis.from_scale(Vector3(tw, tw * 0.8, tw * 0.8)), crowns[k] + Vector3(0, tw * 0.3, 0)))
 		cols.append(Color(0.2, 0.34, 0.13))
 	_tree_mm("VistaRuinTrees", blob, xf, cols)
 
@@ -433,28 +445,25 @@ func _box(st: SurfaceTool, c: Vector3, s: Vector3, col: Color) -> void:
 # ------------------------------------------------------------------ clouds
 ## (x, y_base, z, width, height, flat_base): world-placed cumulus.
 const CUMULUS := [
-	# high layer, above the spire tops
-	[60.0, 8.0, -190.0, 150.0, 58.0, 0.6],
-	[235.0, 22.0, -270.0, 190.0, 70.0, 0.5],
-	[405.0, 4.0, -210.0, 140.0, 52.0, 0.6],
-	[-90.0, 26.0, -330.0, 200.0, 78.0, 0.5],
-	[530.0, 30.0, -360.0, 210.0, 80.0, 0.5],
-	[150.0, 50.0, -430.0, 250.0, 88.0, 0.4],
-	[340.0, 46.0, -520.0, 270.0, 90.0, 0.4],
+	# high fair-weather cumulus above the spire tops
+	[70.0, 6.0, -230.0, 120.0, 44.0, 0.6],
+	[250.0, 16.0, -300.0, 150.0, 52.0, 0.5],
+	[420.0, 2.0, -260.0, 120.0, 42.0, 0.6],
+	[-60.0, 22.0, -380.0, 170.0, 58.0, 0.5],
+	[560.0, 26.0, -420.0, 170.0, 58.0, 0.5],
+	[170.0, 48.0, -520.0, 210.0, 66.0, 0.4],
 	# mid-height puffs drifting between the level's towers
-	[118.0, -52.0, -135.0, 80.0, 30.0, 0.7],
-	[292.0, -60.0, -125.0, 78.0, 28.0, 0.7],
-	[-25.0, -48.0, -150.0, 90.0, 34.0, 0.7],
-	[462.0, -42.0, -175.0, 110.0, 40.0, 0.7],
+	[120.0, -56.0, -150.0, 56.0, 20.0, 0.7],
+	[296.0, -64.0, -140.0, 60.0, 21.0, 0.7],
+	[-20.0, -50.0, -170.0, 70.0, 24.0, 0.7],
 	# a low bank below the Winners' Scroll and the logo (they float above it)
-	[360.0, -86.0, -72.0, 66.0, 20.0, 0.8],
-	[318.0, -90.0, -92.0, 78.0, 23.0, 0.8],
-	[404.0, -84.0, -108.0, 88.0, 25.0, 0.8],
-	[292.0, -82.0, -140.0, 96.0, 28.0, 0.8],
+	[362.0, -84.0, -80.0, 46.0, 14.0, 0.8],
+	[322.0, -88.0, -100.0, 56.0, 16.0, 0.8],
+	[404.0, -82.0, -118.0, 64.0, 18.0, 0.8],
 	# towers rising out of the cloud sea
-	[205.0, -128.0, -305.0, 120.0, 72.0, 0.9],
-	[58.0, -128.0, -360.0, 130.0, 80.0, 0.9],
-	[385.0, -128.0, -335.0, 120.0, 74.0, 0.9],
+	[205.0, -126.0, -300.0, 90.0, 52.0, 0.9],
+	[60.0, -126.0, -370.0, 100.0, 58.0, 0.9],
+	[390.0, -126.0, -340.0, 95.0, 55.0, 0.9],
 ]
 
 func _make_cumulus() -> void:

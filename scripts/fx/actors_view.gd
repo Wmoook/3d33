@@ -95,6 +95,9 @@ func build(lvl: EELevel, s) -> void:
 		keels.name = "Keels"
 		add_child(keels)
 		keels.build(lvl, light)
+		var wk = world.get("keels") if world else null
+		if wk != null and wk.get("keel_sites") is Array and not (wk.keel_sites as Array).is_empty():
+			keels.set_keel_sites(wk.keel_sites)   # world's exact keel tips (floating clusters only)
 	player = FxPlayerBall.new()
 	player.name = "PlayerBall"
 	player.bursts = bursts

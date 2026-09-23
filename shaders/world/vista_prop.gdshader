@@ -8,8 +8,8 @@ render_mode unshaded, fog_disabled, cull_back, shadows_disabled;
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform int kind = 0;
-uniform float fog_density = 0.0021;
-uniform float fog_near = 0.38;
+uniform float fog_density = 0.0012;
+uniform float fog_near = 0.26;
 
 varying vec3 v_wpos;
 varying vec3 v_n;

@@ -133,30 +133,32 @@ func _build_ruin_growth(lvl: EELevel, terrain: WorldTerrain) -> Vector2i:
 				var above: int = lvl.fg[i - W]
 				if above != 0 and not WorldPalette.is_world_solid(above) and not WorldPalette.is_world_deco(above):
 					continue
-				if _rng.randf() < 0.16:
+				if _rng.randf() < 0.26:
 					var p := Vector3(x + _rng.randf_range(0.2, 0.8), -y, _rng.randf_range(-1.5, -0.55))
-					_push(key, Kind.FERN, p, _rng.randf_range(0.8, 1.1), _vary(green, 0.12), _rng.randf() * 0.99)
+					_push(key, Kind.FERN, p, _rng.randf_range(1.1, 1.4), _vary(green, 0.12), _rng.randf() * 0.99)
 					nf += 1
-				if _rng.randf() < 0.3:
+				for k in (2 if _rng.randf() < 0.5 else 1):
+					if _rng.randf() > 0.65:
+						continue
 					var p := Vector3(x + _rng.randf_range(0.15, 0.85), -y, _rng.randf_range(-1.6, 0.0))
 					_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.95), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99)
 					nw += 1
 				continue
 			# cracks in the face: prefer the courses just under a ledge (water and seeds collect there)
 			var under_ledge := not terrain.solid[i - 2 * W]
-			var chance := 0.06 if under_ledge else 0.02
+			var chance := 0.14 if under_ledge else 0.04
 			if _rng.randf() >= chance:
 				continue
-			var lx := 0.35 if not terrain.solid[i - 1] else 0.1
-			var rx := 0.65 if not terrain.solid[i + 1] else 0.9
-			var ly := 0.35 if not terrain.solid[i + W] else 0.1
+			var lx := 0.5 if not terrain.solid[i - 1] else 0.1
+			var rx := 0.5 if not terrain.solid[i + 1] else 0.9
+			var ly := 0.45 if not terrain.solid[i + W] else 0.1
 			var p := Vector3(x + _rng.randf_range(lx, rx), -(y + _rng.randf_range(0.1, 1.0 - ly)), -0.01)
 			var up := Vector3(_rng.randf_range(-0.3, 0.3), 0.75, 0.65).normalized()
 			if _rng.randf() < 0.5:
-				_push(key, Kind.FERN, p, _rng.randf_range(0.55, 0.8), _vary(green, 0.12), _rng.randf() * 0.99, up, true)
+				_push(key, Kind.FERN, p, _rng.randf_range(1.3, 1.7), _vary(green, 0.12), _rng.randf() * 0.99, up, true)
 				nf += 1
 			else:
-				_push(key, Kind.SHORT, p, _rng.randf_range(0.5, 0.75), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99, up, true)
+				_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.1), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99, up, true)
 				nw += 1
 	return Vector2i(nf, nw)
 
