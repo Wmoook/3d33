@@ -113,8 +113,12 @@ void fragment() {
 	float dz = -wp.z - vol_origin.z;
 	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)) * (1.0 - smoothstep(55.0, 95.0, dz)));
 	f = mix(1.0, f, fade);
+	// sub-pixel water (far channels / falls): no view-dependent glints or ripple normals, which sparkle as the
+	// camera moves; the flat water colour only
+	float hf = 1.0 - smoothstep(0.04, 0.14, length(fwidth(wp)));
+	n = normalize(mix(gn, n, hf));
 	vec3 lit = col * (V_SUN * (max(dot(n, sd), 0.0) * 0.5 + 0.3) + V_AMB * 0.5);
-	lit += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(sd * -1.0, n), -vd), 0.0), 90.0) * 2.0;
+	lit += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(sd * -1.0, n), -vd), 0.0), 90.0) * 2.0 * hf;
 	ALBEDO = vec3(0.0);
 	EMISSION = mix(lit, vista_sky(vd, sd), f);
 	ROUGHNESS = 0.1;

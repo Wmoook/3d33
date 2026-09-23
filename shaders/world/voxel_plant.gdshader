@@ -26,7 +26,10 @@ float h11(float x) {
 void vertex() {
 	kind = UV2;
 	float sway = sin(TIME * 1.6 + VERTEX.x * 0.35 + VERTEX.z * 0.2) * 0.07 + sin(TIME * 3.7 + VERTEX.x * 1.3) * 0.025;
-	VERTEX.x += sway * UV.y * UV.y;
+	// sway only up close: at distance the blades are sub-pixel and their motion reads as shimmer
+	vec3 wp0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float near_k = 1.0 - smoothstep(25.0, 45.0, length(wp0 - (INV_VIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz));
+	VERTEX.x += sway * UV.y * UV.y * near_k;
 	w_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	NORMAL = vec3(0.0, 1.0, 0.0);
 }
@@ -84,7 +87,9 @@ void fragment() {
 			col = r < 0.045 ? vec3(0.9, 0.75, 0.2) : pc * (0.8 + 0.4 * (1.0 - r / petal));
 		}
 	}
-	if (a < 0.5) {
+	// sub-pixel plants (tiny blades far away) are dropped instead of sparkling
+	float foot = length(fwidth(w_pos));
+	if (a < 0.5 || foot > 0.09) {
 		discard;
 	}
 	vec3 sd = normalize(sun_dir);
