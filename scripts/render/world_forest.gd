@@ -113,7 +113,7 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 		for y in range(1, H - 1):
 			for x in range(1, W - 1):
 				var i := y * W + x
-				if out[i] or terrain.solid[i] or terrain.pocket[i] or not FOREST_BG.has(int(lvl.bg[i])):
+				if out[i] or terrain.solid[i] or not FOREST_BG.has(int(lvl.bg[i])):
 					continue
 				if out[i - 1] or out[i + 1] or out[i + W]:   # sideways / upward only (never down a shaft)
 					add.append(i)
@@ -150,8 +150,21 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 				out[i] = 0
 		else:
 			rects.append(r)
+	# pores inside / just under each region (the pine's walkable air pockets, the notches in the floor strip)
+	# are forest too: no grey slab may show in any hollow air of a forest
+	var merged := _merge_rects(rects)
+	var grown: Array[Rect2i] = []
+	for r: Rect2i in merged:
+		var g := Rect2i(r.position.x - 1, r.position.y - 4, r.size.x + 2, r.size.y + 10).intersection(Rect2i(0, 0, W, H))
+		for y in range(g.position.y, g.end.y):
+			for x in range(g.position.x, g.end.x):
+				var i := y * W + x
+				if not terrain.solid[i] and terrain.pocket[i] and FOREST_BG.has(int(lvl.bg[i])):
+					out[i] = 1
+					r = r.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
+		grown.append(r)
 	terrain.set_meta(&"forest_hollow", out)
-	terrain.set_meta(&"forest_regions", _merge_rects(rects))
+	terrain.set_meta(&"forest_regions", grown)
 	return out
 
 ## Detected forest regions (hollow bounds, nearby ones merged). Tile rects.
@@ -320,9 +333,9 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 				n_far += _far_quad(far_st, lvl, terrain, hm, x, yy, y0, y1)
 			# painted near bark trunks (512) and far trunks (511)
 			if n512 >= 2:
-				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_NEAR_512 - _rng.randf() * 0.2, 0.46, BARK_512, 0.0])
+				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_NEAR_512 - _rng.randf() * 0.2, _rng.randf_range(0.36, 0.58), BARK_512, 0.0])
 			if n511 >= 2:
-				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_FAR_511 - _rng.randf() * 0.5, 0.5, BARK_511, 0.45])
+				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_FAR_511 - _rng.randf() * 0.5, _rng.randf_range(0.4, 0.62), BARK_511, 0.45])
 			# mid trunks (darker) and far silhouettes dissolving into the haze
 			for zb: float in MID_BANDS:
 				if _rng.randf() < 0.2:
@@ -342,7 +355,7 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 				var hz := clampf((-zc - 2.0) / 7.0, 0.0, 0.7)
 				var sz := _rng.randf_range(0.7, 1.2)
 				cards.append([Vector3(x + _rng.randf(), ceil_w - 1.0 - sz * 0.35, zc), Vector2(sz, sz), crown_col.darkened(0.25), _rng.randi() % 4, hz])
-			if _rng.randf() < 0.3 and y1 - y0 >= 2:
+			if _rng.randf() < 0.55 and y1 - y0 >= 2:
 				var zv := _rng.randf_range(-5.0, -2.2)
 				var ln := _rng.randf_range(1.2, minf(3.2, float(y1 - y0)))
 				cards.append([Vector3(x + _rng.randf(), ceil_w - 1.0 - ln * 0.5, zv), Vector2(0.35, ln), crown_col.darkened(0.35), 4, clampf((-zv - 2.0) / 7.0, 0.0, 0.6)])
@@ -398,6 +411,19 @@ func _far_quad(st: SurfaceTool, lvl: EELevel, terrain: WorldTerrain, hm: PackedB
 		st.set_uv2(f)
 		st.set_normal(Vector3.BACK)
 		st.add_vertex(Vector3(v.x, -v.y, Z_FAR))
+	# the lowest hollow tile of a span: a continuous forest floor from the play strip back to the far card
+	# (mossy, darker with depth), so no sky / pale gap shows at the ground line between trunks
+	if y == y1:
+		var fy := -float(y1 + 1) - 0.02
+		var fc := Color(0.08, 0.13, 0.05).srgb_to_linear()
+		var fl := [Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, -1.85), Vector3(x + 1.6, fy, Z_FAR - 0.2),
+			Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, Z_FAR - 0.2), Vector3(x - 0.6, fy, Z_FAR - 0.2)]
+		for v: Vector3 in fl:
+			st.set_color(fc)
+			st.set_uv(Vector2(v.x, float(y1) + 0.9))   # tile-space: right at the floor -> the mist band
+			st.set_uv2(f)
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v)
 	return 1
 
 func _mm_node(parent: Node3D, nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color]) -> void:
@@ -419,24 +445,88 @@ func _mm_node(parent: Node3D, nm: String, mesh: Mesh, mat: Material, xs: Array[T
 	parent.add_child(mi)
 
 func _add_trunks(parent: Node3D, trunks: Array, mat: ShaderMaterial) -> void:
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.85
-	cyl.bottom_radius = 1.0
-	cyl.height = 1.0
-	cyl.radial_segments = 10
-	cyl.rings = 1
-	cyl.cap_top = false
-	cyl.cap_bottom = false
-	var xs: Array[Transform3D] = []
-	var cs: Array[Color] = []
+	var meshes := [_trunk_mesh(11, false), _trunk_mesh(23, true)]   # plain / forked
+	var sets := [[[], []], [[], []]]
 	for t: Array in trunks:
 		var h: float = t[1] - t[2]
 		var rr: float = t[4]
-		var b := Basis(Vector3.FORWARD, _rng.randf_range(-0.04, 0.04)).scaled(Vector3(rr, h, rr))
-		xs.append(Transform3D(b, Vector3(t[0], (t[1] + t[2]) * 0.5, t[3])))
+		var hz: float = t[6]
+		var lean := _rng.randf_range(-0.05, 0.05) + (_rng.randf_range(-0.07, 0.07) if hz > 0.2 else 0.0)
+		var b := Basis(Vector3.FORWARD, lean) * Basis(Vector3.UP, _rng.randf() * TAU)
+		b = b.scaled(Vector3(rr, h, rr))
+		var fork := 1 if (hz > 0.1 and _rng.randf() < 0.25) else 0
+		sets[fork][0].append(Transform3D(b, Vector3(t[0], t[2], t[3])))   # mesh origin = the base
 		var c: Color = (t[5] as Color).srgb_to_linear()
-		cs.append(Color(c.r, c.g, c.b, t[6]))
-	_mm_node(parent, "Trunks", cyl, mat, xs, cs)
+		sets[fork][1].append(Color(c.r, c.g, c.b, hz))
+	for k in 2:
+		var xs: Array[Transform3D] = []
+		xs.assign(sets[k][0])
+		var cs: Array[Color] = []
+		cs.assign(sets[k][1])
+		_mm_node(parent, "Trunks%d" % k, meshes[k], mat, xs, cs)
+
+## Unit trunk (base at y 0, top at y 1, radius ~1): 14-sided, tapering to 0.72 at the top, a root flare with
+## 5 buttress lobes over the bottom 10%, gentle bulges; forked = a second limb splitting off at 70%.
+func _trunk_mesh(seed_v: int, forked: bool) -> ArrayMesh:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var SEG := 14
+	var RINGS := 14
+	var lobe_ph := r.randf() * TAU
+	var rings: Array = []
+	for j in RINGS + 1:
+		var t := float(j) / RINGS
+		t = t * t * 0.35 + t * 0.65             # more rings near the base (flare)
+		var ring: Array = []
+		for k in SEG:
+			var a := float(k) / SEG * TAU
+			var rad := lerpf(1.0, 0.72, t) * (1.0 + 0.05 * sin(t * 9.0 + a * 2.0))
+			var flare := exp(-t * 24.0)
+			rad += flare * (0.55 + 0.45 * maxf(sin(a * 5.0 + lobe_ph), 0.0))
+			ring.append(Vector3(cos(a) * rad, t, sin(a) * rad))
+		rings.append(ring)
+	for j in RINGS:
+		for k in SEG:
+			var k2 := (k + 1) % SEG
+			var p00: Vector3 = rings[j][k]
+			var p01: Vector3 = rings[j][k2]
+			var p10: Vector3 = rings[j + 1][k]
+			var p11: Vector3 = rings[j + 1][k2]
+			for tri: Array in [[p00, p10, p11], [p00, p11, p01]]:
+				for v: Vector3 in tri:
+					st.set_normal(Vector3(v.x, 0.0, v.z).normalized())
+					st.set_uv(Vector2(0.0, v.y))
+					st.add_vertex(v)
+	if forked:
+		# a limb from 0.62 up and outward (thinner), capped by the canopy above
+		var dir := Vector3(0.35, 1.0, 0.0).normalized()
+		var base := Vector3(0.2, 0.62, 0.0)
+		var side := Vector3(0.0, 0.0, 1.0)
+		var right := dir.cross(side).normalized()
+		for j in 6:
+			var t0 := float(j) / 6.0
+			var t1 := float(j + 1) / 6.0
+			for k in 8:
+				var a0 := float(k) / 8.0 * TAU
+				var a1 := float(k + 1) / 8.0 * TAU
+				var rr0 := lerpf(0.5, 0.35, t0)
+				var rr1 := lerpf(0.5, 0.35, t1)
+				var c0 := base + dir * t0 * 0.5
+				var c1 := base + dir * t1 * 0.5
+				var n0 := right * cos(a0) + side * sin(a0)
+				var n1 := right * cos(a1) + side * sin(a1)
+				var q00 := c0 + n0 * rr0
+				var q01 := c0 + n1 * rr0
+				var q10 := c1 + n0 * rr1
+				var q11 := c1 + n1 * rr1
+				for tri: Array in [[q00, q10, q11, n0, n0, n1], [q00, q11, q01, n0, n1, n1]]:
+					for v in 3:
+						st.set_normal(tri[3 + v])
+						st.set_uv(Vector2(0.0, (tri[v] as Vector3).y))
+						st.add_vertex(tri[v])
+	return st.commit()
 
 func _add_ferns(parent: Node3D, ferns: Array, mat: ShaderMaterial) -> void:
 	var helper := WorldGrass.new()
