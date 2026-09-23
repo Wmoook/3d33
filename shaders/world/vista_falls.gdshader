@@ -9,6 +9,8 @@ uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform float seed = 0.0;
 uniform float height = 100.0;
+uniform float width = 5.0;
+uniform float cell = 1.5;
 uniform float fog_density = 0.0010;
 uniform float fog_near = 0.12;
 
@@ -19,8 +21,10 @@ void vertex() {
 }
 
 void fragment() {
-	float x = UV.x * 2.0 - 1.0;
-	float y = UV.y;                 // 0 = lip, 1 = cloud sea
+	// blocky water: everything is sampled on a grid of `cell`-unit blocks (the world's voxel language)
+	vec2 uvq = (floor(UV * vec2(width, height) / cell) + 0.5) * cell / vec2(width, height);
+	float x = uvq.x * 2.0 - 1.0;
+	float y = uvq.y;                // 0 = lip, 1 = cloud sea
 	float fall = y * height;
 	// the sheet frays and fans out as it falls
 	float wide = mix(0.55, 1.0, smoothstep(0.0, 0.6, y));
@@ -28,7 +32,7 @@ void fragment() {
 	float t = TIME;
 	float s1 = texture(noise_tex, vec2(x * 0.35 + seed, fall * 0.004 - t * 0.35)).r;
 	float s2 = texture(noise_tex, vec2(x * 0.9 + seed * 1.7, fall * 0.011 - t * 0.8)).g;
-	float streak = smoothstep(0.35, 0.75, s1 * 0.6 + s2 * 0.55);
+	float streak = step(0.55, s1 * 0.6 + s2 * 0.55);
 	float body = edge * (0.55 + 0.45 * streak) * (1.0 - smoothstep(0.55, 1.0, y) * 0.75);
 	body *= smoothstep(0.0, 0.02, y);
 	if (body < 0.01) {

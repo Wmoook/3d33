@@ -21,6 +21,12 @@ uniform float haze_far = 0.40;       // ... and at its back (the vista's near ha
 uniform float haze_gain = 1.0;
 uniform float fade = 1.0;            // build fade-in (0 = fully hazed)
 uniform float ao_strength = 0.62;
+// readability: everything here is seen through open sky air, so no pixel may read much darker than the sky
+// behind it. The lit luminance is predicted (sun + sky ambient, no shadows) and extra haze is added where it
+// would fall below min_rel x the sky's luminance (linear), which keeps world's sky-luma check OK.
+uniform float min_rel = 0.42;
+uniform float k_sun = 1.6;
+uniform float k_amb = 0.55;
 
 varying vec3 w_pos;
 varying vec3 w_nrm;
@@ -197,8 +203,20 @@ void fragment() {
 	float f = vista_fog_f(wp, CAMERA_POSITION_WORLD, fog_density, 0.0);
 	float dz = -wp.z - vol_origin.z;
 	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
-	f = mix(1.0, f, fade);
 	vec3 skyc = vista_sky(normalize(wp - CAMERA_POSITION_WORLD), sd);
+	{
+		vec3 lum_w = vec3(0.2126, 0.7152, 0.0722);
+		float ndl = max(dot(n, sd), 0.0);
+		vec3 pred = albedo * mix(1.0, block_ao, 0.75) * (k_sun * ndl * vec3(1.0, 0.86, 0.66) + k_amb * (0.6 + 0.4 * n.y));
+		float pl = dot(pred, lum_w);
+		float sl = dot(skyc, lum_w);
+		float target = min_rel * sl;
+		float lit_l = mix(pl, sl, f);
+		if (lit_l < target) {
+			f = clamp((target - pl) / max(sl - pl, 1e-3), f, 1.0);
+		}
+	}
+	f = mix(1.0, f, fade);
 	ALBEDO = albedo * mix(1.0, block_ao, 0.75) * (1.0 - f);
 	ROUGHNESS = rough;
 	SPECULAR = 0.3;

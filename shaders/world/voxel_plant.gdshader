@@ -85,6 +85,14 @@ void fragment() {
 	float f = vista_fog_f(w_pos, cam, fog_density, 0.0);
 	float dz = -w_pos.z - vol_origin.z;
 	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
+	{
+		vec3 lum_w = vec3(0.2126, 0.7152, 0.0722);
+		float pl = dot(col * (1.6 * max(sd.y, 0.0) * vec3(1.0, 0.86, 0.66) + 0.55), lum_w);
+		float sl = dot(vista_sky(normalize(w_pos - cam), sd), lum_w);
+		if (mix(pl, sl, f) < 0.42 * sl) {
+			f = clamp((0.42 * sl - pl) / max(sl - pl, 1e-3), f, 1.0);
+		}
+	}
 	f = mix(1.0, f, fade);
 	ALBEDO = col * (1.0 - f);
 	ROUGHNESS = 0.8;

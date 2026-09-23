@@ -8,6 +8,7 @@ render_mode unshaded, fog_disabled, cull_back, shadows_disabled;
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform int kind = 0;
+uniform float block = 3.0;       // kind 3: voxel block size (world units)
 uniform float fog_density = 0.0011;
 uniform float fog_near = 0.2;
 
@@ -45,6 +46,21 @@ void fragment() {
 			float win = step(abs(cell.x - 0.5), 0.14) * step(abs(cell.y - 0.45), 0.25);
 			float arch = step(length(vec2((cell.x - 0.5) / 0.14, (cell.y - 0.7) / 0.1)), 1.0) * step(0.7, cell.y);
 			col = mix(col, vec3(0.05, 0.06, 0.07), max(win, arch) * 0.85);
+		}
+	} else if (kind == 3) {
+		// voxel blocks: per-block tone, weathering noise, dark block seams (world-aligned grid)
+		vec3 bq = wp / block;
+		vec3 cellv = floor(bq + n * 0.01 * -0.5);
+		col *= 0.86 + 0.26 * v_h2(cellv.xy + cellv.z * 7.13);
+		col *= 0.85 + 0.3 * texture(noise_tex, (wp.xy + wp.zx) * 0.05).r;
+		vec3 fq = fract(bq);
+		vec3 an = abs(n);
+		vec2 f2 = an.y > 0.5 ? fq.xz : (an.x > 0.5 ? fq.zy : fq.xy);
+		float seam = 1.0 - smoothstep(0.0, 0.07, min(min(f2.x, 1.0 - f2.x), min(f2.y, 1.0 - f2.y)));
+		col *= 1.0 - 0.3 * seam;
+		// grass tops get a lighter sunlit green, grass sides a darker fringe
+		if (v_col.g > v_col.r * 1.3 && n.y > 0.5) {
+			col *= 1.12;
 		}
 	} else if (kind == 2) {
 		// floating island: grassy top, earthy lip, layered rock underside with streaks

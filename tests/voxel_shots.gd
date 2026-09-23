@@ -4,7 +4,8 @@ extends Node
 const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS := {"spawn": Vector2i(2, 56), "grove": Vector2i(40, 40), "falls": Vector2i(150, 165),
 	"spire_top": Vector2i(200, 30), "keep": Vector2i(300, 70), "shrine": Vector2i(390, 78),
-	"spiregap": Vector2i(222, 70), "valley": Vector2i(160, 120), "bottom": Vector2i(200, 192), "sky": Vector2i(120, 20)}
+	"spiregap": Vector2i(222, 70), "valley": Vector2i(160, 120), "bottom": Vector2i(200, 192), "sky": Vector2i(120, 20),
+	"grove_top": Vector2i(40, 30), "logo": Vector2i(320, 45), "west_edge": Vector2i(10, 30), "east_low": Vector2i(380, 120)}
 var game
 
 func _ready() -> void:

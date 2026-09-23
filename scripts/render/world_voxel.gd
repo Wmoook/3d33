@@ -417,9 +417,9 @@ func _place_islands() -> void:
 		tries += 1
 		var cx := rng.randf_range(-70.0, 470.0)
 		var style := rng.randi_range(0, 2)
-		var R := rng.randf_range(5.0, 11.0) if _islands.size() > 5 else rng.randf_range(13.0, 19.0)
+		var R := rng.randf_range(5.0, 10.0) if _islands.size() > 4 else rng.randf_range(13.0, 18.0)
 		var Rz := R * rng.randf_range(0.55, 0.85)
-		var ck := rng.randf_range(maxf(40.0 + Rz * 0.5, 60.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
+		var ck := rng.randf_range(maxf(46.0 + Rz * 0.5, 118.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
 		var D := R * rng.randf_range(1.3, 1.9) * (0.7 if style == 1 else (1.5 if style == 2 else 1.0))
 		var ground := -INF
 		for s in 9:

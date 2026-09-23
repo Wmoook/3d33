@@ -701,18 +701,34 @@ func _make_islands() -> void:
 			_box(frag, c + Vector3(ox + R * 0.05, 0.4, 1.5), Vector3(R * 0.45, 1.0, 1.4), stone)
 		k += 1
 	var falls: Array = []
+	var vox := SurfaceTool.new()
+	vox.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for d in FAR_ISLANDS:
 		var c := Vector3(d[0], d[1], d[2])
 		var R: float = d[3]
 		# never inside a foreground layer that owns the space in front of near_limit
 		c.z = minf(c.z, near_limit - 4.0 - R * 0.8)
-		_island(far, c, R, d[4], k)
-		_island_trees(rng, c, R, 0.4 if d[6] > 0.0 else 0.8)
+		if far_voxel:
+			c.y = snappedf(c.y, VOX)
+			_vox_island(vox, c, R, d[4], k, rng, d[6] > 0.0)
+		else:
+			_island(far, c, R, d[4], k)
+			_island_trees(rng, c, R, 0.4 if d[6] > 0.0 else 0.8)
 		if d[6] > 0.0:
 			_ruin_sites.append([c.x + R * 0.15, c.y + R * 0.06, c.z - R * 0.1, d[6], clampf(R * 0.4, 12.0, 24.0)])
 		if d[5]:
 			falls.append([c + Vector3(R * rng.randf_range(-0.35, 0.35), -R * 0.04, R * 0.93), clampf(R * 0.12, 2.5, 7.0)])
 		k += 1
+	if far_voxel:
+		vox.generate_normals()
+		var vm := MeshInstance3D.new()
+		vm.mesh = vox.commit()
+		var vmat := _mat("res://shaders/world/vista_prop.gdshader")
+		vmat.set_shader_parameter("kind", 3)
+		vmat.set_shader_parameter("fog_near", 0.14)
+		vmat.set_shader_parameter("block", VOX)
+		vm.material_override = vmat
+		_setup_instance(vm, "VistaFarVoxelIslands")
 	for pair in [[mid, "VistaMidIslands", 0.2], [far, "VistaFarIslands", 0.12]]:
 		var st: SurfaceTool = pair[0]
 		st.generate_normals()
@@ -732,6 +748,66 @@ func _make_islands() -> void:
 	fm.material_override = fmat
 	_setup_instance(fm, "VistaMidRuins")
 	_make_falls(falls)
+
+## Far islands in the voxel layer's blocky language (VOX-unit blocks on a world-aligned grid).
+var far_voxel := true
+const VOX := 3.0
+const VOX_GRASS := Color(0.33, 0.52, 0.2)
+const VOX_DIRT := Color(0.45, 0.33, 0.22)
+const VOX_STONE := Color(0.42, 0.41, 0.42)
+const VOX_DEEP := Color(0.3, 0.29, 0.31)
+const VOX_TRUNK := Color(0.33, 0.23, 0.14)
+const VOX_LEAF := Color(0.2, 0.4, 0.15)
+
+## A floating island built of blocks: stepped grassy top, dirt band, stone keel stepping down to a tip,
+## and a few block trees on top (fewer where a ruin will stand).
+func _vox_island(st: SurfaceTool, c: Vector3, R: float, depth: float, seed_i: int, rng: RandomNumberGenerator, has_ruin: bool) -> void:
+	var fn := FastNoiseLite.new()
+	fn.seed = 300 + seed_i
+	fn.frequency = 0.9
+	fn.fractal_octaves = 3
+	var n := int(ceil(R / VOX)) + 1
+	var cx := snappedf(c.x, VOX)
+	var cz := snappedf(c.z, VOX)
+	var tops := {}
+	for ix in range(-n, n + 1):
+		for iz in range(-n, n + 1):
+			var x := cx + ix * VOX
+			var z := cz + iz * VOX
+			var dx := (x - c.x) / R
+			var dz := (z - c.z) / (R * 0.8)
+			var th := atan2(dz, dx)
+			var rim := 1.0 + 0.24 * fn.get_noise_2d(cos(th) * 1.3, sin(th) * 1.3) + 0.08 * fn.get_noise_2d(cos(th) * 4.0 + 9.0, sin(th) * 4.0)
+			var r := sqrt(dx * dx + dz * dz) / rim
+			if r > 1.0:
+				continue
+			var top := snappedf(c.y + (1.0 - r * r) * R * 0.07 + fn.get_noise_2d(x * 0.05, z * 0.05) * R * 0.04, VOX)
+			var keel := depth * pow(maxf(1.0 - pow(r, 1.4), 0.0), 0.75) * (0.75 + 0.5 * (fn.get_noise_2d(x * 0.09 + 40.0, z * 0.09) * 0.5 + 0.5))
+			var bottom := snappedf(top - VOX * 3.0 - keel, VOX)
+			var p := Vector3(x, 0.0, z)
+			# grass block, two dirt blocks, stone below (darker toward the keel tip)
+			_box(st, Vector3(x, top - VOX * 0.5, z), Vector3(VOX, VOX, VOX), VOX_GRASS)
+			_box(st, Vector3(x, top - VOX * 2.0, z), Vector3(VOX, VOX * 2.0, VOX), VOX_DIRT)
+			var sh := top - VOX * 3.0 - bottom
+			if sh > 0.1:
+				var mid_y := top - VOX * 3.0 - sh * 0.5
+				_box(st, Vector3(x, mid_y, z), Vector3(VOX, sh, VOX), VOX_STONE.lerp(VOX_DEEP, clampf(sh / maxf(depth, 1.0), 0.0, 1.0)))
+			tops[p] = top
+	# block trees: a trunk column and a leaf crown
+	var keys := tops.keys()
+	var nt := int(R * R * 0.012 * (0.35 if has_ruin else 1.0)) + 1
+	for i in nt:
+		if keys.is_empty():
+			break
+		var p: Vector3 = keys[rng.randi() % keys.size()]
+		if Vector2((p.x - c.x) / R, (p.z - c.z) / (R * 0.8)).length() > 0.7:
+			continue
+		var gy: float = tops[p]
+		var th := rng.randi_range(2, 3)
+		_box(st, Vector3(p.x, gy + th * VOX * 0.5, p.z), Vector3(VOX * 0.66, th * VOX, VOX * 0.66), VOX_TRUNK)
+		var ly := gy + th * VOX
+		_box(st, Vector3(p.x, ly + VOX, p.z), Vector3(VOX * 3.0, VOX * 2.0, VOX * 3.0), VOX_LEAF)
+		_box(st, Vector3(p.x, ly + VOX * 2.5, p.z), Vector3(VOX, VOX, VOX), VOX_LEAF.lightened(0.1))
 
 ## A floating island: domed grassy top with a noisy rim, a rocky underside tapering to a keel tip.
 func _island(st: SurfaceTool, c: Vector3, R: float, depth: float, seed_i: int) -> void:
@@ -810,6 +886,8 @@ func _make_falls(falls: Array) -> void:
 		m.set_shader_parameter("noise_tex", noise_tex)
 		m.set_shader_parameter("seed", float(k) * 3.1)
 		m.set_shader_parameter("height", h)
+		m.set_shader_parameter("width", w)
+		m.set_shader_parameter("cell", clampf(w / 3.0, 1.0, 2.5))
 		m.render_priority = -95
 		_mats.append(m)
 		mi.material_override = m
