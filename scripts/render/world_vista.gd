@@ -716,6 +716,18 @@ func _make_islands() -> void:
 		var R: float = d[3]
 		# never inside a foreground layer that owns the space in front of near_limit
 		c.z = minf(c.z, near_limit - 4.0 - R * 0.8)
+		if far_terrain and use_world_terrain:
+			# painted in FV blocks and rendered by world's terrain (the level's own materials), deferred
+			var sc := clampf(R / 12.0, 1.6, 3.5)
+			var art := WorldVistaBlocks.make_island(int(R / sc), int(d[4] / sc), int(d[6] / sc), d[5], k)
+			var org := Vector3(c.x - (art.anchor.x + 1) * sc, c.y + (art.anchor.y + 1) * sc, c.z)
+			_deferred_pieces.append([art.make_level(), org, sc, 100 + k])
+			if d[5]:
+				# the falls continue from the map's water column down into the cloud sea
+				var fx := c.x + (int(int(R / sc) * 0.55) + 1.0) * sc
+				falls.append([Vector3(fx, c.y - (art.h - art.anchor.y - 2) * sc, c.z + 2.0), sc * 1.8])
+			k += 1
+			continue
 		if far_voxel:
 			c.y = snappedf(c.y, VOX)
 			_vox_island(vox, c, R, d[4], k, rng, d[6] > 0.0)
@@ -727,7 +739,7 @@ func _make_islands() -> void:
 		if d[5]:
 			falls.append([c + Vector3(R * rng.randf_range(-0.35, 0.35), -R * 0.04, R * 0.93), clampf(R * 0.12, 2.5, 7.0)])
 		k += 1
-	if far_voxel:
+	if far_voxel and not (far_terrain and use_world_terrain):
 		vox.generate_normals()
 		var vm := MeshInstance3D.new()
 		vm.mesh = vox.commit()
@@ -759,6 +771,8 @@ func _make_islands() -> void:
 
 ## Far islands in the voxel layer's blocky language (VOX-unit blocks on a world-aligned grid).
 var far_voxel := true
+## true: far islands are FV block maps rendered by world's terrain (same materials as the level).
+var far_terrain := true
 const VOX := 3.0
 const VOX_GRASS := Color(0.33, 0.52, 0.2)
 const VOX_DIRT := Color(0.45, 0.33, 0.22)
@@ -996,6 +1010,7 @@ func _build_pieces_deferred() -> void:
 		var tw := create_tween()
 		tw.tween_method(func(h: float) -> void: t.set_haze(h, PIECE_HAZE_COLOR), 1.0, target, PIECE_FADE)
 		await get_tree().process_frame
+	print("WorldVista: %d backdrop pieces built (deferred)" % _deferred_pieces.size())
 	_deferred_pieces.clear()
 
 func _make_block_pieces() -> void:

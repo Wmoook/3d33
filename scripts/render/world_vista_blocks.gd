@@ -313,3 +313,37 @@ static func load_colors(ref_dir: String) -> Dictionary:
 			if data[k] is String:
 				out[int(k)] = Color.html(data[k])
 	return out
+
+# ------------------------------------------------------------------ far floating islands as block maps
+## A far floating island painted in FV blocks (so world's terrain renders it with the level's own
+## materials): half width hw and keel depth in tiles, an optional ruined tower (tower_h tiles) and a
+## waterfall off the front rim. Returns the map; `anchor` = the tile at the island's top centre.
+var anchor := Vector2i.ZERO
+
+static func make_island(hw: int, depth: int, tower_h: int, falls: bool, seed_v: int) -> WorldVistaBlocks:
+	var m := WorldVistaBlocks.new()
+	m.rng.seed = seed_v * 977 + 13
+	var top := tower_h + 8
+	m._init_map(hw * 2 + 8, top + depth + 12)
+	var cx := hw + 4
+	var surf := m.island(cx, top, hw, depth)
+	m.anchor = Vector2i(cx, top)
+	if tower_h > 0:
+		var tx := cx - int(hw * 0.3)
+		m.tower(tx, surf[tx + 3] + 1, maxi(int(hw * 0.35), 6), tower_h)
+		m.tree(cx + int(hw * 0.45), surf[cx + int(hw * 0.45)], 3)
+	else:
+		for k in maxi(int(hw / 6.0), 2):
+			var x := cx + m.rng.randi_range(-int(hw * 0.7), int(hw * 0.7))
+			if m.rng.randf() < 0.5:
+				m.tree(x, surf[x], m.rng.randi_range(3, 5))
+			else:
+				m.pine(x, surf[x], m.rng.randi_range(6, 10))
+	if falls:
+		# a water channel spilling off the rim and falling past the keel
+		var fx := cx + int(hw * 0.55)
+		for y in range(surf[fx], m.h):
+			m.put(fx, y, WATER)
+			if y > surf[fx] + 2 and m.rng.randf() < 0.5:
+				m.put(fx + 1, y, WATER)
+	return m
