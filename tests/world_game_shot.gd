@@ -26,6 +26,8 @@ func _ready() -> void:
 			WorldView.depth_enabled = false
 		elif a == "novoxel":
 			WorldVoxel.enabled = false
+		elif a == "noglass":
+			WorldDepth.debug_no_glass = true
 		elif a == "skin":
 			WorldView.depth_smooth_skin = true
 	GameScript.boot_options = {"no_save": true, "quality": 3, "level": lvl_id}

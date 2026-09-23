@@ -58,10 +58,13 @@ func _ready() -> void:
 		game.rig.set("target_zoom", z); game.rig.set("zoom", z)
 		await _frames(60)
 		var res := {}
-		for mode in ["base", "pbr", "grass", "leaves"]:
+		for mode in ["base", "pbr", "grass", "leaves", "forest"]:
 			mat.set_shader_parameter("pbr_strength", 0.0 if mode == "base" else 1.0)
 			grass.visible = mode == "grass" or mode == "leaves"
-			foliage.visible = mode == "leaves"
+			foliage.visible = mode == "leaves" or mode == "forest"
+			if wv.get("forest"):
+				wv.forest.visible = mode == "forest"
+				wv.forest.set_focus_all(1.0 if mode == "forest" else 0.0)
 			await _frames(20)
 			var acc := 0.0
 			var n := int(args.frames)
@@ -71,6 +74,7 @@ func _ready() -> void:
 			res[mode] = acc / n
 		print("PERF %-10s base %.2f ms | pbr +%.2f | grass +%.2f | leaves +%.2f | total +%.2f ms" % [s[0], res.base,
 			res.pbr - res.base, res.grass - res.pbr, res.leaves - res.grass, res.leaves - res.base])
+		print("PERF %-10s forest +%.2f ms" % [s[0], res.forest - res.leaves])
 	get_tree().quit()
 
 func _frames(n: int) -> void:

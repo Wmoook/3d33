@@ -184,6 +184,9 @@ void fragment() {
 		layer = (s.y >= -0.13) ? 1 : 2;
 	}
 	if (layer == 1 && s.y < -0.07) { layer = 2; }
+	if (depth_cont > 0.5 && layer != 0 && texelFetch(window_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 > 4.5) {
+		discard;   // structure interior: WorldDepth draws the recessed room (back wall, side walls, windows)
+	}
 	if (layer != 0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
 		discard;   // forest hollow: WorldForest's deep forest shows through
 	}
@@ -193,9 +196,11 @@ void fragment() {
 	// windows in structure walls (painted sky inside a tower): a stone frame around a see-through opening
 	float win_frame = 0.0;
 	float struct_wall = 0.0;
+	float earth_wall = 0.0;
 	if (layer == 1 && scroll_rect.x >= 0.0) {
 		float wraw = texelFetch(window_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
-		struct_wall = step(3.0, wraw);
+		struct_wall = step(4.5, wraw);
+		earth_wall = step(1.0, wraw) * (1.0 - struct_wall);
 		float wd = (texture(window_tex, p / level_size).r * 255.0 - 6.0) / 34.0;
 		if (wraw > 20.0) {
 			float below = texelFetch(window_tex, clamp(ivec2(floor(p + vec2(0.0, 0.75))), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
@@ -302,7 +307,7 @@ void fragment() {
 			}
 			// AO gradient toward the panel's edges (where it meets the foreground mass)
 			ao *= mix(0.55, 1.0, smoothstep(-0.1, -2.5, s.x));
-		}		mat = -1;
+		}		mat = earth_wall > 0.5 ? M_EARTH : -1;   // earth cave walls take the soil photoscan
 		int vzb = int(texelFetch(visual_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 + 0.5);
 		if (vzb == 2) { albedo *= 0.3; }   // inferno back walls stay the painting's near-black red
 		// contact darkening where the foreground meets the back wall
@@ -684,12 +689,30 @@ void fragment() {
 		// back walls behind air must read recessed and non-solid: darker (<= ~55% of the fg value), flatter
 		// relief and light, strong AO toward the foreground edges, cooler, no highlights
 		albedo *= 0.5;
-		albedo = mix(albedo, albedo * vec3(0.85, 0.92, 1.08), 0.6);
+		albedo = mix(albedo, albedo * vec3(0.85, 0.92, 1.08), 0.6 * (1.0 - earth_wall));
 		n = normalize(mix(vec3(0.0, 0.0, 1.0), n, 0.35));
 		rough = 0.95;
 		spec = 0.12;
 		ao *= mix(0.45, 1.0, smoothstep(-0.05, -1.4, s.x));
 		emit *= 0.3;
+	}
+	if (earth_wall > 0.5) {
+		// earth cave wall: packed dirt tinted by the painted colour, darker strata, damp patches, pebbles, roots
+		float lum_c = dot(albedo, vec3(0.3, 0.55, 0.15));
+		vec3 dirt = mix(vec3(0.19, 0.12, 0.06), vec3(0.26, 0.18, 0.09), fbm2(p * 0.35) * 0.5 + 0.5);
+		albedo = mix(dirt * (0.55 + lum_c * 3.0), albedo, 0.35);
+		float sy = p.y * 1.3 + fbm2(p * vec2(0.12, 0.4)) * 1.6;
+		albedo *= mix(0.78, 1.08, smoothstep(0.2, 0.8, fract(sy)));
+		albedo *= 1.0 - smoothstep(0.55, 0.85, fbm2(p * 0.22 + 9.0) * 0.5 + 0.5) * 0.3;   // damp
+		vec2 pc = p * 2.3;
+		vec2 pci = floor(pc);
+		vec2 pcf = fract(pc) - 0.5 - (vec2(hash12(pci), hash12(pci + 3.1)) - 0.5) * 0.5;
+		float peb = (1.0 - smoothstep(0.12, 0.2, length(pcf))) * step(0.78, hash12(pci + 7.7));
+		albedo = mix(albedo, vec3(0.3, 0.27, 0.23) * mix(0.8, 1.2, hash12(pci + 1.3)), peb);
+		n = normalize(n + vec3(pcf * 2.0, 0.0) * peb * 0.8);
+		float root = smoothstep(0.92, 0.985, ridge(vec2(p.x * 0.7 + fbm2(p * 0.4) * 1.8, p.y * 0.22)));
+		albedo = mix(albedo, vec3(0.11, 0.07, 0.04), root * 0.85);
+		rough = 0.95;
 	}
 	if (struct_wall > 0.5 && win_frame < 0.5) {
 		// a structure's interior wall: dressed ashlar courses in the painted stone colour, never flat

@@ -242,11 +242,13 @@ static func chevron_glyph() -> Mesh:
 				var a := Vector2(-0.1 - (0.03 if pass_i == 1 else 0.0), ext * sgn)
 				var dir := (tip - a).normalized()
 				var n := Vector2(-dir.y, dir.x) * th * 0.5
-				var p0 := a + n; var p1 := a - n; var p2 := tip - n; var p3 := tip + n
-				# extra corner fill at the tip
+				# mitered apex: both arms end on the shared miter points on the axis (y = 0), so the two
+				# strokes meet in one clean point with no notch or overlap seam
+				var p0 := a + n; var p1 := a - n
+				var p2 := p1 + dir * (-p1.y / dir.y)
+				var p3 := p0 + dir * (-p0.y / dir.y)
 				var q := [p0, p1, p2, p3]
 				_prism(st, q, z, 0.03)
-			# tip cap
 			st.generate_normals()
 			st.commit(mesh)
 		return mesh)
@@ -294,3 +296,43 @@ static func _prism(st: SurfaceTool, q: Array, z: float, depth: float) -> void:
 	for i in 4:
 		var j := (i + 1) % 4
 		_quad(st, f[j], f[i], b[i], b[j])
+
+## EE portal (242) as a 3D block: a 1x1 tile slab with a chamfered front edge, extruded back to the level's
+## blocky depth. Front face z = 0.3, back z = -0.6, chamfer 0.1. UV = front-face coords (0..1, y down) on
+## every vertex; COLOR.r = face kind (1 front, 0.5 chamfer, 0 sides/back) for the shader.
+static func portal_block() -> Mesh:
+	return _cached("portal_block", func() -> Mesh:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var F := 0.3
+		var B := -0.6
+		var e := 0.1
+		var h := 0.5
+		var i := h - e
+		var zc := F - e
+		# clockwise-from-outside quads (Godot front faces)
+		var quads := [
+			# front
+			[[-i, -i, F], [-i, i, F], [i, i, F], [i, -i, F], 1.0, Vector3(0, 0, 1)],
+			# chamfers
+			[[-i, i, F], [-h, h, zc], [h, h, zc], [i, i, F], 0.5, Vector3(0, 0.7, 0.7)],
+			[[i, -i, F], [h, -h, zc], [-h, -h, zc], [-i, -i, F], 0.5, Vector3(0, -0.7, 0.7)],
+			[[-h, -h, zc], [-h, h, zc], [-i, i, F], [-i, -i, F], 0.5, Vector3(-0.7, 0, 0.7)],
+			[[i, -i, F], [i, i, F], [h, h, zc], [h, -h, zc], 0.5, Vector3(0.7, 0, 0.7)],
+			# sides
+			[[-h, h, zc], [-h, h, B], [h, h, B], [h, h, zc], 0.0, Vector3(0, 1, 0)],
+			[[h, -h, zc], [h, -h, B], [-h, -h, B], [-h, -h, zc], 0.0, Vector3(0, -1, 0)],
+			[[-h, -h, B], [-h, h, B], [-h, h, zc], [-h, -h, zc], 0.0, Vector3(-1, 0, 0)],
+			[[h, -h, zc], [h, h, zc], [h, h, B], [h, -h, B], 0.0, Vector3(1, 0, 0)],
+			# back
+			[[h, -h, B], [h, h, B], [-h, h, B], [-h, -h, B], 0.0, Vector3(0, 0, -1)],
+		]
+		for qd in quads:
+			var pts: Array = [qd[0], qd[1], qd[2], qd[0], qd[2], qd[3]]
+			for p in pts:
+				var v := Vector3(p[0], p[1], p[2])
+				st.set_color(Color(qd[4], 0, 0))
+				st.set_normal((qd[5] as Vector3).normalized())
+				st.set_uv(Vector2(v.x + 0.5, 0.5 - v.y))
+				st.add_vertex(v)
+		return st.commit())

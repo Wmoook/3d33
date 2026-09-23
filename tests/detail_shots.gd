@@ -16,6 +16,8 @@ const SPOTS_FV := [
 	["hollow", Vector2(30, 54)],
 	["pine", Vector2(62, 50)],
 	["spawn2", Vector2(2, 56)],
+	["walkstart", Vector2(14, 56)],
+	["walk8", Vector2(8, 56)],
 	["easthollow", Vector2(382, 104)],
 	["outside_grove", Vector2(20, 68)],
 	["outside_east", Vector2(96, 50)],
@@ -86,9 +88,25 @@ func _ready() -> void:
 		_build_depth_stub(wv)
 	if args.has("hide"):
 		for nm: String in str(args.hide).split(","):
-			var nd := wv.get_node_or_null(nm)
+			var nd: Node = wv.get_node_or_null(nm)
+			if nd == null:
+				nd = game.find_child(nm, true, false)
 			if nd is Node3D:
 				(nd as Node3D).visible = false
+	if args.has("tileinfo"):
+		var v := str(args.tileinfo).split(",")
+		var ti := int(v[1]) * wv.terrain.W + int(v[0])
+		print("TILE ", v, " fg ", wv.level.fg[ti], " bg ", wv.level.bg[ti], " solid ", wv.terrain.solid[ti], " pocket ", wv.terrain.pocket[ti], " mat ", wv.terrain.mat_ids[ti], " hollow ", WorldForest.hollow_mask(wv.terrain)[ti])
+	if args.has("tree"):
+		for c in wv.get_children():
+			print("WV ", c.name, " ", c.get_class())
+		for c in game.get_children():
+			print("TREE ", c.get_path(), " ", c.get_class())
+			for c2 in c.get_children():
+				print("TREE   ", c2.name, " ", c2.get_class())
+	if args.has("findat"):
+		var v := str(args.findat).split(",")
+		_find_at(Vector2(float(v[0]), float(v[1])), float(v[2]) if v.size() > 2 else 1.2)
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
@@ -123,8 +141,28 @@ func _ready() -> void:
 		for i in 3:
 			await get_tree().process_frame
 		var lv := "fv" if args.level == "forgotten_veil" else "od"
-		get_viewport().get_texture().get_image().save_png("user://detail_%s_%s%s.png" % [lv, s[0], args.tag])
+		var shot := get_viewport().get_texture().get_image()
+		shot.save_png("user://detail_%s_%s%s.png" % [lv, s[0], args.tag])
 		print("saved detail_", lv, "_", s[0], args.tag, "  fps ", Engine.get_frames_per_second())
+		if args.get("skycheck", "0") == "1":
+			# measured without the HUD (its panels / titles are not the world)
+			var ui_vis: bool = game._ui.visible
+			game._ui.visible = false
+			for i in 3:
+				await get_tree().process_frame
+			print("SKYCHECK %s: %s" % [s[0], str(_sky_check(get_viewport().get_texture().get_image(), wv))])
+			game._ui.visible = ui_vis
+		if args.get("walk", "0") == "1":
+			if args.get("fly", "0") != "1":
+				game.sim.set_god_mode(false)
+			var wdir: String = args.get("walkdir", "right")
+			game.input_provider = func(_t: int) -> Dictionary: return {wdir: true}
+			for f in 3:
+				for i in int(args.get("walkframes", "12")):
+					await get_tree().process_frame
+				get_viewport().get_texture().get_image().save_png("user://detail_%s_%s%s_walk%d.png" % [lv, s[0], args.tag, f])
+			game.input_provider = func(_t: int) -> Dictionary: return {}
+			game.sim.set_god_mode(true)
 	get_tree().quit()
 
 func _hide_decor(wv: WorldView, nm: String) -> void:
@@ -239,6 +277,7 @@ func _build_forest(wv: WorldView) -> void:
 	if wv.get("forest") != null:
 		forest_node = wv.forest
 		print("forest: live integration ", wv.forest.stats)
+		_patch_depth_forest_haze(wv)
 		return
 	var mat: ShaderMaterial = wv.terrain.material
 	var code: String = mat.shader.code.replace("
@@ -280,3 +319,102 @@ varying vec3 w_pos;")
 	f.build(wv.level, wv.terrain)
 	forest_node = f
 	print("forest %d ms %s" % [Time.get_ticks_msec() - t0, f.stats])
+
+## Pixels (every 3rd) whose camera ray crosses the play plane inside a forest-hollow tile and whose colour is
+## pale sky blue (b > g > r, bright, bluish): must be 0.
+func _sky_check(img: Image, wv: WorldView) -> Dictionary:
+	var cam := get_viewport().get_camera_3d()
+	var hm := WorldForest.hollow_mask(wv.terrain)
+	var W := wv.terrain.W
+	var H := wv.terrain.H
+	var vs := get_viewport().get_visible_rect().size
+	var sx := vs.x / img.get_width()
+	var sy := vs.y / img.get_height()
+	var n_hollow := 0
+	var n_sky := 0
+	for py in range(0, img.get_height(), 3):
+		for px in range(0, img.get_width(), 3):
+			var o := cam.project_ray_origin(Vector2(px * sx, py * sy))
+			var d := cam.project_ray_normal(Vector2(px * sx, py * sy))
+			if absf(d.z) < 1e-5:
+				continue
+			var hit := o + d * (-o.z / d.z)
+			var tx := int(floor(hit.x))
+			var ty := int(floor(-hit.y))
+			if tx < 0 or ty < 0 or tx >= W or ty >= H or not hm[ty * W + tx]:
+				continue
+			# gameplay glyphs (portals, keys, arrows...) within a tile are not the world: skip them
+			var glyph := false
+			for gy in range(maxi(ty - 1, 0), mini(ty + 2, H)):
+				for gx in range(maxi(tx - 1, 0), mini(tx + 2, W)):
+					var gid: int = wv.level.fg[gy * W + gx]
+					if gid != 0 and not WorldPalette.is_world_solid(gid) and not WorldPalette.is_world_deco(gid):
+						glyph = true
+			if glyph:
+				continue
+			n_hollow += 1
+			var c := img.get_pixel(px, py)
+			if c.b > c.g and c.g > c.r and c.b > 0.45 and c.b - c.r > 0.12:
+				n_sky += 1
+				if n_sky <= 6:
+					print("  sky px at ", Vector2i(px, py), " tile ", Vector2i(tx, ty), " ", c)
+	return {"hollow_px": n_hollow, "sky_px": n_sky}
+
+## Proposed to world: inside forest regions (the dilated hollow tex covers the solids bordering a hollow) the
+## depth volume's faces haze into the dark forest fog instead of the pale sky, so trunk / pocket side faces
+## never read as blue lines.
+func _patch_depth_forest_haze(wv: WorldView) -> void:
+	var dv = wv.get("depth")
+	if dv == null or dv.material == null:
+		return
+	var dm: ShaderMaterial = dv.material
+	var dc: String = dm.shader.code.replace("
+
+", "
+")
+	if dc.find("forest_fog") >= 0:
+		return
+	dc = dc.replace("varying vec3 w_pos;", "uniform sampler2D forest_tex : filter_nearest, repeat_disable;
+uniform vec3 forest_fog : source_color = vec3(0.035, 0.07, 0.04);
+varying vec3 w_pos;")
+	var a := "	ALBEDO = albedo * ao * (1.0 - hz);"
+	assert(dc.find(a) >= 0, "depth haze anchor missing")
+	dc = dc.replace(a, "	vec3 hcol = haze_color;
+	if (texelFetch(forest_tex, clamp(ivec2(floor(tile)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+		hcol = forest_fog;   // forest: faces recede into the dark forest fog, not the sky
+		hz = max(hz, smoothstep(0.3, 6.0, d) * 0.8);
+		albedo *= 0.7;
+	}
+" + a)
+	dc = dc.replace("	EMISSION = haze_color * hz * haze_emit", "	EMISSION = hcol * hz * haze_emit")
+	var sh := Shader.new()
+	sh.code = dc
+	dm.shader = sh
+	dm.set_shader_parameter("forest_tex", ImageTexture.create_from_image(WorldForest.hollow_image(wv.terrain)))
+	print("depth forest-haze patch applied")
+
+## Prints every visual instance whose world AABB overlaps the column through tile-space point t (radius r), in
+## front of z -3 (candidates for a prop seen at that spot).
+func _find_at(t: Vector2, r: float) -> void:
+	var wp := Vector2(t.x, -t.y)
+	for n in get_tree().root.find_children("*", "VisualInstance3D", true, false):
+		var vi := n as VisualInstance3D
+		if not vi.is_visible_in_tree():
+			continue
+		if vi is MultiMeshInstance3D:
+			var mmi := vi as MultiMeshInstance3D
+			if mmi.multimesh == null:
+				continue
+			var mm := mmi.multimesh
+			for k in mm.instance_count:
+				var o := mmi.global_transform * mm.get_instance_transform(k).origin
+				if Vector2(o.x, o.y).distance_to(wp) < r and o.z > -30.0:
+					print("FIND mm ", mmi.get_path(), " inst ", k, " at ", o)
+					break
+			continue
+		var ab := vi.global_transform * vi.get_aabb()
+		if ab.size.length() > 30.0:
+			continue
+		var c := ab.get_center()
+		if Vector2(c.x, c.y).distance_to(wp) < r + ab.size.length() * 0.5 and c.z > -30.0:
+			print("FIND ", vi.get_path(), " ", vi.get_class(), " aabb ", ab)

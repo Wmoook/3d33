@@ -14,14 +14,15 @@ extends Node3D
 
 const Z_FRONT := -1.2          # solid tiles start here (inside the slab's cliff, which reaches ~-2.3)
 const Z_FRONT_BG := -2.0       # back-wall / pocket tiles start behind the recess (-1.9)
+const SEAM_D := 0.3            # side faces against a neighbouring mass begin this deep (overlapping the slab cliff)
 const E_FULL := 24.8           # ground bodies end at z = -26.0
 const STRUCT_CAP := 11.0
 const GROUND_RW := 48          # horizontal run (tiles) that makes a mass a ground body
 const GROUND_VT := 10          # ... and its vertical run
 const CHUNK := 32
 const BREAKS := [12.0, 14.0, 16.0, 18.5, 21.0, 23.0]   # depth subdivisions where the far shear acts
-const HAZE_Z0 := -2.0
-const HAZE_Z1 := -26.0
+const HAZE_Z0 := -8.0            # near faces never haze (they are solid blocks); aerial haze only far back
+const HAZE_Z1 := -30.0
 
 var W := 0
 var H := 0
@@ -35,6 +36,8 @@ var _noise := FastNoiseLite.new()
 ## Optional smooth heightfield skin over natural masses (rounded hills/peaks). DEFAULT OFF: the user prefers
 ## the blocky extrusion. Set before build().
 var smooth_skin := false
+## Tests: skip the window glass / shaft meshes (to check the openings are real holes).
+static var debug_no_glass := false
 var _records := []                  # per column: [[y, E], ...] with increasing E, top to bottom
 
 class Bucket:
@@ -68,6 +71,7 @@ func build(t: WorldTerrain) -> void:
 	t0 = Time.get_ticks_msec()
 	_make_material()
 	_build_mesh()
+	_build_room_extras()
 	if smooth_skin:
 		_build_skin()
 	terrain.material.set_shader_parameter("depth_cont", 1.0)
@@ -80,7 +84,7 @@ func _compute_depth() -> void:
 	depth.resize(n)
 	var hollow := WorldForest.hollow_mask(terrain)
 	for i in n:
-		if hollow.size() == n and hollow[i] and not terrain.solid[i]:
+		if hollow.size() == n and hollow[i] and not terrain.solid[i] and (terrain.wall_code.size() != n or terrain.wall_code[i] < 5):
 			mass[i] = 0   # forest hollow: WorldForest fills the space behind
 			continue
 		mass[i] = 1 if (terrain.solid[i] or (terrain.backwall[i] and not terrain.window[i]) or terrain.pocket[i] == 1) else 0   # windows: holes through the volume (jambs)
@@ -123,6 +127,7 @@ func _compute_depth() -> void:
 			if scroll.has_point(Vector2i(x, y)):
 				e = 0.8   # the hanging parchment stays a thin sheet
 			depth[i] = e
+	_make_rooms()
 	# records per column for depth_top_y: the topmost tile reaching a given depth
 	_records.resize(W)
 	for x in W:
@@ -209,13 +214,20 @@ func _make_material() -> void:
 			"pbr_tex", "pbr_level", "pbr_strength", "pbr_canopy_tex", "pbr_level_size"]:
 		material.set_shader_parameter(k, tm.get_shader_parameter(k))
 	material.set_shader_parameter("haze_z", Vector2(HAZE_Z0, HAZE_Z1))
-	var dimg := Image.create_from_data(W, H, false, Image.FORMAT_RF, depth.to_byte_array())
+	material.set_shader_parameter("forest_tex", ImageTexture.create_from_image(WorldForest.hollow_image(terrain)))
+	var rg := PackedFloat32Array(); rg.resize(W * H * 2)
+	for i in W * H:
+		rg[i * 2] = depth[i]
+		rg[i * 2 + 1] = _cover(i).x if mass[i] else 99.0   # where the tile's volume starts
+	var dimg := Image.create_from_data(W, H, false, Image.FORMAT_RGF, rg.to_byte_array())
 	material.set_shader_parameter("depth_tex", ImageTexture.create_from_image(dimg))
 
 func _cover(i: int) -> Vector2:
 	# depth interval [d0, d1] covered by tile i (d = Z_FRONT - z)
 	if not mass[i]:
 		return Vector2(-1.0, -1.0)
+	if room.size() == W * H and room[i] != 0:
+		return Vector2(room_r[i], depth[i])
 	return Vector2(0.0 if terrain.solid[i] else Z_FRONT - Z_FRONT_BG, depth[i])
 
 func _build_mesh() -> void:
@@ -237,6 +249,7 @@ func _build_mesh() -> void:
 					continue   # the level border: the margin mass continues there
 				for piece in _pieces(c, nc):
 					_face(buckets, x, y, side, piece.x, piece.y, solid_t)
+	_build_room_backs(buckets)
 	for key in buckets:
 		var b: Bucket = buckets[key]
 		if b.v.is_empty():
@@ -263,7 +276,7 @@ func _pieces(c: Vector2, nc: Vector2) -> Array:
 	if nc.y < 0.0:
 		out.append(c)
 		return out
-	var lo := maxf(c.x, Z_FRONT - Z_FRONT_BG)
+	var lo := maxf(c.x, SEAM_D)   # starts inside the slab's cliff: overlap, no hairline seam
 	if nc.x > lo:
 		var e := minf(c.y, nc.x)
 		if e > lo + 0.01:
@@ -571,3 +584,229 @@ func _skin_normal(k: int, j: int) -> Vector3:
 	# d grows toward -z, so dh/dz = -(hf - hb) / dzs
 	var dz := -(hf - hb) / maxf(dzs, 0.01)
 	return Vector3(-dx, 1.0, -dz).normalized()
+
+# ---------------------------------------------------------------- interior rooms (2.5D)
+const ROOM_R_MIN := 3.0
+const ROOM_R_MAX := 6.0
+const ROOM_WALL := 1.2          # thickness of a room's back wall block
+const RWIN_PITCH := 7           # rhythmic windows: one bay every this many columns ...
+const RWIN_ROWS := 11           # ... and one storey every this many rows
+var room := PackedInt32Array()      # per tile: room id + 1 (0 = not a room tile)
+var room_r := PackedFloat32Array()  # per tile: the room's back-wall depth (d)
+var win := PackedByteArray()        # per tile: 1 = window opening (painted sky window or a rhythmic one)
+var windows: Array = []             # [{rect: Rect2i, r: float, stained: bool}]
+
+## Structure interiors (terrain.wall_code >= 5: stone walls + windows) become recessed ROOM BOXES: the back
+## wall sits ROOM_R_MIN..MAX behind the gameplay front (bigger rooms deeper), the surrounding solids are
+## extruded at least as deep so they form the receding side walls, floor and ceiling. Windows are holes in
+## the back wall (glass pane + light shaft added by _build_room_extras); big blank walls of above-ground
+## rooms get rhythmic lancet windows.
+func _make_rooms() -> void:
+	var n := W * H
+	room.resize(n); room.fill(0)
+	room_r.resize(n); room_r.fill(0.0)
+	win.resize(n); win.fill(0)
+	var code: PackedByteArray = terrain.wall_code
+	if code.size() != n:
+		return
+	var is_room := func(i: int) -> bool: return code[i] >= 5 and not terrain.solid[i]   # rooms win over forest hollows
+	var rid := 0
+	for start in n:
+		if room[start] or not is_room.call(start):
+			continue
+		rid += 1
+		var comp := PackedInt32Array([start])
+		room[start] = rid
+		var qi := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if room[j] == 0 and is_room.call(j):
+					room[j] = rid
+					comp.append(j)
+		var r := clampf(2.4 + sqrt(float(comp.size())) * 0.12, ROOM_R_MIN, ROOM_R_MAX)
+		for i in comp:
+			room_r[i] = r
+			if code[i] >= 20:
+				win[i] = 1
+		if comp.size() >= 80 and _above_ground(comp):
+			_rhythm_windows(comp, rid)
+	# depths: room tiles cover [R, R + wall]; windows are holes; neighbouring solids reach past the back wall
+	for i in n:
+		if room[i] == 0:
+			continue
+		var r := room_r[i]
+		if win[i]:
+			mass[i] = 0
+			depth[i] = 0.0
+		else:
+			mass[i] = 1
+			depth[i] = maxf(depth[i], r + ROOM_WALL)
+		var x := i % W
+		var y := i / W
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var nx := x + dx
+				var ny := y + dy
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if terrain.solid[j]:
+					depth[j] = maxf(depth[j], r + ROOM_WALL)
+	# window list for glass panes / shafts (one per connected window patch)
+	var seen := PackedByteArray(); seen.resize(n)
+	for start in n:
+		if seen[start] or not win[start]:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		var rect := Rect2i(start % W, start / W, 1, 1)
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			rect = rect.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if win[j] and not seen[j]:
+					seen[j] = 1
+					comp.append(j)
+		windows.append({"tiles": comp, "rect": rect, "r": room_r[start], "stained": (rect.position.x * 7 + rect.position.y * 3) % 4 == 0,
+			"frost": win[start] == 2})
+
+func _hollow(i: int) -> bool:
+	var h := WorldForest.hollow_mask(terrain)
+	return h.size() == W * H and h[i] == 1
+
+## A room above the ground line (open sky within 10 tiles above or beside it) may look out through windows;
+## underground trial halls don't.
+func _above_ground(comp: PackedInt32Array) -> bool:
+	for i in comp:
+		var x := i % W
+		var y := i / W
+		for d in range(1, 11):
+			for p in [Vector2i(x, y - d), Vector2i(x - d, y), Vector2i(x + d, y)]:
+				if p.x >= 0 and p.y >= 0 and p.x < W and p.y < H and terrain.sky[p.y * W + p.x] and not terrain.solid[p.y * W + p.x]:
+					return true
+	return false
+
+## Lancet windows 2 wide x 4 tall in a rhythm on big blank back walls: only where the whole 4 x 6 block
+## around them is plain back wall of this room (never under a glyph-dense painted feature).
+func _rhythm_windows(comp: PackedInt32Array, rid: int) -> void:
+	var x0 := W
+	var y0 := H
+	for i in comp:
+		x0 = mini(x0, i % W)
+		y0 = mini(y0, i / W)
+	for i in comp:
+		var x := i % W
+		var y := i / W
+		if (x - x0) % RWIN_PITCH != 2 or (y - y0) % RWIN_ROWS != 2:
+			continue
+		var ok := true
+		for dy in range(-1, 5):
+			for dx in range(-1, 3):
+				var nx := x + dx
+				var ny := y + dy
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					ok = false
+					break
+				var j := ny * W + nx
+				if room[j] != rid or terrain.wall_code[j] >= 20 or WorldPalette.is_world_solid(terrain.level.fg[j]) or WorldPalette.is_key_door(terrain.level.fg[j]):
+					ok = false
+					break
+			if not ok:
+				break
+		if not ok:
+			continue
+		for dy in 4:
+			for dx in 2:
+				win[(y + dy) * W + x + dx] = 2   # rhythmic lancet (frosted glass: may sit behind glyphs)
+
+## +z faces of the room back walls (kind 4) at d = R.
+func _build_room_backs(buckets: Dictionary) -> void:
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			if room[i] == 0 or win[i]:
+				continue
+			var key := Vector2i(x / CHUNK, y / CHUNK)
+			if not buckets.has(key):
+				buckets[key] = Bucket.new()
+			var b: Bucket = buckets[key]
+			var z := Z_FRONT - room_r[i]
+			var p := [Vector3(x, -y, z), Vector3(x + 1, -y, z), Vector3(x + 1, -y - 1, z), Vector3(x, -y - 1, z)]
+			for j in [0, 1, 2, 0, 2, 3]:
+				b.v.append(p[j])
+				b.n.append(Vector3(0, 0, 1))
+				b.uv.append(Vector2(x + 0.5, y + 0.5))
+				b.uv2.append(Vector2(0.0, 4.0))
+
+## Glass panes in every window opening + one soft light shaft per window falling into the room.
+func _build_room_extras() -> void:
+	if windows.is_empty() or debug_no_glass:
+		return
+	var gb := Bucket.new()
+	var sb := Bucket.new()
+	for w in windows:
+		var r: float = w["r"]
+		var z := Z_FRONT - r - 0.35
+		var st := 1.0 if w["stained"] else 0.0
+		var fr := 1.0 if w["frost"] else 0.0
+		for i in (w["tiles"] as PackedInt32Array):
+			var x := i % W
+			var y := i / W
+			var p := [Vector3(x, -y, z), Vector3(x + 1, -y, z), Vector3(x + 1, -y - 1, z), Vector3(x, -y - 1, z)]
+			for j in [0, 1, 2, 0, 2, 3]:
+				gb.v.append(p[j])
+				gb.n.append(Vector3(0, 0, 1))
+				gb.uv.append(Vector2(x, y))
+				gb.uv2.append(Vector2(st, fr))
+		var rect: Rect2i = w["rect"]
+		var cx := rect.position.x + rect.size.x * 0.5
+		var top := -float(rect.position.y) - 0.5
+		var ww := clampf(float(rect.size.x), 1.2, 4.0)
+		var len := minf(10.0, 3.0 + rect.size.y * 1.5)
+		var dir := Vector3(0.45, -1.0, 0.0).normalized()
+		var a := Vector3(cx, top, z + 0.1)
+		var bpt := a + dir * len + Vector3(0, 0, r - 0.9)   # the shaft comes forward into the room
+		var side := Vector3(ww * 0.5, 0, 0)
+		var q := [a - side, a + side, bpt + side * 1.6, bpt - side * 1.6]
+		var uvs := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+		for j in [0, 1, 2, 0, 2, 3]:
+			sb.v.append(q[j])
+			sb.n.append(Vector3(0, 0, 1))
+			sb.uv.append(uvs[j])
+			sb.uv2.append(Vector2(st, 0))
+	_add_mesh(gb, "WindowGlass", "res://shaders/world/window_glass.gdshader")
+	_add_mesh(sb, "WindowShafts", "res://shaders/world/window_shaft.gdshader")
+
+func _add_mesh(b: Bucket, nm: String, shader: String) -> void:
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = b.v
+	arr[Mesh.ARRAY_NORMAL] = b.n
+	arr[Mesh.ARRAY_TEX_UV] = b.uv
+	arr[Mesh.ARRAY_TEX_UV2] = b.uv2
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.mesh = m
+	var mat := ShaderMaterial.new()
+	mat.shader = load(shader)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.name = nm
+	add_child(mi)

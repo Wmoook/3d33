@@ -348,6 +348,42 @@ func _black_air_check(img: Image, nm: String) -> void:
 	img.save_png("user://world_fv_%s_blackair.png" % nm)
 	print("BLACK AIR %s: %d / %d air tiles below 5%% luminance %s" % [nm, bad, total, "OK" if bad == 0 else "CHECK"])
 
+## Structures must read as closed buildings: counts sky-looking pixels (bright, blue-dominant) at the centres
+## of structure-interior air tiles (terrain.wall_code 5..19, i.e. stone walls, not windows).
+func _sky_in_structure_check(img: Image, nm: String) -> void:
+	var t := world.terrain
+	if t.wall_code.size() != t.W * t.H:
+		return
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var bad := 0
+	var total := 0
+	var mk := img.duplicate() as Image
+	for ty in t.H:
+		for tx in t.W:
+			var i := ty * t.W + tx
+			var c := t.wall_code[i]
+			if t.solid[i] or c < 5 or c >= 20 or (world.depth and world.depth.win.size() == t.W * t.H and world.depth.win[i]):
+				continue
+			var w := Vector3(tx + 0.5, -ty - 0.5, 0.0)
+			if cam.is_position_behind(w):
+				continue
+			var sp := cam.unproject_position(w) / vp * vs
+			if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+				continue
+			total += 1
+			var px := img.get_pixelv(Vector2i(sp))
+			if px.get_luminance() > 0.45 and px.b > px.r + 0.06 and px.b >= px.g:
+				bad += 1
+				if bad <= 6: print("  sky-looking interior tile (%d, %d) code=%d fg=%d bg=%d" % [tx, ty, c, world.level.get_fg(tx, ty), world.level.get_bg(tx, ty)])
+				var sp2 := Vector2i(sp)
+				for oy in range(-5, 6):
+					for ox in range(-5, 6):
+						if absi(ox) == 5 or absi(oy) == 5:
+							mk.set_pixelv((sp2 + Vector2i(ox, oy)).clamp(Vector2i.ZERO, Vector2i(vs) - Vector2i.ONE), Color(1, 0, 1))
+	mk.save_png("user://world_fv_%s_skyin.png" % nm)
+	print("SKY-IN-STRUCTURE %s: %d / %d interior tiles look like sky %s" % [nm, bad, total, "OK" if bad * 50 <= maxi(total, 1) else "CHECK"])
+
 func _run() -> void:
 	if _perf:
 		await _run_perf()
@@ -370,5 +406,6 @@ func _run() -> void:
 		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
 		if level_id != "odyssey":
 			_black_air_check(img.duplicate() as Image, nm)
+			_sky_in_structure_check(img, nm)
 			_sky_luma_check(img, nm)
 	get_tree().quit()

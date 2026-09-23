@@ -105,7 +105,8 @@ var _sh_block: Shader
 var _sh_water: Shader
 var _sh_plant: Shader
 var _fz := PackedFloat32Array()   # forest-zone weight per voxel column
-var _hollow_img: Image   # detail's deep-forest hollows (FV): my blocks stay out of them in front of z -12.5
+var _templates: Array[Dictionary] = []   # the level's own crown silhouettes (see _crown_templates)
+var _hollow_img: Image   # keep-out depth per tile (forest hollows, interior rooms), see _keep_out_image
 ## OFF by default (lead / user: "random blocks in random places"); tests may set it true before build.
 static var fore_enabled := false
 var _lin_cols := PackedColorArray()
@@ -203,10 +204,32 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 	_level_colors(terrain)
 	_terrain_mat = terrain.material
 	if not WorldPalette.is_odyssey():
-		_build_forest_zone()
-	if ClassDB.class_exists("WorldForest") or ResourceLoader.exists("res://scripts/render/world_forest.gd"):
-		_hollow_img = WorldForest.hollow_image(terrain)
+		_build_forest_zone(terrain)
+	_hollow_img = _keep_out_image(terrain, depth)
 	timings["voxel_setup"] = Time.get_ticks_msec() - t0
+
+## Per level tile: how far back (units, R8) no voxel may be seen through that tile - the ray from the camera to a
+## voxel fragment crosses the gameplay plane at the tile, and the fragment lies in front of z = -value:
+##   - detail's forest hollows (WorldForest.hollow_image): 63 (their deep trunk field + backstop at -62);
+##   - world's recessed interior rooms (depth.room / room_r): the room's back wall block, 1.2 + R + 1.2 (+0.2),
+##     so rooms show their masonry, and windows see the landscape only behind it.
+func _keep_out_image(terrain: WorldTerrain, depth: WorldDepth) -> Image:
+	var W2 := terrain.W
+	var b := PackedByteArray()
+	b.resize(W2 * terrain.H)
+	if not WorldPalette.is_odyssey():
+		var hm := WorldForest.hollow_mask(terrain)
+		for i in mini(hm.size(), b.size()):
+			if hm[i]:
+				b[i] = 63
+	if depth and depth.room.size() == b.size():
+		var rooms := 0
+		for i in b.size():
+			if depth.room[i] != 0:
+				b[i] = maxi(b[i], clampi(int(ceil(2.6 + depth.room_r[i])), 1, 255))
+				rooms += 1
+		print("WorldVoxel keep-out: %d room tiles" % rooms)
+	return Image.create_from_data(W2, terrain.H, false, Image.FORMAT_R8, b)
 
 ## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
 func _sample_vista() -> void:
@@ -695,12 +718,19 @@ func _forest_zone(x: float) -> float:
 		return 0.0
 	return _fz[clampi(int(floorf(x)) - X0, 0, NX - 1)]
 
-func _build_forest_zone() -> void:
+func _build_forest_zone(terrain: WorldTerrain) -> void:
 	_fz.resize(NX)
 	_fz.fill(0.0)
+	var bands: Array[Vector3] = []   # x0, x1, soft edge
 	for r: Rect2i in WorldForest.RECTS:
-		var x0 := float(r.position.x)
-		var x1 := float(r.end.x)
+		bands.append(Vector3(r.position.x, r.end.x, 26.0))
+	# detail's detected forest regions near the surface (e.g. the keep courtyard): smaller soft edge
+	for r: Rect2i in WorldForest.regions(terrain):
+		if r.position.y < 125 and r.size.x >= 5:
+			bands.append(Vector3(r.position.x, r.end.x, 12.0))
+	for bd in bands:
+		var x0 := bd.x
+		var x1 := bd.y
 		if x0 <= 0.5:
 			x0 = float(X0)          # the forest continues past the level's left edge
 		if x1 >= W - 0.5:
@@ -708,7 +738,100 @@ func _build_forest_zone() -> void:
 		for i in NX:
 			var x := X0 + i + 0.5
 			var dout := maxf(x0 - x, x - x1)
-			_fz[i] = maxf(_fz[i], 1.0 - smoothstep(-4.0, 26.0, dout))
+			_fz[i] = maxf(_fz[i], 1.0 - smoothstep(-4.0, bd.z, dout))
+	_crown_templates(terrain)
+
+## The level's own tree crowns (connected canopy components in the forest bands) as 2D silhouettes, so the
+## far forest is built from the same block tree shapes: per row [left, right] spans + the trunk length.
+func _crown_templates(terrain: WorldTerrain) -> void:
+	var cm := WorldGrass.canopy_map(terrain)
+	var W2 := terrain.W
+	var H2 := terrain.H
+	var seen := PackedByteArray()
+	seen.resize(W2 * H2)
+	for start in W2 * H2:
+		if not cm[start] or seen[start]:
+			continue
+		var comp: Array[int] = []
+		var stack: Array[int] = [start]
+		seen[start] = 1
+		while not stack.is_empty():
+			var c: int = stack.pop_back()
+			comp.append(c)
+			var cx := c % W2
+			var cy := c / W2
+			for o: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := cx + o.x
+				var ny := cy + o.y
+				if nx < 0 or ny < 0 or nx >= W2 or ny >= H2:
+					continue
+				var ni := ny * W2 + nx
+				if cm[ni] and not seen[ni]:
+					seen[ni] = 1
+					stack.append(ni)
+		var minx := W2
+		var maxx := 0
+		var miny := H2
+		var maxy := 0
+		for c in comp:
+			minx = mini(minx, c % W2); maxx = maxi(maxx, c % W2)
+			miny = mini(miny, c / W2); maxy = maxi(maxy, c / W2)
+		var w := maxx - minx + 1
+		var h := maxy - miny + 1
+		if w < 4 or w > 22 or h < 3 or h > 16 or comp.size() < 10:
+			continue
+		var rows := PackedInt32Array()   # per row from the top: left, right (relative), -1 = none
+		rows.resize(h * 2)
+		rows.fill(-1)
+		for c in comp:
+			var u := c % W2 - minx
+			var v := c / W2 - miny
+			if rows[v * 2] < 0 or u < rows[v * 2]:
+				rows[v * 2] = u
+			rows[v * 2 + 1] = maxi(rows[v * 2 + 1], u)
+		# trunk: tiles below the crown's bottom centre down to solid ground
+		var bx := (minx + maxx) / 2
+		var th := 0
+		while maxy + 1 + th < H2 and th < 10 and not (terrain.solid[(maxy + 1 + th) * W2 + bx] and not cm[(maxy + 1 + th) * W2 + bx]):
+			th += 1
+		_templates.append({"w": w, "h": h, "rows": rows, "trunk": clampi(th, 2, 8)})
+	print("WorldVoxel: %d crown templates from the level's trees" % _templates.size())
+
+## A tree stamped from one of the level's own crown silhouettes: each row's span is revolved around the
+## trunk into a lumpy disc (depth = 0.75 x its half width), on a trunk of the painted length.
+func _template_tree(i: int, j: int, k: int, rng: RandomNumberGenerator, room: float) -> bool:
+	if _templates.is_empty():
+		return false
+	var tpl: Dictionary = _templates[rng.randi_range(0, _templates.size() - 1)]
+	var w: int = tpl["w"]
+	var h: int = tpl["h"]
+	var th: int = tpl["trunk"]
+	if room < th + h + 1:
+		return false
+	var rows: PackedInt32Array = tpl["rows"]
+	var flip := rng.randf() < 0.5
+	for y in th + 1:
+		_put(i, j + y, k, LOG, false)
+	var top := j + th + h - 1
+	for v in h:
+		var a := rows[v * 2]
+		var b := rows[v * 2 + 1]
+		if a < 0:
+			continue
+		if flip:
+			var na := w - 1 - b
+			b = w - 1 - a
+			a = na
+		var cxr := (a + b) * 0.5
+		var r := (b - a + 1) * 0.5
+		var rz := maxf(1.0, r * 0.75)
+		var rzi := int(ceil(rz))
+		for u in range(a, b + 1):
+			for dz in range(-rzi, rzi + 1):
+				var q := pow((u - cxr) / r, 2.0) + pow(dz / rz, 2.0)
+				if q <= 1.0 + rng.randf_range(-0.15, 0.1):
+					_leaf(i + u - w / 2, top - v, k + dz, LEAVES)
+	return true
 
 func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 	var cell := 3
@@ -742,7 +865,8 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 				var th := rng.randi_range(3, 6)
 				if room < th + 6:
 					continue
-				_crown_tree(i, j + 1, k, th, rng)
+				if not _template_tree(i, j + 1, k, rng, room):
+					_crown_tree(i, j + 1, k, th, rng)
 
 ## A round leaf-cluster crown (2-4 overlapping lumpy spheres) on a short trunk, like the level's trees.
 func _crown_tree(i: int, j: int, k: int, h: int, rng: RandomNumberGenerator) -> void:
@@ -1250,7 +1374,7 @@ func _level_colors(terrain: WorldTerrain) -> void:
 		_lin_cols[STONE_L] = ru * 1.15
 		_lin_cols[GRAVEL] = ru * 0.9
 	if fo.r >= 0.0:
-		_lin_cols[LEAVES] = fo
+		_lin_cols[LEAVES] = fo.lerp(_pal(14, Color8(66, 168, 54)).srgb_to_linear(), 0.1)
 		_lin_cols[PINE] = fo * Color(0.6, 0.75, 0.7)
 	if wo.r >= 0.0:
 		_lin_cols[LOG] = wo

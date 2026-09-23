@@ -534,6 +534,7 @@ const WINDOW_MAX := 600         # painted sky patches bigger than this are open 
 const WINDOW_SIDE := 10         # a window patch is walled within this distance left and right ...
 const WINDOW_ROOF := 14         # ... and roofed within this distance
 var window := PackedByteArray()
+var wall_code := PackedByteArray()   # window_image() codes per tile (0 / 2 earth / 6 stone / >= 40 window)
 
 func _world_solid_at(x: int, y: int) -> bool:
 	if x < 0 or y < 0 or x >= W or y >= H:
@@ -618,7 +619,32 @@ func _find_enclosed_sky_bg() -> void:
 				enclosed_sky_bg[i] = 1
 				window[i] = 1
 
-## R8 per tile: 0 = nothing, 6 = structure stone wall, 6 + 34 * (tiles to the nearest non-window tile) for
+## Earth cave wall: an earthy painted bg (512/510/511/505/508/534) whose surrounding solids (radius 5) are
+## mostly natural ground (earth, grass, stone, crag...) rather than built ruin stone.
+const EARTH_BG := [512, 510, 511, 505, 508, 534]
+
+func _earth_wall(i: int) -> bool:
+	if not (level.bg[i] in EARTH_BG):
+		return false
+	var x := i % W
+	var y := i / W
+	var nat := 0
+	var tot := 0
+	for dy in range(-5, 6):
+		for dx in range(-5, 6):
+			var nx := x + dx
+			var ny := y + dy
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if not solid[j]:
+				continue
+			tot += 1
+			if WorldDepth._natural(mat_ids[j]) or mat_ids[j] == WorldPalette.M_WOOD:
+				nat += 1
+	return tot == 0 or nat * 2 >= tot
+
+## R8 per tile: 0 = nothing, 2 = earth cave wall, 6 = structure stone wall, 6 + 34 * (tiles to the nearest non-window tile) for
 ## windows. The terrain shader carves the opening deep inside a window and draws the stone frame around it.
 func window_image() -> Image:
 	var d := PackedInt32Array(); d.resize(W * H)
@@ -646,7 +672,13 @@ func window_image() -> Image:
 	var b := PackedByteArray(); b.resize(W * H)
 	for i in W * H:
 		# 6 = a structure's stone interior wall (ashlar in the shader), >= 40 = window (6 + 34 per tile inward)
-		b[i] = mini(6 + d[i] * 34, 255) if window[i] else (6 if enclosed_sky_bg[i] else 0)
+		if window[i]:
+			b[i] = mini(6 + d[i] * 34, 255)
+		elif backwall[i] and not solid[i]:
+			b[i] = 2 if _earth_wall(i) else 6
+		else:
+			b[i] = 0
+	wall_code = b
 	return Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
 
 func _classify() -> void:

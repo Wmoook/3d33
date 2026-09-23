@@ -15,6 +15,7 @@ const SPOTS := [
 	["inferno", Vector2(150, 110)],
 	["inferno_nooverlay", Vector2(150, 110)],
 	["ghost", Vector2(66, 11)],
+	["fv_spawn_side", Vector2(5, 56)],
 	["keytouch", Vector2(89, 10)],
 	["cave_shadow_on", Vector2(216, 69)],
 	["cave_shadow_off", Vector2(216, 69)],
@@ -28,6 +29,10 @@ var game
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	GameScript.boot_options = {"no_save": true, "quality": 3}
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("level="):
+			GameScript.boot_options["level"] = a.substr(6)
+			GameScript.boot_options["skip_title"] = true
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
 	await game.booted

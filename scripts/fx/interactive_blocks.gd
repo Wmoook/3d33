@@ -790,6 +790,9 @@ func _build_portals() -> void:
 				var b := int(ex.get("target", 0))
 				var key := mini(a, b) * 7919 + maxi(a, b) * 104729
 				rots.append(fposmod(float((key * 2654435761) & 0xFFFF) / 65535.0, 1.0))
+		if id == 242:
+			_build_portal_blocks(tiles)
+			continue
 		var q := QuadMesh.new()
 		q.size = Vector2(1.45, 1.45) if id == 242 else Vector2(1.2, 1.2)
 		var m := ShaderMaterial.new()
@@ -827,6 +830,33 @@ func _build_portals() -> void:
 
 var _veil_mats: Array[ShaderMaterial] = []
 var _veil_flares: Array = []   # Vector4(x, y, age, strength)
+
+## Portals 242 on every level (user: "portal should be a 3D block based on the original EE design"): a
+## crystal block per tile (one MultiMesh, one shader). Custom data: x = EE shimmer phase ((cx+cy) % 15)/15,
+## y = rotation/4 (exit direction; the chevron points that way), z = random.
+func _build_portal_blocks(tiles: Array[Vector2i]) -> void:
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/portal_block.gdshader")
+	var mesh := FxMeshes.portal_block().duplicate() as Mesh
+	mesh.surface_set_material(0, m)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = mesh
+	mm.instance_count = tiles.size()
+	for i in tiles.size():
+		var t := tiles[i]
+		var rot := int(lvl.get_extra(t.x, t.y).get("rotation", 0)) % 4
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, EECoords.tile_center(t.x, t.y)))
+		mm.set_instance_custom_data(i, Color(float((t.x + t.y) % 15) / 15.0, rot / 4.0, _tile_hash(t).x, 0))
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "PortalBlocks"
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	_portal_mat = m
+	_veil_mats.append(m)
+	_hc_mats.append(m)
 
 ## 0..1: how bright the backdrop around a rift is: share of the 5x5 neighbourhood that is open air with the
 ## sky showing behind it (no back wall: bg empty or a painted-sky id). Roofed but sky-backed rooms count as
@@ -928,7 +958,8 @@ func _build_spawn() -> void:
 		if not odyssey:
 			ring2.visible = false   # one subtle ring only
 			rm.emission_energy_multiplier = 1.2
-			l.light_energy = 0.5
+			# the spawn light lit the lone back-wall tile above the FV spawn into a glowing grey "cube"
+			l.visible = false
 		_spawn_nodes.append(root)
 
 var _spawn_nodes: Array = []

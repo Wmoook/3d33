@@ -13,6 +13,9 @@ uniform vec3 haze_col : source_color = vec3(0.1, 0.2, 0.17);
 uniform vec3 moss_col : source_color = vec3(0.16, 0.3, 0.08);
 uniform vec3 key_dir = vec3(-0.65, 0.35, 0.68);   // painted light direction (world)
 uniform float shade = 0.85;
+uniform vec3 fog_near : source_color = vec3(0.035, 0.07, 0.04);
+uniform vec3 fog_far : source_color = vec3(0.09, 0.22, 0.18);
+uniform float canopy_y = -40.0;   // above this (world y) trunks vanish into the canopy darkness
 
 varying vec3 v_wp;
 varying vec3 v_wn;
@@ -50,11 +53,16 @@ void fragment() {
 	base = mix(base, moss_col * mix(0.7, 1.2, mn * 0.5), moss * (1.0 - haze));
 	vec3 col = base * shade * mix(0.35, 1.2, key * key) * mix(1.0, 0.55, rim * rim);
 	// far trunks: flatter, hazier, rims dissolve into the haze (no razor edges)
-	float edge_haze = clamp(haze + rim * rim * haze * 1.6, 0.0, 1.0);
-	col = mix(col, haze_col * 0.55, edge_haze * 0.9);
+	// depth fog (dark green near -> blue-green glow far) + soft rims that dissolve with depth
+	float fz = smoothstep(-2.5, -55.0, v_wp.z);
+	float fog = clamp(max(haze, fz * 1.05) + rim * rim * fz * 0.9, 0.0, 0.97);
+	col = mix(col, mix(fog_near, fog_far, fz), fog);
+	// tops disappear up into the canopy darkness
+	float dark = smoothstep(canopy_y - 1.0, canopy_y + 3.0 + 0.1 * -v_wp.z, v_wp.y);
+	col *= 1.0 - dark * 0.92;
 	ALBEDO = col * mix(0.15, 1.0, vis);
-	EMISSION = haze_col * edge_haze * 0.3 * vis;
-	NORMAL_MAP = vec3(tn.xy * 0.7 * (1.0 - haze) + 0.5, 1.0);
+	EMISSION = mix(fog_near, fog_far, fz) * fog * 0.35 * (1.0 - dark) * vis;
+	NORMAL_MAP = vec3(tn.xy * 0.7 * (1.0 - fog) + 0.5, 1.0);
 	ROUGHNESS = 0.88;
 	SPECULAR = 0.2;
 	AO = mix(0.5, 1.0, m.g) * mix(1.0, 0.7, 1.0 - smoothstep(0.0, 0.08, v_t));

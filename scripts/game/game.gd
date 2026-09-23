@@ -739,9 +739,11 @@ func _process(delta: float) -> void:
 				if _intro_t > 2.3:
 					_go_live()
 			if state == State.PLAYING:
-				_update_zone(delta)
+				if not _dbg("zone"):
+					_update_zone(delta)
 			tutorial.visible = state == State.PLAYING and not victory.visible and not paused
-			_update_hud()
+			if not _dbg("hud"):
+				_update_hud()
 
 ## Run timer: the sim's EE run timer (Me.ticks) when available, else shell ticks.
 func _run_time() -> float:
@@ -749,14 +751,18 @@ func _run_time() -> float:
 		return int(sim.run_ticks) * 0.01
 	return _play_ticks * 0.01
 
+## Perf bisection (tests only): boot_options.dbg_off = ["hud", "zone", "world_focus", "actors", ...].
+func _dbg(k: String) -> bool:
+	return k in boot_options.get("dbg_off", [])
+
 func _update_world_actors(focus: Vector3, delta: float) -> void:
 	if collision_overlay:
 		collision_overlay.update_view(rig.focus, rig.half_extents(), _render_pos)
 	if actors and actors.has_method(&"update_camera") and rig.cam:
 		actors.update_camera(rig.cam.global_position)
-	if world and world.has_method(&"update_focus"):
+	if world and world.has_method(&"update_focus") and not _dbg("world_focus"):
 		world.update_focus(focus, delta)
-	if actors and actors.has_method(&"update_player"):
+	if actors and actors.has_method(&"update_player") and not _dbg("actors"):
 		actors.update_player(_render_pos, sim, delta)
 
 func _player_world_pos(f: float) -> Vector3:

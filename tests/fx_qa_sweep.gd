@@ -76,6 +76,9 @@ func _ready() -> void:
 		for c in [&"red", &"green", &"blue"]:
 			game.sim._set_key(c, s[2] != "" and StringName(s[2]) == c)
 		_put(s[1])
+		if OS.get_cmdline_user_args().has("nooverlays"):
+			game.actors.overlays.visible = false
+			game.actors.life.visible = false
 		if OS.get_cmdline_user_args().has("noblocks"):
 			for n in game.actors.blocks.get_children():
 				if not String(n.name).begins_with(OS.get_environment("KEEP")):

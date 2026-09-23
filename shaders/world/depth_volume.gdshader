@@ -11,7 +11,9 @@ uniform sampler2D bgcol_tex : source_color, filter_nearest, repeat_disable;
 uniform vec2 level_size = vec2(400.0, 200.0);
 uniform sampler2D detail_nrm2 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D detail_hgt : filter_linear_mipmap, repeat_enable;
-uniform vec2 haze_z = vec2(-2.0, -26.0);
+uniform vec2 haze_z = vec2(-8.0, -30.0);   // no aerial haze on near faces
+uniform sampler2D forest_tex : filter_nearest, repeat_disable;
+uniform vec3 forest_fog : source_color = vec3(0.035, 0.07, 0.04);
 uniform sampler2D depth_tex : filter_nearest, repeat_disable;   // R32F per tile: extrusion depth E (0 = none)
 uniform vec3 haze_color : source_color = vec3(0.74, 0.82, 0.92);
 uniform float haze_amt = 0.42;
@@ -39,7 +41,8 @@ bool covered(ivec2 t, float d) {
 	if (t.x < 0 || t.y < 0 || t.x >= int(level_size.x) || t.y >= int(level_size.y)) {
 		return false;
 	}
-	return texelFetch(depth_tex, t, 0).r >= d;
+	vec2 v = texelFetch(depth_tex, t, 0).rg;
+	return v.r >= d && v.g <= d + 0.01;
 }
 
 // Rounded edges: bend the normal outward near every CONVEX edge of the tile box (neighbours not covered at
@@ -102,6 +105,14 @@ void fragment() {
 	vec4 c = solid_f > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
 	int mat = solid_f > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
 	vec3 albedo = c.rgb;
+	bool back = kind > 3.5 && kind < 4.5;   // a room's recessed back wall
+	// side faces bordering a room tile are the room's receding side walls / floor / ceiling
+	ivec2 tcell = ivec2(floor(tile));
+	int sidei = int(kind + 0.5);
+	ivec2 across = sidei == 0 ? ivec2(-1, 0) : (sidei == 1 ? ivec2(1, 0) : (sidei == 2 ? ivec2(0, -1) : ivec2(0, 1)));
+	float nstart = kind < 3.5 ? texelFetch(depth_tex, clamp(tcell + across, ivec2(0), ivec2(level_size) - 1), 0).g : 0.0;
+	bool inroom = kind < 3.5 && nstart > 2.5 && nstart < 7.5;
+	vec3 emit_x = vec3(0.0);
 	bool lip = kind > 9.5 && kind < 11.5;
 	bool skin = kind > 11.5;
 	if (lip) {
@@ -138,8 +149,71 @@ void fragment() {
 		// soil / rock strata on the receding cliff walls
 		float sy = -wp.y * 1.2 + vnoise(q * vec2(0.2, 0.5)) * 1.4;
 		albedo *= mix(0.84, 1.08, sin(sy * 3.1) * 0.25 + 0.5 + (h21(vec2(floor(sy), 7.0)) - 0.5) * 0.5);
-	} else if (mat == -1) {
+	} else if (mat == -1 && !back) {
 		albedo *= 0.8;   // interior walls: the painted back-wall colour, a little shaded
+	}
+	if (back) {
+		// ---- the room's back wall: warm dressed stone, pilasters, string courses, blind arches, moss ----
+		vec2 p = vec2(wp.x, -wp.y);
+		// warm stone kept well below the glyphs (~25-35% on screen), deepening into the recess
+		vec3 stone = mix(c.rgb * 0.8, vec3(0.2, 0.17, 0.135), 0.55);
+		vec2 wq = p + vec2(vnoise(p * 0.5), vnoise(p * 0.5 + 3.0)) * 0.2;
+		float row = floor(wq.y * 2.0);
+		vec2 bq = vec2(wq.x * 0.75 + h21(vec2(row, 1.7)) * 3.0, wq.y * 2.0);
+		vec2 bi = floor(bq);
+		vec2 bf = bq - bi;
+		float joint = min(min(bf.x, 1.0 - bf.x) * 1.33, min(bf.y, 1.0 - bf.y));
+		float jl = 1.0 - smoothstep(0.03, 0.1, joint);
+		albedo = stone * mix(0.8, 1.14, h21(bi + 7.0)) * mix(0.9, 1.05, vnoise(p * 3.1)) * (1.0 - jl * 0.5);
+		n = normalize(vec3(0.0, 0.0, 1.0) + vec3((bf.x < 0.5 ? -1.0 : 1.0) * 0.0, 0.0, 0.0));
+		n = normalize(n + vec3(-(bf.x - 0.5), (bf.y - 0.5), 0.0) * jl * 0.5);
+		// pilasters every 6 tiles (stand proud: lighter, lit edges)
+		float px = fract((p.x + 0.5) / 6.0) * 6.0;
+		float pil = 1.0 - smoothstep(0.85, 0.95, px);
+		float pedge = smoothstep(0.0, 0.08, px) * (1.0 - smoothstep(0.72, 0.9, px));
+		albedo = mix(albedo, stone * 1.18 * mix(0.9, 1.05, vnoise(vec2(p.x * 4.0, p.y * 0.6))), pil);
+		n = normalize(mix(n, vec3(px < 0.45 ? -0.7 : 0.7, 0.0, 0.7), pil * (1.0 - pedge) * 0.8));
+		// string course every 8 rows, with a shadow under it
+		float sy = fract(p.y / 8.0) * 8.0;
+		float sc = smoothstep(0.0, 0.05, sy) * (1.0 - smoothstep(0.3, 0.36, sy));
+		float scs = smoothstep(0.36, 0.4, sy) * (1.0 - smoothstep(0.4, 0.75, sy));
+		albedo = mix(albedo, stone * 1.25, sc);
+		albedo *= 1.0 - scs * 0.35;
+		n = normalize(mix(n, vec3(0.0, 0.8, 0.6), sc * 0.6));
+		// blind arch in every bay under the string course
+		float u = (px - 0.95) / 5.05;
+		if (u > 0.0 && u < 1.0) {
+			float ay = sy - 0.4;
+			float crown = 1.2 + 1.3 * (1.0 - sqrt(max(1.0 - pow(u * 2.0 - 1.0, 2.0), 0.0)));
+			float inside = step(crown, ay) * step(0.08, u) * step(u, 0.92);
+			float ring = (1.0 - smoothstep(0.0, 0.18, abs(ay - crown))) * step(0.08, u) * step(u, 0.92);
+			albedo *= 1.0 - inside * 0.25;
+			albedo = mix(albedo, stone * 1.2, ring * 0.8);
+		}
+		// moss in the lower joints and along the floor line
+		float moss = smoothstep(0.55, 0.85, vnoise(p * 0.7 + 11.0) + jl * 0.35 - 0.15);
+		albedo = mix(albedo, vec3(0.12, 0.2, 0.06), moss * 0.55);
+		// inner-corner AO against the side walls / floor / ceiling, and stone frames around window holes
+		vec2 fcell = p - floor(p);
+		float edge_ao = 1.0;
+		float frame = 0.0;
+		for (int k = 0; k < 4; k++) {
+			ivec2 o = k == 0 ? ivec2(-1, 0) : (k == 1 ? ivec2(1, 0) : (k == 2 ? ivec2(0, -1) : ivec2(0, 1)));
+			vec2 nv = texelFetch(depth_tex, clamp(tcell + o, ivec2(0), ivec2(level_size) - 1), 0).rg;
+			float dist = k == 0 ? fcell.x : (k == 1 ? 1.0 - fcell.x : (k == 2 ? fcell.y : 1.0 - fcell.y));
+			if (nv.g < 2.5) {
+				edge_ao = min(edge_ao, mix(0.5, 1.0, smoothstep(0.0, 0.9, dist)));
+			} else if (nv.g > 50.0) {
+				float fw = k == 3 ? 0.42 : 0.3;   // sill under a window is deeper
+				frame = max(frame, 1.0 - smoothstep(fw - 0.06, fw, dist));
+			}
+		}
+		albedo = mix(albedo, stone * 1.3 * mix(0.9, 1.05, vnoise(p * 6.0)), frame);
+		n = normalize(mix(n, vec3(0.0, 0.3, 1.0), frame * 0.5));
+		ao *= edge_ao;
+		rough = 0.88;
+		// interior light floor: the hall is never a black hole (the slab shades it)
+		emit_x = albedo * 0.1;
 	}
 	bool leafy = mat == M_GRASS || mat == M_FOLIAGE;
 	if (leafy && !horiz) {
@@ -147,16 +221,16 @@ void fragment() {
 	}
 	{
 		// big rock lumps so the receding faces aren't flat planes (the slab front is sculpted)
-		vec3 U = horiz ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+		vec3 U = back ? vec3(1.0, 0.0, 0.0) : (horiz ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0));
 		vec3 V = horiz ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
-		vec2 luv = horiz ? wp.xz : wp.zy;
+		vec2 luv = back ? wp.xy : (horiz ? wp.xz : wp.zy);
 		vec3 t1 = texture(detail_nrm2, luv * 0.18).xyz * 2.0 - 1.0;
 		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
 		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
 		n = normalize(n + (U * tb.x + V * tb.y) * (mat == M_RUIN ? 0.35 : (leafy ? (horiz ? (lip ? 0.6 : 0.25) : 0.6) : 0.7)));
 		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
 	}
-	if (kind < 9.5) {
+	if (kind < 3.5) {
 		n = bevel(n, int(kind + 0.5), ivec2(floor(tile)), wp, d);
 	}
 	pbr_terrain(mat, wp, gn, vec2(wp.x, -wp.y), CAMERA_POSITION_WORLD, albedo, n, rough, ao);
@@ -171,10 +245,10 @@ void fragment() {
 		ao *= mix(0.75, 1.0, smoothstep(0.0, 2.5, d));
 	}
 	float hz = smoothstep(haze_z.x, haze_z.y, wp.z) * haze_amt;
-	if (!horiz && !lip && !skin) {
-		// structure side faces recede into the air: lighter and hazier with depth, so the open air beside a
-		// tower still reads as sky
-		hz = max(hz, smoothstep(0.5, 10.0, d) * 0.38);
+	if (inroom) {
+		// the room's receding side walls / floor / ceiling: AO into the back corner, interior light floor
+		ao *= mix(0.55, 1.0, smoothstep(nstart, nstart - 1.4, d));
+		emit_x = albedo * 0.08;
 	}
 	if (lip && horiz) {
 		albedo *= 0.65;   // the near ledge is seen at a grazing angle in full sun: keep it below the level's lawns
@@ -183,11 +257,17 @@ void fragment() {
 		// the cliff dissolves into the sky below the world
 		hz = smoothstep(-level_size.y - 0.5, -level_size.y - 6.5, wp.y) * 0.85;
 	}
+	vec3 hcol = haze_color;
+	if (texelFetch(forest_tex, clamp(ivec2(floor(tile)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+		hcol = forest_fog;   // forest: faces recede into the dark forest fog, not the sky
+		hz = max(hz, smoothstep(0.3, 6.0, d) * 0.8);
+		albedo *= 0.7;
+	}
 	ALBEDO = albedo * ao * (1.0 - hz);
 	ROUGHNESS = rough;
 	SPECULAR = 0.35;
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.4;
-	EMISSION = haze_color * hz * haze_emit;
+	EMISSION = hcol * hz * haze_emit + emit_x * ao * (1.0 - hz);
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

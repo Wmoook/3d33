@@ -26,6 +26,8 @@ const Z_FAR_511 := -6.2
 const MID_BANDS := [-4.0, -5.4, -7.0]
 const FAR_BANDS := [-8.2, -9.6]
 const DEEP := Color(0.03, 0.05, 0.035)
+const FOG_NEAR := Color(0.07, 0.13, 0.08)
+const POISSON_R := 1.7          # min trunk spacing at the front (grows with depth)
 const HAZE := Color(0.1, 0.2, 0.17)
 const BARK_512 := Color(0.47, 0.37, 0.23)
 const BARK_511 := Color(0.33, 0.14, 0.13)
@@ -38,6 +40,7 @@ var _regions: Array = []            # [{rect, node, mats: [ShaderMaterial], part
 var _rng := RandomNumberGenerator.new()
 var _hollow_tex: ImageTexture
 var _pine_mat: ShaderMaterial
+var _block_mats: Array[ShaderMaterial] = []
 
 # ---------------------------------------------------------------------------------------------- detection
 
@@ -67,6 +70,10 @@ static func is_trunk_tile(lvl: EELevel, x: int, y: int) -> bool:
 ## 1 = forest-hollow air: not solid, not a pore, forest bg, its ceiling (first solid above, <= 16 rows) is a
 ## tree crown or a trunk under a crown, ground within 14 rows below; components < MIN_REGION tiles dropped.
 ## Earth passages (ceiling = earth/stone) are world's, not forest.
+## World's structure-interior tiles (terrain.wall_code >= 5: recessed stone rooms / windows) are never forest.
+static func stone_room(terrain: WorldTerrain, i: int) -> bool:
+	return terrain.wall_code.size() > i and terrain.wall_code[i] >= 5
+
 static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 	if terrain.has_meta(&"forest_hollow"):
 		return terrain.get_meta(&"forest_hollow")
@@ -84,6 +91,8 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 			var i := y * W + x
 			if terrain.solid[i] or terrain.pocket[i] or not FOREST_BG.has(int(lvl.bg[i])):
 				continue
+			if stone_room(terrain, i):
+				continue   # structure interiors are world's recessed stone rooms
 			var ceil_ok := false
 			var ceil_y := -1
 			for d in range(1, 21):
@@ -113,7 +122,11 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 		for y in range(1, H - 1):
 			for x in range(1, W - 1):
 				var i := y * W + x
-				if out[i] or terrain.solid[i] or not FOREST_BG.has(int(lvl.bg[i])):
+				if out[i] or terrain.solid[i] or stone_room(terrain, i):
+					continue
+				var nb := int(out[i - 1]) + int(out[i + 1]) + int(out[i + W]) + int(out[i - W])
+				# odd-bg holes inside the forest (the spawn tile's bg 547...) join when mostly surrounded
+				if not FOREST_BG.has(int(lvl.bg[i])) and nb < 2:
 					continue
 				if out[i - 1] or out[i + 1] or out[i + W]:   # sideways / upward only (never down a shaft)
 					add.append(i)
@@ -159,7 +172,7 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 		for y in range(g.position.y, g.end.y):
 			for x in range(g.position.x, g.end.x):
 				var i := y * W + x
-				if not terrain.solid[i] and terrain.pocket[i] and FOREST_BG.has(int(lvl.bg[i])):
+				if not terrain.solid[i] and terrain.pocket[i] and FOREST_BG.has(int(lvl.bg[i])) and not stone_room(terrain, i):
 					out[i] = 1
 					r = r.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
 		grown.append(r)
@@ -191,13 +204,30 @@ static func _merge_rects(rs: Array[Rect2i]) -> Array[Rect2i]:
 				break
 	return out
 
+## The hollow mask dilated one tile into the SOLID tiles around it (R8, 255): world discards its back-wall
+## layers there too and my layers draw behind the solids' rounded edges, so no sky / wall sliver can show
+## between a solid's silhouette and the forest behind it. Air outside the hollow is never included.
 static func hollow_image(terrain: WorldTerrain) -> Image:
 	var m := hollow_mask(terrain)
+	var W := terrain.W
+	var H := terrain.H
 	var b := PackedByteArray()
 	b.resize(m.size())
-	for i in m.size():
-		b[i] = 255 if m[i] else 0
-	return Image.create_from_data(terrain.W, terrain.H, false, Image.FORMAT_R8, b)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			if m[i]:
+				b[i] = 255
+				continue
+			if not terrain.solid[i]:
+				continue
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := x + dx
+					var ny := y + dy
+					if nx >= 0 and ny >= 0 and nx < W and ny < H and m[ny * W + nx]:
+						b[i] = 255
+	return Image.create_from_data(W, H, false, Image.FORMAT_R8, b)
 
 ## Pine tiles that belong to a forest (the crown mass above a detected region).
 static func is_forest_pine(terrain: WorldTerrain, x: int, y: int) -> bool:
@@ -303,6 +333,7 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 	m_pollen.set_shader_parameter("blink", 0.0)
 	m_pollen.set_shader_parameter("strength", 0.35)
 	var trunks: Array = []      # [x, y_top, y_bot, z, radius, colour, haze]
+	var painted: Array = []     # painted trunk columns [x, y0, y1, bg id]
 	var ferns: Array = []       # [pos, scale, colour]
 	var cards: Array = []       # [pos, size(Vector2), colour, cell, haze]
 	var shafts: Array = []      # [pos, height, lean, width]
@@ -333,24 +364,16 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 				n_far += _far_quad(far_st, lvl, terrain, hm, x, yy, y0, y1)
 			# painted near bark trunks (512) and far trunks (511)
 			if n512 >= 2:
-				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_NEAR_512 - _rng.randf() * 0.2, _rng.randf_range(0.36, 0.58), BARK_512, 0.0])
+				painted.append([x, y0, y1, 512])
 			if n511 >= 2:
-				trunks.append([x + 0.5, ceil_w, floor_w - 0.3, Z_FAR_511 - _rng.randf() * 0.5, _rng.randf_range(0.4, 0.62), BARK_511, 0.45])
-			# mid trunks (darker) and far silhouettes dissolving into the haze
-			for zb: float in MID_BANDS:
-				if _rng.randf() < 0.2:
-					var c := (BARK_512 if _rng.randf() < 0.5 else BARK_511).darkened(0.3)
-					trunks.append([x + _rng.randf(), ceil_w, floor_w - 0.3, zb + _rng.randf_range(-0.5, 0.5), _rng.randf_range(0.3, 0.55), c, clampf((-zb - 3.0) / 6.0, 0.1, 0.6)])
-			for zb: float in FAR_BANDS:
-				if _rng.randf() < 0.3:
-					trunks.append([x + _rng.randf(), ceil_w, floor_w - 0.3, zb + _rng.randf_range(-0.4, 0.4), _rng.randf_range(0.25, 0.45), BARK_511.darkened(0.4), 0.85])
+				painted.append([x, y0, y1, 511])
 			# undergrowth: painted 510 = dense ferns near the plane; a receding fern floor behind
 			for k in 2 + n510 * 2:
-				var zf := _rng.randf_range(-2.8, -2.05) if k < n510 * 2 else _rng.randf_range(-9.5, -2.2)
-				var c := Color(0.2, 0.36, 0.08).lerp(HAZE, clampf((-zf - 2.5) / 8.0, 0.0, 0.75))
+				var zf := _rng.randf_range(-2.8, -2.05) if k < n510 * 2 else -2.2 - pow(_rng.randf(), 1.6) * 8.0
+				var c := Color(0.2, 0.36, 0.08).lerp(FOG_NEAR, clampf((-zf - 2.5) / 12.0, 0.0, 0.7))
 				ferns.append([Vector3(x + _rng.randf(), floor_w, zf), _rng.randf_range(1.5, 2.4), c])
 			# hanging leaves + vines from the canopy underside
-			if _rng.randf() < 0.55:
+			if false:
 				var zc := _rng.randf_range(-6.0, -2.2)
 				var hz := clampf((-zc - 2.0) / 7.0, 0.0, 0.7)
 				var sz := _rng.randf_range(0.7, 1.2)
@@ -367,8 +390,62 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 					gap = true
 					break
 			if (gap and _rng.randf() < 0.35) or (x % 8 == 3 and y1 - y0 >= 3):
-				shafts.append([Vector3(x + 0.5, (ceil_w + floor_w) * 0.5 + 0.5, _rng.randf_range(-6.5, -2.6)), ceil_w - floor_w + 2.0, 0.32, _rng.randf_range(0.8, 1.6)])
-	# far card (always on: the deep shade), then the illusion layers (fade)
+				shafts.append([Vector3(x + 0.5, (ceil_w + floor_w) * 0.5 + 0.5, float(-3 - _rng.randi() % 4)), ceil_w - floor_w + 2.0, 0.3, float(1 + _rng.randi() % 2)])
+	# ---- the deep forest: region floor / canopy heights, a Poisson-disk trunk field to z -58, logs, deep
+	# shafts, a receding floor and the opaque backstop (nothing behind a forest hollow can ever show sky)
+	var floor_rows: Array[int] = []
+	var ceil_rows: Array[int] = []
+	for x in range(r.position.x, r.end.x):
+		for y in range(maxi(r.position.y, 1), mini(r.end.y, H - 1)):
+			var i := y * W + x
+			if hm[i] and terrain.solid[i + W]:
+				floor_rows.append(y + 1)
+			if hm[i] and terrain.solid[i - W]:
+				ceil_rows.append(y)
+	floor_rows.sort()
+	ceil_rows.sort()
+	var floor_y := -float(floor_rows[floor_rows.size() / 2]) if not floor_rows.is_empty() else -float(r.end.y)
+	var canopy_y := -float(ceil_rows[ceil_rows.size() / 2]) + 0.5 if not ceil_rows.is_empty() else -float(r.position.y)
+	m_trunk.set_shader_parameter("canopy_y", canopy_y)
+	var m_deep := _mat("res://shaders/world/forest_deep.gdshader")
+	m_deep.set_shader_parameter("floor_y", floor_y)
+	m_deep.set_shader_parameter("canopy_y", canopy_y)
+	var xa := float(r.position.x) - 26.0
+	var xb := float(r.end.x) + 26.0
+	var nblocks := _build_block_layers(lvl, terrain, hm, r, layers, painted, floor_y)
+	for k in int((xb - xa) / 9.0):
+		var z := -float(4 + _rng.randi() % 30)
+		var d := -z - 1.2
+		shafts.append([Vector3(floorf(_rng.randf_range(xa + 20.0, xb - 20.0)) + 0.5, floor_y + (canopy_y - floor_y) * 0.5 + d * 0.2, z), (canopy_y - floor_y) + 4.0 + d * 0.5, 0.3, float(1 + _rng.randi() % 3) * (1.0 + d / 25.0)])
+	# receding floor (from the play strip back) + the opaque backstop at -62
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var zs := [-1.85, -10.0, -25.0, -45.0, -62.0]
+	for k in zs.size() - 1:
+		var z0: float = zs[k]
+		var z1: float = zs[k + 1]
+		var y0f := floor_y - (-z0 - 1.2) * 0.035 - 0.03
+		var y1f := floor_y - (-z1 - 1.2) * 0.035 - 0.03
+		for v: Vector3 in [Vector3(xa - 40.0, y0f, z0), Vector3(xb + 40.0, y0f, z0), Vector3(xb + 40.0, y1f, z1),
+				Vector3(xa - 40.0, y0f, z0), Vector3(xb + 40.0, y1f, z1), Vector3(xa - 40.0, y1f, z1)]:
+			st.set_color(Color(0, 0, 0, 1))
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v)
+	var by0 := floor_y - 60.0
+	var by1 := canopy_y + 80.0
+	for v: Vector3 in [Vector3(xa - 80.0, by0, -62.0), Vector3(xb + 80.0, by0, -62.0), Vector3(xb + 80.0, by1, -62.0),
+			Vector3(xa - 80.0, by0, -62.0), Vector3(xb + 80.0, by1, -62.0), Vector3(xa - 80.0, by1, -62.0)]:
+		st.set_color(Color(0, 0, 0, 0))
+		st.set_normal(Vector3.BACK)
+		st.add_vertex(v)
+	var deep := MeshInstance3D.new()
+	deep.name = "Deep"
+	deep.mesh = st.commit()
+	deep.material_override = m_deep
+	deep.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	deep.extra_cull_margin = 200.0
+	node.add_child(deep)
+	# the per-column front floor strips
 	if n_far > 0:
 		var mi := MeshInstance3D.new()
 		mi.name = "Far"
@@ -376,8 +453,7 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 		mi.material_override = m_far
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(mi)
-	_add_trunks(layers, trunks, m_trunk)
-	_add_ferns(layers, ferns, m_fern)
+	_add_pocket_boughs(lvl, terrain, hm, r)
 	_add_cards(layers, cards, m_card)
 	_add_shafts(layers, shafts, m_shaft)
 	var parts: Array[GPUParticles3D] = []
@@ -387,9 +463,9 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 			area += hm[y * W + x]
 	parts.append(_motes(layers, r, m_fly, clampi(area / 12, 4, 60), 0.09, 5.0, Color(1.0, 0.85, 0.4)))
 	parts.append(_motes(layers, r, m_pollen, clampi(area / 5, 8, 150), 0.045, 9.0, Color(1, 1, 1)))
-	return {"rect": r, "node": node, "layers": layers, "mats": [m_far, m_trunk, m_fern, m_card, m_shaft, m_fly, m_pollen],
+	return {"rect": r, "node": node, "layers": layers, "mats": [m_far, m_deep, m_trunk, m_fern, m_card, m_shaft, m_fly, m_pollen, _block_mats[_block_mats.size() - 1]],
 		"particles": parts, "vis": -1.0,
-		"counts": {"trunks": trunks.size(), "ferns": ferns.size(), "cards": cards.size(), "shafts": shafts.size()}}
+		"counts": {"blocks": nblocks, "trunks": trunks.size(), "ferns": ferns.size(), "cards": cards.size(), "shafts": shafts.size()}}
 
 ## One far-card quad per hollow tile (grown toward non-hollow neighbours so no crack shows). Returns 1.
 func _far_quad(st: SurfaceTool, lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, x: int, y: int, y0: int, y1: int) -> int:
@@ -403,21 +479,13 @@ func _far_quad(st: SurfaceTool, lvl: EELevel, terrain: WorldTerrain, hm: PackedB
 	var b: int = lvl.bg[i]
 	var c := (WorldPalette.base_color(b) if b != 0 else DEEP).srgb_to_linear()
 	var f := Vector2(y1 + 1, y0)
-	var q := [Vector2(x - gl, y - gu), Vector2(x + 1.0 + gr, y - gu), Vector2(x + 1.0 + gr, y + 1.0 + gd),
-		Vector2(x - gl, y - gu), Vector2(x + 1.0 + gr, y + 1.0 + gd), Vector2(x - gl, y + 1.0 + gd)]
-	for v: Vector2 in q:
-		st.set_color(c)
-		st.set_uv(v)
-		st.set_uv2(f)
-		st.set_normal(Vector3.BACK)
-		st.add_vertex(Vector3(v.x, -v.y, Z_FAR))
 	# the lowest hollow tile of a span: a continuous forest floor from the play strip back to the far card
 	# (mossy, darker with depth), so no sky / pale gap shows at the ground line between trunks
 	if y == y1:
 		var fy := -float(y1 + 1) - 0.02
 		var fc := Color(0.08, 0.13, 0.05).srgb_to_linear()
-		var fl := [Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, -1.85), Vector3(x + 1.6, fy, Z_FAR - 0.2),
-			Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, Z_FAR - 0.2), Vector3(x - 0.6, fy, Z_FAR - 0.2)]
+		var fl := [Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, -1.85), Vector3(x + 1.6, fy - 0.3, -10.0),
+			Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy - 0.3, -10.0), Vector3(x - 0.6, fy - 0.3, -10.0)]
 		for v: Vector3 in fl:
 			st.set_color(fc)
 			st.set_uv(Vector2(v.x, float(y1) + 0.9))   # tile-space: right at the floor -> the mist band
@@ -425,6 +493,287 @@ func _far_quad(st: SurfaceTool, lvl: EELevel, terrain: WorldTerrain, hm: PackedB
 			st.set_normal(Vector3.UP)
 			st.add_vertex(v)
 	return 1
+
+## The level's own forest, repeated as block layers going back into depth. The stamp = this region's painted
+## forest blocks: crown tiles (canopy_map), the pine, trunk tiles, the painted 512 / 511 trunk columns and the
+## two floor rows under the hollow. Layer 0 = the painted trunk columns themselves just behind the plane;
+## deeper layers are the stamp shifted / mirrored and tiled across the widening view, stepping down with depth,
+## hazier and darker. Cubes: 1 tile, 1 unit deep (floor blocks run on to the next layer: a continuous floor).
+const BLOCK_LAYERS := [-3.5, -6.5, -10.0, -15.0, -22.0, -30.0, -40.0]
+
+func _build_block_layers(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: Rect2i, parent: Node3D, painted: Array, floor_y: float) -> int:
+	var W := lvl.width
+	var H := lvl.height
+	var cm := WorldGrass.canopy_map(terrain)
+	var cols := terrain.fgcol_img
+	# stamp rows: from 14 rows above the hollow's top down to 2 rows under its floor
+	var y_top := maxi(r.position.y - 14, 0)
+	var y_bot := mini(r.end.y + 2, H)
+	var stamp: Array = []    # [dx, y, colour, mat, src]
+	for y in range(y_top, y_bot):
+		for x in range(r.position.x, r.end.x):
+			var i := y * W + x
+			var kind := -1
+			if terrain.solid[i]:
+				var fid: int = lvl.fg[i]
+				if cm[i] or fid == PINE_ID:
+					kind = WorldPalette.M_FOLIAGE
+				elif is_trunk_tile(lvl, x, y):
+					kind = WorldPalette.M_WOOD
+				else:
+					# floor: solid tiles right under hollow air (2 rows)
+					for d in range(1, 3):
+						if y - d >= 0 and hm[(y - d) * W + x] and not terrain.solid[(y - d) * W + x]:
+							kind = int(terrain.mat_ids[i])
+							break
+					if kind == -1 and y > 0 and not terrain.solid[i - W] and hm[i - W]:
+						kind = int(terrain.mat_ids[i])
+			if kind == -1:
+				continue
+			var c: Color
+			var m := kind
+			if kind >= 100:
+				c = BARK_512 if kind == 101 else BARK_511
+				m = WorldPalette.M_WOOD
+			else:
+				c = cols.get_pixel(x, y)
+			stamp.append([x - r.position.x, y, c, m, Vector2(x, y)])
+	# every crown in the stamp gets a 2-block trunk from its underside to the floor (a whole tree per crown)
+	var floor_row := int(-floor_y)
+	var low := {}     # dx -> lowest crown row
+	for e: Array in stamp:
+		if int(e[3]) == WorldPalette.M_FOLIAGE:
+			low[int(e[0])] = maxi(int(low.get(int(e[0]), -1)), int(e[1]))
+	var dxs := low.keys()
+	dxs.sort()
+	var k0 := 0
+	while k0 < dxs.size():
+		var k1 := k0
+		while k1 + 1 < dxs.size() and int(dxs[k1 + 1]) == int(dxs[k1]) + 1:
+			k1 += 1
+		var run := int(dxs[k1]) - int(dxs[k0]) + 1
+		var n_tr := maxi(1, run / 9)
+		for t in n_tr:
+			var cx: int = int(dxs[k0]) + int((t + 0.5) * run / n_tr)
+			var yb: int = int(low.get(cx, floor_row - 6))
+			for dxw in 2:
+				for y in range(yb + 1, floor_row):
+					stamp.append([cx + dxw, y, BARK_512.darkened(0.15), WorldPalette.M_WOOD, Vector2(r.position.x + cx, y)])
+		k0 = k1 + 1
+	var sw := r.size.x
+	var xs: Array[Transform3D] = []
+	var cs: Array[Color] = []
+	var cu: Array[Color] = []
+	# layer 0: the painted trunk columns as block trunks just behind the play plane
+	for t: Array in painted:
+		var z0 := -2.4 if int(t[3]) == 512 else -4.8
+		var bc: Color = BARK_512 if int(t[3]) == 512 else BARK_511
+		for y in range(int(t[1]) - 1, int(t[2]) + 1):
+			_block(xs, cs, cu, Vector3(int(t[0]) + 0.5, -y - 0.5, z0), 1.0, bc, WorldPalette.M_WOOD, Vector2(int(t[0]), y), 0.05)
+	for li in BLOCK_LAYERS.size():
+		var z: float = BLOCK_LAYERS[li]
+		var d := -z - 1.2
+		var fog := clampf(0.12 + d / 40.0, 0.0, 0.95)
+		var drop := floorf(d * 0.06)                       # the floor steps down with depth
+		var ext := int(ceil(d * 0.9)) + 10                  # the view widens with depth: tile the stamp
+		var shift := _rng.randi() % maxi(sw, 1)
+		var next_z: float = BLOCK_LAYERS[li + 1] if li + 1 < BLOCK_LAYERS.size() else z - 8.0
+		if li >= 3:
+			_library_row(terrain, xs, cs, cu, r.position.x - ext, r.end.x + ext, float(int(-floor_y)) + drop, z, fog)
+			continue
+		var x := r.position.x - ext
+		var copy := 0
+		while x < r.end.x + ext:
+			var mirror := (copy + li) % 2 == 1
+			for e: Array in stamp:
+				var dx: int = (int(e[0]) + shift) % sw
+				if mirror:
+					dx = sw - 1 - dx
+				var wx := x + dx
+				var wy := float(e[1]) + drop
+				var is_floor: bool = int(e[3]) != WorldPalette.M_FOLIAGE and int(e[3]) != WorldPalette.M_WOOD
+				var depth := (z - next_z) if is_floor else 1.0
+				_block(xs, cs, cu, Vector3(wx + 0.5, -wy - 0.5, z - depth * 0.5 + 0.5), depth, e[2], int(e[3]), e[4], fog)
+			x += sw
+			copy += 1
+	var cube := BoxMesh.new()
+	cube.size = Vector3.ONE
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.use_custom_data = true
+	mm.mesh = cube
+	mm.instance_count = xs.size()
+	for k in xs.size():
+		mm.set_instance_transform(k, xs[k])
+		mm.set_instance_color(k, cs[k])
+		mm.set_instance_custom_data(k, cu[k])
+	var m := _mat("res://shaders/world/forest_block.gdshader")
+	WorldPbr.bind(m, false, 1.0, terrain)
+	_block_mats.append(m)
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "BlockTrees"
+	mi.multimesh = mm
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return xs.size()
+
+## The level's crown library: every tree-crown component of canopy_map (all of FV's crowns), each as its tile
+## list [dx, dy, colour] relative to its bottom-left, plus its width / height. Cached on the terrain.
+static func crown_library(terrain: WorldTerrain) -> Array:
+	if terrain.has_meta(&"crown_library"):
+		return terrain.get_meta(&"crown_library")
+	var W := terrain.W
+	var H := terrain.H
+	var cm := WorldGrass.canopy_map(terrain)
+	var cols := terrain.fgcol_img
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	var lib: Array = []
+	for i0 in W * H:
+		if not cm[i0] or seen[i0]:
+			continue
+		var comp := PackedInt32Array([i0])
+		seen[i0] = 1
+		var q := 0
+		var x0 := W
+		var x1 := 0
+		var y0 := H
+		var y1 := 0
+		while q < comp.size():
+			var i := comp[q]
+			q += 1
+			var x := i % W
+			var y := i / W
+			x0 = mini(x0, x); x1 = maxi(x1, x); y0 = mini(y0, y); y1 = maxi(y1, y)
+			for d: int in [1, -1, W, -W]:
+				var j := i + d
+				if j >= 0 and j < W * H and cm[j] and not seen[j] and absi((j % W) - x) <= 1:
+					seen[j] = 1
+					comp.append(j)
+		var w := x1 - x0 + 1
+		var h := y1 - y0 + 1
+		if w < 4 or h < 3 or w > 26:
+			continue
+		var tiles: Array = []
+		for i in comp:
+			tiles.append([i % W - x0, y1 - i / W, cols.get_pixel(i % W, i / W)])
+		lib.append({"w": w, "h": h, "tiles": tiles})
+	terrain.set_meta(&"crown_library", lib)
+	return lib
+
+## One receding row of library trees: random crowns (sometimes mirrored) on 2-block trunks, standing on a
+## continuous block floor at row `floor_row`, spread across [xa, xb] at depth z.
+func _library_row(terrain: WorldTerrain, xs: Array[Transform3D], cs: Array[Color], cu: Array[Color], xa: int, xb: int, floor_row: float, z: float, fog: float) -> void:
+	var lib := crown_library(terrain)
+	if lib.is_empty():
+		return
+	var lawn := Color(0.27, 0.39, 0.07)
+	var earth := Color(0.45, 0.32, 0.2)
+	for x in range(xa, xb):
+		_block(xs, cs, cu, Vector3(x + 0.5, -floor_row - 0.5, z - 3.5), 8.0, lawn, WorldPalette.M_GRASS, Vector2(x, floor_row), fog)
+		_block(xs, cs, cu, Vector3(x + 0.5, -floor_row - 1.5, z - 3.5), 8.0, earth, WorldPalette.M_EARTH, Vector2(x, floor_row + 1), fog)
+	var x := xa + _rng.randi() % 4
+	while x < xb:
+		var c: Dictionary = lib[_rng.randi() % lib.size()]
+		var w: int = c.w
+		var mirror := _rng.randf() < 0.5
+		var trunk_h := 3 + _rng.randi() % 5
+		var zz := z - float(_rng.randi() % 3)
+		var tx := x + w / 2
+		for dxw in 2:
+			for k in trunk_h:
+				_block(xs, cs, cu, Vector3(tx + dxw + 0.5 - 1.0, -(floor_row - 1 - k) - 0.5, zz), 1.0, BARK_512.darkened(0.15), WorldPalette.M_WOOD, Vector2(tx, floor_row - 1 - k), fog)
+		var base_row := floor_row - trunk_h
+		for t: Array in c.tiles:
+			var dx: int = int(t[0])
+			if mirror:
+				dx = w - 1 - dx
+			var wy := base_row - 1 - int(t[1])
+			_block(xs, cs, cu, Vector3(x + dx + 0.5, -wy - 0.5, zz), 1.0, t[2], WorldPalette.M_FOLIAGE, Vector2(x + dx, wy), fog)
+		x += w + 1 + _rng.randi() % 4
+
+func _block(xs: Array[Transform3D], cs: Array[Color], cu: Array[Color], c: Vector3, depth: float, col: Color, mat: int, src: Vector2, fog: float) -> void:
+	xs.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, depth)), c))
+	cs.append(col.srgb_to_linear())
+	cu.append(Color(float(mat), fog, src.x, src.y))
+
+## Poisson-disk points over x in [xa, xb], z in [z0 (front), z1 (back)]; spacing grows with depth.
+func _poisson(xa: float, xb: float, z0: float, z1: float) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var cell := POISSON_R
+	var grid := {}
+	var tries := int((xb - xa) * (z0 - z1) / (POISSON_R * POISSON_R) * 2.5)
+	for k in tries:
+		var p := Vector2(_rng.randf_range(xa, xb), lerpf(z0, z1, pow(_rng.randf(), 0.8)))
+		var rmin := POISSON_R * (1.0 + (-p.y - 2.0) * 0.045)
+		var gi := Vector2i(int(floor(p.x / cell)), int(floor(p.y / cell)))
+		var ok := true
+		var reach := int(ceil(rmin / cell)) + 1
+		for gx in range(gi.x - reach, gi.x + reach + 1):
+			for gz in range(gi.y - reach, gi.y + reach + 1):
+				var key := Vector2i(gx, gz)
+				if grid.has(key):
+					for q: Vector2 in grid[key]:
+						if q.distance_to(p) < rmin:
+							ok = false
+							break
+				if not ok:
+					break
+			if not ok:
+				break
+		if ok:
+			out.append(p)
+			if not grid.has(gi):
+				grid[gi] = []
+			grid[gi].append(p)
+	return out
+
+## Fallen logs: the trunk mesh lying along x on the floor.
+func _add_logs(parent: Node3D, logs: Array, mat: ShaderMaterial) -> void:
+	var xs: Array[Transform3D] = []
+	var cs: Array[Color] = []
+	for l: Array in logs:
+		var rr: float = l[1]
+		var ln: float = l[2]
+		var b := Basis(Vector3.BACK, PI * 0.5 + _rng.randf_range(-0.08, 0.08)) * Basis(Vector3.UP, _rng.randf() * TAU)
+		b = Basis(Vector3.UP, _rng.randf_range(-0.5, 0.5)) * b
+		xs.append(Transform3D(b.scaled(Vector3(rr, ln, rr)), (l[0] as Vector3) + Vector3(ln * 0.5, 0, 0)))
+		var c := BARK_512.darkened(0.3).srgb_to_linear()
+		cs.append(Color(c.r, c.g, c.b, 0.0))
+	_mm_node(parent, "Logs", _trunk_mesh(5, false), mat, xs, cs)
+
+## The pine's walkable air pockets: dark bough interiors (needle clumps drooping inside, behind the plane).
+func _add_pocket_boughs(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: Rect2i) -> void:
+	var W := lvl.width
+	var helper := WorldGrass.new()
+	var bough := helper._clump_mesh(22, 0.34, 0.55, 0.018, 0.03, 0.06, 4, 78)
+	helper.free()
+	var xs: Array[Transform3D] = []
+	var cs: Array[Color] = []
+	for y in range(maxi(r.position.y, 1), r.end.y):
+		for x in range(maxi(r.position.x, 1), mini(r.end.x, W - 1)):
+			var i := y * W + x
+			if not hm[i] or not terrain.pocket[i]:
+				continue
+			var pine := 0
+			for j: int in [i - 1, i + 1, i - W, i + W]:
+				pine += 1 if lvl.fg[j] == PINE_ID else 0
+			if pine < 2:
+				continue
+			for k in 7:
+				var up := Vector3(_rng.randf_range(-0.8, 0.8), -0.6, _rng.randf_range(0.1, 0.4)).normalized()
+				var p := Vector3(x + _rng.randf_range(0.0, 1.0), -(y + _rng.randf_range(-0.1, 0.4)), _rng.randf_range(-2.8, -1.95))
+				xs.append(_bough_xform(p, up, _rng.randf_range(0.9, 1.4)))
+				var c := Color(0.05, 0.16, 0.12).lerp(Color(0.1, 0.3, 0.2), _rng.randf() * 0.5).srgb_to_linear()
+				cs.append(Color(c.r, c.g, c.b, _rng.randf() * 0.99))
+	if xs.is_empty():
+		return
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/world/grass_blade.gdshader")
+	m.set_shader_parameter("day", 0.3)
+	_mm_node(self, "PocketBoughs", bough, m, xs, cs)
 
 func _mm_node(parent: Node3D, nm: String, mesh: Mesh, mat: Material, xs: Array[Transform3D], cs: Array[Color]) -> void:
 	if xs.is_empty():

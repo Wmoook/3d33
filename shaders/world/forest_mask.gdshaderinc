@@ -12,8 +12,11 @@ bool forest_visible(vec3 wp, vec3 cam) {
 	}
 	vec2 p = cam.xy + d.xy * (-cam.z / d.z);
 	vec2 tc = vec2(p.x, -p.y);
-	if (tc.x < 0.0 || tc.y < 0.0 || tc.x >= hollow_size.x || tc.y >= hollow_size.y) {
+	// up to 1 tile past the level's left / right / bottom edge counts as the edge tile (world's margin wall
+	// starts a little outside the level; its gap must show forest too)
+	if (tc.x < -1.0 || tc.y < 0.0 || tc.x >= hollow_size.x + 1.0 || tc.y >= hollow_size.y + 1.0) {
 		return false;
 	}
+	tc = clamp(tc, vec2(0.0), hollow_size - 0.5);
 	return texelFetch(hollow_tex, ivec2(floor(tc)), 0).r > 0.5;
 }

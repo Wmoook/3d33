@@ -179,6 +179,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 			# cave props only in air the sky flood never reaches (and never in the surface band's air)
 			if terrain.solid[i] or terrain.sky[i] or terrain.pocket[i] or _near_sky(terrain, x, y, W, H):
 				continue
+			if terrain.wall_code.size() == W * H and terrain.wall_code[i] >= 5:
+				continue   # built stone rooms (WorldDepth interiors): no cave stalactites
 			var ceil := terrain.solid[i - W] == 1
 			var floor := terrain.solid[i + W] == 1
 			if not ceil and not floor:
@@ -282,6 +284,8 @@ func _build_near_silhouettes(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var ground := terrain.solid[i] and not terrain.solid[i - W]
 			if not ceil or terrain.sky[i] or _rng.randf() > 0.05 or _near_sky(terrain, x, y, W, H):
 				continue
+			if terrain.wall_code.size() == W * H and terrain.wall_code[i] >= 5:
+				continue   # no hanging roots in built stone rooms
 			var p := Vector3(x + _rng.randf(), -y + 1.2, _rng.randf_range(3.2, 5.8))
 			var shape := 0.0
 			var col := Color(0.035, 0.025, 0.02)
