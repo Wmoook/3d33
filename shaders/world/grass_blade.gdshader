@@ -23,6 +23,7 @@ varying float v_rnd;
 varying float v_part;
 varying vec4 v_custom;
 varying float v_ao;
+varying float v_snap;
 
 float h1(float n) { return fract(sin(n) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -40,8 +41,10 @@ void vertex() {
 	vec3 root_w = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;   // clump centre (instance origin)
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec4 cust = INSTANCE_CUSTOM;
+	v_snap = 0.0;
 	if (cust.a >= 9.5) {
 		cust.a -= 10.0;
+		v_snap = 1.0;
 		vec2 hp = vec2(root_w.x, -root_w.y);
 		float zs = textureLod(height_tex, (hp + height_margin) / (level_size + 2.0 * height_margin), 0.0).r;
 		root_w.z += zs;
@@ -79,7 +82,7 @@ void vertex() {
 	v_rnd = COLOR.g;
 	v_part = COLOR.b;
 	v_custom = cust;
-	v_ao = mix(0.35, 1.0, smoothstep(0.0, 0.7, t));
+	v_ao = mix(mix(0.35, 0.75, v_snap), 1.0, smoothstep(0.0, 0.7, t));
 }
 
 void fragment() {
@@ -95,7 +98,7 @@ void fragment() {
 	} else {
 		// blades: dark humid root -> painted colour -> sun-bleached lighter tip; per-blade tonal jitter
 		float tone = mix(0.8, 1.18, v_rnd);
-		vec3 root = base * 0.45;
+		vec3 root = base * mix(0.45, 0.8, v_snap);   // turf on a lit face: shallow root shade (no dark specks)
 		vec3 tip = base * 1.35 + vec3(0.03, 0.03, 0.0) * day;
 		col = mix(root, base, smoothstep(0.0, 0.3, t));
 		col = mix(col, tip, smoothstep(0.55, 1.0, t)) * tone;

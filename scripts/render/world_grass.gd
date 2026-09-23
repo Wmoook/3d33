@@ -79,7 +79,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 			# covers only the solid tile's own front face)
 			for k in 14:
 				var d := _rng.randf_range(0.01, 0.3)
-				var up := Vector3(0.0, 1.0 - d * 1.4, 0.35 + d * 2.0).normalized()
+				var up := Vector3(0.0, 1.0, 0.2 + d * 0.8).normalized()
 				var p := Vector3(_rng.randf_range(x0, x1), -y - d, -0.01)
 				_push(key, Kind.SHORT, p, _rng.randf_range(0.75, 1.1) * minf(hmul, 0.85), _vary(base, 0.12), _rng.randf() * 0.99, up, true)
 				n_inst[Kind.SHORT] += 1

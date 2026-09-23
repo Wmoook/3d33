@@ -256,6 +256,17 @@ func _sky_luma_check(img: Image, nm: String) -> void:
 			var i := ty * t.W + tx
 			if not t.sky[i] or t.solid[i]:
 				continue
+			# only open-air interiors (2-tile margin from any solid): terrain side faces seen in perspective
+			# near a mass would otherwise count as "dark backdrop"
+			var near_solid := false
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					var nx := clampi(tx + dx, 0, t.W - 1)
+					var ny := clampi(ty + dy, 0, t.H - 1)
+					if t.solid[ny * t.W + nx]:
+						near_solid = true
+			if near_solid:
+				continue
 			var w := Vector3(tx + 0.5, -ty - 0.5, 0.0)
 			if cam.is_position_behind(w):
 				continue
@@ -275,6 +286,7 @@ func _sky_luma_check(img: Image, nm: String) -> void:
 		var mx: float = vals[int(vals.size() * 0.8)] if vals.size() > 0 else 0.0
 		if samples[k] < mx * 0.6:
 			bad += 1
+			if bad <= 12: print("  dark sky tile ", k, " fg=", world.level.get_fg(k.x, k.y), " bg=", world.level.get_bg(k.x, k.y))
 			var w2 := Vector3(k.x + 0.5, -k.y - 0.5, 0.0)
 			var sp2 := Vector2i(cam.unproject_position(w2) / vp * vs)
 			for oy in range(-6, 7):
