@@ -2,7 +2,7 @@ extends Node
 ## Tower windows: prints the window list, then shoots user://win_<spot>[_<variant>].png.
 ## Args: spots (twin, gspire, hall) + "diag" (glass off / voxel off / depth off variants) + "move" (3-frame pan).
 const GameScript := preload("res://scripts/game/game.gd")
-var SPOTS := {"twin": Vector2(252, 86), "gspire": Vector2(213, 80), "hall": Vector2(350, 84), "gs62": Vector2(196, 62)}
+var SPOTS := {"twin": Vector2(252, 86), "gspire": Vector2(213, 80), "hall": Vector2(350, 84), "gs62": Vector2(196, 62), "twinw": Vector2(241, 87), "twin_side": Vector2(252, 87)}
 var game
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)

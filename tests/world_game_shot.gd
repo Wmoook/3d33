@@ -12,6 +12,7 @@ func _ready() -> void:
 	var nm := "tunnel"
 	var key := ""
 	var zoom := 0.0
+	var hide: PackedStringArray = []
 	var lvl_id := "odyssey"
 	var q := 3
 	for a in OS.get_cmdline_user_args():
@@ -28,6 +29,8 @@ func _ready() -> void:
 			WorldView.depth_enabled = false
 		elif a == "novoxel":
 			WorldVoxel.enabled = false
+		elif a.begins_with("hide="):
+			hide = a.substr(5).split(",")
 		elif a.begins_with("zoom="):
 			zoom = float(a.substr(5))
 		elif a == "noglass":
@@ -56,6 +59,15 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	if key != "":
 		sim._set_key(StringName(key), true)
+	for nm_h in hide:
+		var hn: Node = game.find_child(nm_h, true, false)
+		if hn is Node3D:
+			(hn as Node3D).visible = false
+			print("hid ", hn.get_path())
+		elif hn:
+			print("hide: not a Node3D: ", nm_h)
+		else:
+			print("hide: no node ", nm_h)
 	if zoom > 0.0:
 		var rig = game.find_child("CameraRig", true, false)
 		if rig == null:

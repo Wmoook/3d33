@@ -23,6 +23,6 @@ func _init() -> void:
 		var line := "%3d " % y
 		for x in range(at.x - 6, at.x + 7):
 			var i := y * lvl.width + x
-			line += "%s%3d%s " % ["S" if t.solid[i] else ".", t.wall_code[i], "h" if h[i] else " "]
+			line += "%s%3d%s%s " % ["S" if t.solid[i] else ".", t.wall_code[i], "h" if h[i] else " ", "k" if t.sky[i] else " "]
 		print(line)
 	quit()

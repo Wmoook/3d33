@@ -250,6 +250,7 @@ func _build_mesh() -> void:
 				for piece in _pieces(c, nc):
 					_face(buckets, x, y, side, piece.x, piece.y, solid_t)
 	_build_room_backs(buckets)
+	_build_cave_props(buckets)
 	for key in buckets:
 		var b: Bucket = buckets[key]
 		if b.v.is_empty():
@@ -661,7 +662,7 @@ func _make_rooms() -> void:
 			depth[i] = 0.0
 		else:
 			mass[i] = 1
-			depth[i] = maxf(depth[i], r + ROOM_WALL)
+			depth[i] = r + ROOM_WALL   # exactly the back-wall slab: window reveals are 1.2 deep, the view goes out
 		var x := i % W
 		var y := i / W
 		for dy in range(-1, 2):
@@ -673,9 +674,6 @@ func _make_rooms() -> void:
 				var j := ny * W + nx
 				if room[j] == 0 and (terrain.solid[j] or mass[j]):
 					depth[j] = maxf(depth[j], r + ROOM_WALL)   # every neighbouring mass closes the room's sides
-				elif room[j] == 0 and not terrain.solid[j] and not terrain.sky[j]:
-					mass[j] = 1   # non-sky air beside a room (a stray speck): a closed block, never a slit
-					depth[j] = maxf(depth[j], r + ROOM_WALL)
 	# window list for glass panes / shafts (one per connected window patch)
 	var seen := PackedByteArray(); seen.resize(n)
 	for start in n:
@@ -734,6 +732,51 @@ func _drop_tiny_windows() -> void:
 			for i in comp:
 				win[i] = 0
 	timings["tiny_windows_dropped"] = dropped
+
+## Earth caves recede visibly: roots hang from the ceiling at several depths and pebbles / small rocks lie on
+## the floor going back (kind 14 = root, 15 = rock; closed boxes, never in front of the slab).
+func _build_cave_props(buckets: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7171
+	for y in range(1, H - 1):
+		for x in W:
+			var i := y * W + x
+			if room[i] == 0 or room_earth[i] == 0 or win[i]:
+				continue
+			var r := room_r[i]
+			var key := Vector2i(x / CHUNK, y / CHUNK)
+			if not buckets.has(key):
+				buckets[key] = Bucket.new()
+			var b: Bucket = buckets[key]
+			if terrain.solid[i - W]:
+				for k in 2:
+					if rng.randf() > 0.55:
+						continue
+					var d := rng.randf_range(0.6, r - 0.3)
+					var cx := x + rng.randf_range(0.15, 0.85)
+					var len := rng.randf_range(0.35, 1.3)
+					var w := rng.randf_range(0.04, 0.09)
+					_prop_box(b, cx - w, cx + w, -float(y), -float(y) - len, Z_FRONT - d + w, Z_FRONT - d - w, Vector2(x + 0.5, y - 0.5), 14.0)
+			if terrain.solid[i + W] and rng.randf() < 0.5:
+				var d := rng.randf_range(0.5, r - 0.3)
+				var cx := x + rng.randf_range(0.2, 0.8)
+				var s := rng.randf_range(0.08, 0.22)
+				_prop_box(b, cx - s, cx + s, -float(y) - 1.0 + s * 1.2, -float(y) - 1.0, Z_FRONT - d + s, Z_FRONT - d - s, Vector2(x + 0.5, y + 1.5), 15.0)
+
+func _prop_box(b: Bucket, xa: float, xb: float, ya: float, yb: float, za: float, zb: float, uv: Vector2, kind: float) -> void:
+	var c := [Vector3(xa, yb, zb), Vector3(xb, yb, zb), Vector3(xb, ya, zb), Vector3(xa, ya, zb),
+		Vector3(xa, yb, za), Vector3(xb, yb, za), Vector3(xb, ya, za), Vector3(xa, ya, za)]
+	var faces := [[[4, 5, 6, 7], Vector3(0, 0, 1)], [[0, 4, 7, 3], Vector3(-1, 0, 0)], [[5, 1, 2, 6], Vector3(1, 0, 0)],
+		[[0, 1, 5, 4], Vector3(0, -1, 0)], [[3, 7, 6, 2], Vector3(0, 1, 0)]]
+	for f in faces:
+		var idx: Array = f[0]
+		var out: Vector3 = f[1]
+		var p := [c[idx[0]], c[idx[1]], c[idx[2]], c[idx[3]]]
+		for j in [0, 1, 2, 0, 2, 3]:
+			b.v.append(p[j])
+			b.n.append(out)
+			b.uv.append(uv)
+			b.uv2.append(Vector2(1.0, kind))
 
 func _touches_room(x: int, y: int) -> bool:
 	for dy in range(-1, 2):

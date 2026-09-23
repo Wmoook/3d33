@@ -179,8 +179,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 			# cave props only in air the sky flood never reaches (and never in the surface band's air)
 			if terrain.solid[i] or terrain.sky[i] or terrain.pocket[i] or _near_sky(terrain, x, y, W, H):
 				continue
-			if terrain.wall_code.size() == W * H and terrain.wall_code[i] >= 5:
-				continue   # built stone rooms (WorldDepth interiors): no cave stalactites
+			if terrain.wall_code.size() == W * H and terrain.wall_code[i] >= 2:
+				continue   # day depth rooms (stone halls, earth caves): no free-floating cone props
 			var ceil := terrain.solid[i - W] == 1
 			var floor := terrain.solid[i + W] == 1
 			if not ceil and not floor:
@@ -257,7 +257,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_add_mm("PocketCrumbs", _pebble_mesh(), _mat_prop, crumb_x, crumb_c)
 	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
-	_build_near_silhouettes(lvl, terrain)
+	if not terrain.day:
+		_build_near_silhouettes(lvl, terrain)   # day levels: near-camera roots read as floating lines (depth rooms carry the caves)
 	if not WorldPalette.is_odyssey():
 		_build_shrine(lvl, terrain)
 		_build_floating_anchors(lvl, terrain)

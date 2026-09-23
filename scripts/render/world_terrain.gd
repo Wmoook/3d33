@@ -676,6 +676,8 @@ func window_image() -> Image:
 			b[i] = mini(6 + d[i] * 34, 255)
 		elif backwall[i] and not solid[i]:
 			b[i] = 2 if _earth_wall(i) else 6
+		elif not solid[i] and not sky[i]:
+			b[i] = 2   # enclosed air without a painted bg (caves, pores): an earth cave room, never a floating slab
 		else:
 			b[i] = 0
 	# a 1-3 tile "stone interior" speck (e.g. FV's spawn tile, bg 547 inside the grove) is not a room: it
@@ -700,7 +702,7 @@ func window_image() -> Image:
 					comp.append(j)
 		if comp.size() <= 3:
 			for i in comp:
-				b[i] = 0
+				b[i] = 2   # not a stone room: plain earth / cave (a forest hollow still owns it where it has one)
 	wall_code = b
 	return Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
 

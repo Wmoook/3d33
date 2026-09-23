@@ -120,9 +120,13 @@ void fragment() {
 	bool inroom = kind < 3.5 && nstart > 2.5 && nstart < 7.5;
 	// any face of a solid that looks into non-sky air (a room, a recess, a pocket): it is the solid's own
 	// shadowed rock / dirt - never sky-lit, no sky reflection
-	bool inner = kind < 3.5 && sf > 0.5 && nstart < 50.0;
+	float ownstart = texelFetch(depth_tex, clamp(tcell, ivec2(0), ivec2(level_size) - 1), 0).g;
+	// ... and the edges of a room's back-wall block (where a room meets a forest hollow / open air)
+	bool wallblock = kind < 3.5 && sf < 0.5 && ownstart > 2.5 && ownstart < 7.5;
+	bool inner = kind < 3.5 && ((sf > 0.5 && nstart < 50.0) || wallblock);
 	vec3 emit_x = vec3(0.0);
 	bool lip = kind > 9.5 && kind < 11.5;
+	bool prop = kind > 13.5 && kind < 15.5;   // cave roots (14) / floor rocks (15)
 	bool skin = kind > 11.5;
 	if (lip) {
 		horiz = kind < 10.5;
@@ -306,15 +310,38 @@ void fragment() {
 		albedo *= 0.7;
 	}
 	ALBEDO = albedo * ao * (1.0 - hz);
+	if (prop) {
+		ALBEDO = kind < 14.5 ? vec3(0.05, 0.034, 0.02) * mix(0.8, 1.2, vnoise(wp.xy * 7.0)) : c.rgb * 0.45 * mix(0.8, 1.15, vnoise(wp.xz * 9.0));
+		rough = 1.0;
+	}
+	if (earth_back || prop || (inroom && sf > 0.5 && ownstart < 2.5)) {
+		ALBEDO *= mix(1.0, 0.5, smoothstep(1.0, 6.0, d));   // the cave darkens as it recedes
+	}
 	if (inner || earth_back) {
 		ALBEDO *= 0.75;
 		rough = 1.0;
+	}
+	if (wallblock) {
+		ALBEDO = min(ALBEDO, vec3(0.06, 0.045, 0.03));   // edge of a back-wall slab: dark packed rock, never lit
 	}
 	ROUGHNESS = rough;
 	SPECULAR = (inner || earth_back || back) ? 0.08 : 0.35;
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.4;
 	EMISSION = hcol * hz * haze_emit + emit_x * ao * (1.0 - hz);
+	if (wallblock) {
+		EMISSION *= 0.2;
+	}
+	if (prop) {
+		EMISSION = vec3(0.0);
+	}
+	if (earth_back) {
+		// rare glowworms deep in the dirt
+		vec2 gq = wp.xy * 1.7;
+		vec2 gi = floor(gq);
+		float gl = step(0.985, h21(gi + 17.0)) * (1.0 - smoothstep(0.02, 0.07, length(fract(gq) - 0.5)));
+		EMISSION += vec3(0.35, 0.8, 0.55) * gl * (0.6 + 0.4 * sin(TIME * 1.3 + gi.x * 3.1));
+	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	if (!FRONT_FACING) {
 		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
