@@ -34,14 +34,14 @@ FLICKER_D = 0.12        # luminance change under the depth-precision change
 ANIM_D = 0.04           # a vs c: above this the pixel animates by itself (particles, wind, water)
 BLACK_L = 0.02
 BLACK_SIDE = 0.06        # both sides of a black line must be brighter than this
-CLUSTER_MIN = {"sky": 4.0, "black": 4.0, "flicker": 30.0, "shimmer": 30.0, "pale": 4.0}
+CLUSTER_MIN = {"sky": 4.0, "black": 4.0, "flicker": 30.0, "shimmer": 30.0, "pale": 4.0, "zero": 4.0}
                         # per-mille of a tile's area for a tile to count / join a cluster; flicker / shimmer
                         # need >= 3 % of the tile (SSAO / SSR noise stays below; z-fighting is blocky patches)
 SHIMMER_M = 0.10       # d (camera moved 0.45 px) outside a's 3x3 luminance range by more than this
 BEVEL = 0.16            # sky within this many tiles of a sky-neighbour edge = the block's rounded bevel, not a leak
 SKY_MIN_PX = 24         # sky blobs smaller than this (px @1080p) are specks (glints / sparkles), not leaks
 BACK_D = 1.0            # air tiles: tiles of depth behind z = 0 through which perspective may see the sky neighbour
-CATS = ("sky", "flicker", "shimmer", "black", "pale")   # sky = sentinel pass; pale = the colour-test metric
+CATS = ("sky", "flicker", "shimmer", "black", "pale", "zero")   # zero = pixels exactly (0,0,0) (not drawn)   # sky = sentinel pass; pale = the colour-test metric
 COLS = {"black": (0, 1, 1), "shimmer": (1, 0.5, 0), "flicker": (1, 1, 0), "sky": (1, 0, 1)}   # pale is not drawn
 SENT_MIN_PX = 6         # sentinel blobs smaller than this (px @1080p) are dropped (single AA pixels)
 MAT_BLUE = {4, 5, 9, 15, 17, 18}   # ice, water, glass, cloud, gem, snow: legitimately pale blue materials
@@ -228,7 +228,8 @@ def analyse(d, meta, keep):
     res = {"base": base, "name": meta["name"], "zoom": meta["zoom"], "tile": meta["tile"], "px_per_tile": px_per_tile,
            "anim_px": anim_n, "black_solid_px": black_solid_n, "sky_edge_px": sky_edge_n,
            "sky_api_px": sky_api_n, "black_api_px": black_api_n}
-    masks = {"sky": sky_leak, "flicker": flick, "shimmer": shim, "black": black_air, "pale": pale}
+    zero = (A.max(axis=-1) == 0.0) & valid   # exactly (0,0,0): nothing lit / a guard failed, never intended
+    masks = {"sky": sky_leak, "flicker": flick, "shimmer": shim, "black": black_air, "pale": pale, "zero": zero}
     for k, m in masks.items():
         n = int(m.sum())
         res[k + "_px"] = n
@@ -297,7 +298,7 @@ def report(d, results):
                 y, x = divmod(int(i), W)
                 if v > glob[k][y, x]:
                     glob[k][y, x] = v
-                seen[k].setdefault(int(i), []).append(r["base"])
+                seen[k].setdefault(int(i), []).append((r["base"], v))
     tot = {k + "_px": sum(r[k + "_px"] for r in results) for k in CATS}
     tot["captures"] = len(results)
     tot["black_solid_px"] = sum(r["black_solid_px"] for r in results)
@@ -308,11 +309,12 @@ def report(d, results):
     for k in CATS:
         cl[k] = clusters(glob[k], W, k)
         for c in cl[k]:
-            caps = set()
+            caps = {}
             for y in range(c["y0"], c["y1"] + 1):
                 for x in range(c["x0"], c["x1"] + 1):
-                    caps.update(seen[k].get(y * W + x, []))
-            c["captures"] = sorted(caps)[:8]
+                    for b, v in seen[k].get(y * W + x, []):
+                        caps[b] = caps.get(b, 0.0) + v
+            c["captures"] = [b for b, v in sorted(caps.items(), key=lambda kv: -kv[1])][:8]   # worst first
             c["cls"] = {n: int(((T["cls"][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] == v) &
                                (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN[k])).sum())
                         for n, v in (("air", 0), ("sky", 1), ("solid", 2))}
@@ -320,6 +322,8 @@ def report(d, results):
                 c["edge_tiles"] = int((T["near_sky"][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] &
                                        (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN[k])).sum())
         tot[k + "_tiles"] = int((glob[k] >= CLUSTER_MIN[k]).sum())
+        for c in cl[k]:
+            c["zero_score"] = round(float(glob["zero"][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1].sum()), 1)
         tot[k + "_clusters"] = len(cl[k])
     results = sorted(results, key=lambda r: -sum(r[k + "_px"] for k in CATS) / r["px_per_tile"] ** 2)
     for r in results:
@@ -346,6 +350,7 @@ def report(d, results):
              "%(flicker_tiles)d tiles (%(flicker_clusters)d) | shimmer %(shimmer_px)d px on %(shimmer_tiles)d tiles "
              "(%(shimmer_clusters)d) | black lines %(black_px)d px on %(black_tiles)d tiles (%(black_clusters)d)" % tot)
     L.append("  removed by the world_depth.is_window() mask alone: sky %(sky_api_px)d px, black lines %(black_api_px)d px" % tot)
+    L.append("  exact (0,0,0) pixels %(zero_px)d on %(zero_tiles)d tiles" % tot)
     L.append("  secondary: pale-colour sky test %(pale_px)d px on %(pale_tiles)d tiles (the pre-sentinel metric)" % tot)
     L.append("  (not counted: sky at sky-edges within bevel/parallax tolerance %(sky_edge_px)d px, black lines over "
              "solids %(black_solid_px)d px)" % tot)
