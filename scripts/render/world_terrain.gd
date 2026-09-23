@@ -784,13 +784,22 @@ func _open_sky_mask() -> PackedByteArray:
 
 ## Day levels: tiny (<= 6 tile) back-wall specks of SKY paint (530/531/540) or painted mountains (541-544) whose
 ## outline is mostly open sky are sky, not small stone blocks floating in the air.
+func hol_ok(comp: PackedInt32Array) -> bool:
+	# painted specks the forest hollow owns stay with the forest
+	var h: PackedByteArray = get_meta(&"forest_hollow") if has_meta(&"forest_hollow") else PackedByteArray()
+	for i in comp:
+		if h.size() == W * H and h[i]:
+			return true
+	return false
+
 func _sky_specks(has_bgc: PackedByteArray) -> void:
 	var n := W * H
 	var seen := PackedByteArray(); seen.resize(n)
 	var changed := false
 	for s0 in n:
-		if seen[s0] or not backwall[s0] or solid[s0] or not (level.bg[s0] in WorldPalette.FV_SKY_BG):
+		if seen[s0] or not backwall[s0] or solid[s0]:
 			continue
+		var sky_paint: bool = level.bg[s0] in WorldPalette.FV_SKY_BG
 		var comp := PackedInt32Array([s0]); seen[s0] = 1
 		var qi := 0
 		var edges := 0
@@ -801,7 +810,7 @@ func _sky_specks(has_bgc: PackedByteArray) -> void:
 				var j: int = i + o
 				if j < 0 or j >= n:
 					continue
-				if backwall[j] and not solid[j] and level.bg[j] in WorldPalette.FV_SKY_BG:
+				if backwall[j] and not solid[j] and ((level.bg[j] in WorldPalette.FV_SKY_BG) == sky_paint):
 					if not seen[j]:
 						seen[j] = 1
 						comp.append(j)
@@ -809,7 +818,10 @@ func _sky_specks(has_bgc: PackedByteArray) -> void:
 					edges += 1
 					if sky[j] and not solid[j]:
 						skye += 1
-		if comp.size() <= 6 and edges > 0 and skye * 2 >= edges:
+		# sky / mountain paint: <= 6 tiles, >= 50% open-sky outline. Other painted bg (a 1-2 tile forest / earth
+		# speck hanging under a crown with sky on 3 sides) would render as a floating dark block: sky too
+		var is_speck := comp.size() <= 6 and skye * 2 >= edges if sky_paint else comp.size() <= 2 and skye * 4 >= edges * 3
+		if edges > 0 and is_speck and not (hol_ok(comp)):
 			for i in comp:
 				backwall[i] = 0
 				has_bgc[i] = 0
