@@ -385,7 +385,7 @@ func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
 	m.set_shader_parameter("style", style)
 	m.set_shader_parameter("front_z", front)
 	var mi := MeshInstance3D.new()
-	mi.name = "Barrier_%d" % id
+	mi.name = "Barrier_%d_%d_%d" % [id, tiles[0].x, tiles[0].y]
 	mi.mesh = mesh
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -411,7 +411,7 @@ func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
 	if not odyssey and style == 2:
 		labels = _coin_labels(tiles, mask, need, front)
 	_barriers.append({"id": id, "mats": mats, "reps": reps, "open": o, "target": o, "style": style,
-		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels, "need": need})
+		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels, "need": need, "slab": mi})
 
 ## Coin door reached its count (non-Odyssey): the bars grind up with dust, sparks and a warm flare at every
 ## piece of the door; the grand final gate (the highest count in the level) gets a much bigger unsealing.
@@ -505,7 +505,7 @@ func _build_coin_bars(tiles: Array[Vector2i], mask: Dictionary) -> ShaderMateria
 	for i in xf.size():
 		mm.set_instance_transform(i, xf[i])
 	var mi := MultiMeshInstance3D.new()
-	mi.name = "CoinGateBars"
+	mi.name = "CoinGateBars_%d_%d" % [tiles[0].x, tiles[0].y]
 	mi.multimesh = mm
 	add_child(mi)
 	# rails (static frame) where the region ends vertically
@@ -533,7 +533,7 @@ func _build_coin_bars(tiles: Array[Vector2i], mask: Dictionary) -> ShaderMateria
 		for i in rx.size():
 			rmm.set_instance_transform(i, rx[i])
 		var rmi := MultiMeshInstance3D.new()
-		rmi.name = "CoinGateRails"
+		rmi.name = "CoinGateRails_%d_%d" % [tiles[0].x, tiles[0].y]
 		rmi.multimesh = rmm
 		add_child(rmi)
 	return m
@@ -1087,6 +1087,10 @@ func _process(delta: float) -> void:
 				_unseal(b)
 		b.open = move_toward(b.open, b.target, delta / 0.45)
 		b.flash = maxf(b.flash - delta * 2.0, 0.0)
+		# a fully open coin door is just its gold frame (rails): the empty membrane slab left a dark void
+		# over the recessed rooms behind, so it is not drawn at all once open
+		if b.style == 2 and b.has("slab"):
+			(b.slab as Node3D).visible = b.open < 0.999
 		for m: ShaderMaterial in b.mats:
 			m.set_shader_parameter("openness", b.open)
 			m.set_shader_parameter("flash", b.flash)
