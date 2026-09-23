@@ -20,8 +20,12 @@ varying vec3 v_col;
 varying vec4 v_c;
 
 void vertex() {
-	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_local = VERTEX;
+	// shrink every cube 0.2% about its centre: its faces then never lie exactly on a depth-volume face or a
+	// neighbouring cube's face (tile-aligned, coplanar -> z-fighting "flicker" while moving, 92% of the
+	// audit's flicker). The 0.001-tile gaps this opens are far below a pixel.
+	VERTEX *= 0.998;
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_col = COLOR.rgb;
 	v_c = INSTANCE_CUSTOM;
 }
