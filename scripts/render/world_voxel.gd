@@ -104,6 +104,8 @@ var _terrain_mat: ShaderMaterial
 var _sh_block: Shader
 var _sh_water: Shader
 var _sh_plant: Shader
+var _dE := PackedFloat32Array()   # world depth volume extrusion E per level tile (0 = none)
+var _dH := 0
 var _fz := PackedFloat32Array()   # forest-zone weight per voxel column
 var _templates: Array[Dictionary] = []   # the level's own crown silhouettes (see _crown_templates)
 var _hollow_img: Image   # keep-out depth per tile (forest hollows, interior rooms), see _keep_out_image
@@ -188,6 +190,8 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 			var z := -(Z0 + k + 0.5)
 			for x in W:
 				_dtop[k * W + x] = depth.depth_top_y(x + 0.5, z)
+		_dE = depth.depth.duplicate()
+		_dH = terrain.H
 	_has_vista = vista != null
 	if fore_enabled:
 		fore = WorldVoxelFore.new()
@@ -736,6 +740,38 @@ func _stamp_features() -> void:
 	_trees(rng, nz)
 	_cliff_falls(rng)
 	_plants(rng, nz)
+	_clear_depth_volume()
+
+## Keep voxels strictly out of world's depth volume: no block inside or right next to (1 tile, 1 unit behind)
+## an extruded level mass, so no voxel face is ever coplanar with / poking through a depth-volume face
+## (z-fighting shimmer, e.g. the Eastern Wood).
+func _clear_depth_volume() -> void:
+	if _dE.is_empty():
+		return
+	var cleared := 0
+	for ty in _dH:
+		for tx in W:
+			var e := 0.0
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := tx + dx
+					var ny := ty + dy
+					if nx >= 0 and ny >= 0 and nx < W and ny < _dH:
+						e = maxf(e, _dE[ny * W + nx])
+			if e <= 0.0:
+				continue
+			var i := tx - X0
+			var j := -ty - 1 - Y0
+			if i < 0 or i >= NX or j < 0 or j >= NY:
+				continue
+			# voxel k spans z [-(Z0+k+1), -(Z0+k)]; the volume reaches z = -1.2 - e: clear to 1 unit behind it
+			var kmax := mini(NZ - 1, int(ceil(1.2 + e + 1.0 - Z0)))
+			for k in kmax + 1:
+				var p := (k * NY + j) * NX + i
+				if vox[p] != AIR:
+					vox[p] = AIR
+					cleared += 1
+	timings["voxel_depth_cleared"] = cleared
 
 func _hmax(i: int, k: int) -> float:
 	return _HMAX[k * NX + i]

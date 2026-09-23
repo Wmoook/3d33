@@ -119,6 +119,9 @@ void fragment() {
 	float aov = mix(mix(a00, a10, u), mix(a01, a11, u), v);
 	aov = aov * aov * (3.0 - 2.0 * aov);
 	float block_ao = mix(1.0 - ao_strength, 1.0, aov);
+	// sub-pixel detail fades with the pixel footprint (no sparkle / shimmer on distant blocks as the camera moves)
+	float foot = length(fwidth(wp));
+	float hf = 1.0 - smoothstep(0.04, 0.16, foot);
 	// --- material: the SAME classes / look as the level's own blocks (world's depth_volume + terrain):
 	// continuous world-space textures (no per-block patches, no pixel pattern), pillow bevels on convex edges,
 	// detail lumps, lawn turf with blade texture, strata earth, ashlar ruin stone with moss, leaf-cluster crowns
@@ -208,7 +211,7 @@ void fragment() {
 		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
 		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
 		float lump = mat == PBR_M_RUIN ? 0.35 : (mat == PBR_M_FOLIAGE ? 0.9 : (leafy ? 0.3 : 0.7));
-		n = normalize(n + (U * tb.x + V * tb.y) * lump);
+		n = normalize(n + (U * tb.x + V * tb.y) * lump * hf);
 		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
 	}
 	// pillow bevel: bend the normal outward near every CONVEX edge (world's day bevel profile)
@@ -220,10 +223,10 @@ void fragment() {
 		bend -= T1 * (1.0 - smoothstep(0.0, bw, u)) * (1.0 - e1n);
 		bend += T2 * (1.0 - smoothstep(0.0, bw, 1.0 - v)) * (1.0 - e2p);
 		bend -= T2 * (1.0 - smoothstep(0.0, bw, v)) * (1.0 - e2n);
-		n = normalize(n + bend * 1.5);
+		n = normalize(n + bend * 1.5 * mix(0.35, 1.0, hf));
 	}
 	// photoscan detail: the same library calls the level uses
-	float fadek = pbr_fade(wp, CAMERA_POSITION_WORLD, 0.35) * pbr_strength;
+	float fadek = pbr_fade(wp, CAMERA_POSITION_WORLD, 0.35) * pbr_strength * hf;
 	bool hex = length(CAMERA_POSITION_WORLD - wp) < pbr_hex_dist;
 	if (mat == PBR_M_GRASS) {
 		// the level's lawn: grass scan broken by leaf-litter patches
@@ -244,7 +247,9 @@ void fragment() {
 		pbr_apply(ss, 0.3 * fadek, 0.5 * fadek, 0.3, 0.0, albedo, n, rough, ao);
 		rough = 0.55;
 	} else {
+		vec3 a0 = albedo; vec3 n0 = n; float r0 = rough; float o0 = ao;
 		pbr_terrain(mat, wp, gn, pp, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+		albedo = mix(a0, albedo, hf); n = normalize(mix(n0, n, hf)); rough = mix(r0, rough, hf); ao = mix(o0, ao, hf);
 	}
 	if (turf_side) {
 		// turf side under the lawn: soil laced with hanging roots (the level's turf edge)
