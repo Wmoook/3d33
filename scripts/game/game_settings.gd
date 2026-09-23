@@ -12,6 +12,7 @@ var music := 0.7
 var sfx := 0.85
 var zoom := 30.0        # tiles visible horizontally (lead: ~30 default, 20-60 range)
 var quality := 3        # 0..3
+var fps_cap := 120       # frame cap (0 = uncapped): leaves GPU headroom for the desktop / capture / audio
 var fullscreen := false
 var show_hints := true
 var show_collision := false
@@ -29,6 +30,7 @@ func load_settings() -> void:
 	sfx = cf.get_value("audio", "sfx", sfx)
 	zoom = clampf(cf.get_value("video", "zoom2", zoom), 20.0, 60.0)
 	quality = cf.get_value("video", "quality", quality)
+	fps_cap = cf.get_value("video", "fps_cap", fps_cap)
 	fullscreen = cf.get_value("video", "fullscreen", fullscreen)
 	show_hints = cf.get_value("ui", "show_hints", show_hints)
 	tutorial = cf.get_value("ui", "tutorial", tutorial)
@@ -45,6 +47,7 @@ func save_settings() -> void:
 	cf.set_value("audio", "sfx", sfx)
 	cf.set_value("video", "zoom2", zoom)
 	cf.set_value("video", "quality", quality)
+	cf.set_value("video", "fps_cap", fps_cap)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("ui", "show_hints", show_hints)
 	cf.set_value("ui", "tutorial", tutorial)

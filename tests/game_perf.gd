@@ -11,15 +11,22 @@ const GameScript := preload("res://scripts/game/game.gd")
 const LOCATIONS := [["surface/spawn", Vector2(65, 9)], ["inferno", Vector2(140, 104)],
 	["corruption", Vector2(215, 95)], ["frozen/lake", Vector2(320, 150)]]
 const ENV_FEATURES := ["sdfgi_enabled", "ssil_enabled", "ssr_enabled", "ssao_enabled", "volumetric_fog_enabled", "glow_enabled"]
-const PARTS := ["terrain", "doors", "backdrop", "decor", "lights", "atmosphere"]
+const PARTS := ["terrain", "doors", "backdrop", "decor", "lights", "atmosphere", "depth", "voxel", "forest", "vista", "grass", "foliage"]
+const FV_LOCATIONS := [["fv/spawn", Vector2(2, 55)], ["fv/twin", Vector2(245, 85)], ["fv/falls", Vector2(150, 140)], ["fv/gspire", Vector2(196, 62)]]
 
 var game
 var _lines: PackedStringArray = []
 var _vp_rid: RID
+var locs: Array = []
 
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
-	GameScript.boot_options = {"no_save": true, "skip_title": true, "quality": 3}
+	var lvl := "odyssey"
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("level="):
+			lvl = a.substr(6)
+	GameScript.boot_options = {"no_save": true, "skip_title": true, "quality": 3, "level": lvl}
+	locs = FV_LOCATIONS if lvl == "forgotten_veil" else LOCATIONS
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
 	while game.state != 3:
@@ -46,10 +53,10 @@ func _ready() -> void:
 		await _set_resolution(r[1], r[2])
 		_log("\n## %s  (window %s)" % [r[0], DisplayServer.window_get_size()])
 		_log("%-34s %8s %6s %8s %8s %7s %9s %7s" % ["case", "frame_ms", "fps", "gpu_ms", "cpu_ms", "draws", "prims", "objs"])
-		for loc in LOCATIONS:
+		for loc in locs:
 			await _goto(loc[1])
 			await _measure("base @ " + loc[0])
-		for loc in [LOCATIONS[0], LOCATIONS[1]]:
+		for loc in [locs[0], locs[1]]:
 			await _goto(loc[1])
 			_log("-- attribution @ %s (each row = that ONE thing turned off)" % loc[0])
 			var env: Environment = game.world.get_environment()

@@ -1184,6 +1184,7 @@ func _capture_authored_env() -> void:
 ## ULTRA = authored look at native res; HIGH drops SDFGI/SSIL; MEDIUM also SSR + 85% res; LOW = FSR 67%.
 func _apply_quality() -> void:
 	var q := clampi(settings.quality, 0, 3)
+	Engine.max_fps = maxi(settings.fps_cap, 0)
 	var env: Environment = world.get_environment() if world and world.has_method(&"get_environment") else null
 	if env and not _authored_env.is_empty():
 		env.sdfgi_enabled = _authored_env.sdfgi and q >= 3
