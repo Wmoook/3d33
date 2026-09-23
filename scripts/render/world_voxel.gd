@@ -100,6 +100,8 @@ var _fade_t := -1.0
 var _vista: WorldVista
 ## Phase 2: the foreground band in front of the gameplay plane (occlusion-safe, see WorldVoxelFore).
 var fore: WorldVoxelFore
+## OFF by default (lead / user: "random blocks in random places"); tests may set it true before build.
+static var fore_enabled := false
 var _lin_cols := PackedColorArray()
 var _shrine := Vector2(-10000.0, 0.0)   # level-specific keep-out (FV: the summit shrine), world x / y
 var _rim := PackedFloat32Array()   # vista island_edge (depth of the home island rim) per G3 x column
@@ -179,10 +181,11 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 			for x in W:
 				_dtop[k * W + x] = depth.depth_top_y(x + 0.5, z)
 	_has_vista = vista != null
-	fore = WorldVoxelFore.new()
-	fore.name = "Fore"
-	add_child(fore)
-	fore.setup(terrain)
+	if fore_enabled:
+		fore = WorldVoxelFore.new()
+		fore.name = "Fore"
+		add_child(fore)
+		fore.setup(terrain)
 	if not WorldPalette.is_odyssey():
 		_shrine = Vector2(WorldPalette.FV_SHRINE.x + 0.5, -float(WorldPalette.FV_SHRINE.y))
 	_load_palette(terrain.ref_dir)
@@ -281,7 +284,8 @@ func _run() -> void:
 	_stamp_features()
 	timings["voxel_features"] = Time.get_ticks_msec() - t1
 	t1 = Time.get_ticks_msec()
-	fore.generate(_lin_cols)
+	if fore:
+		fore.generate(_lin_cols)
 	timings["voxel_fore"] = Time.get_ticks_msec() - t1
 	if _abort: return
 	# P5: texture slices + meshes
@@ -1097,7 +1101,8 @@ func _make_materials() -> void:
 	var g2 := _pal(19, Color8(67, 131, 16)).srgb_to_linear()
 	var wa := _pal(54, Color8(126, 153, 246)).srgb_to_linear()
 	var wd := _pal(10, Color8(53, 82, 168)).srgb_to_linear()
-	fore.upload(sun_dir)
+	if fore:
+		fore.upload(sun_dir)
 	for m: ShaderMaterial in [material, water_material, plant_material]:
 		m.set_shader_parameter("vol", vol_tex)
 		m.set_shader_parameter("vol_origin", Vector3(X0, Y0, Z0))
@@ -1145,7 +1150,8 @@ func _process(delta: float) -> void:
 		var f := smoothstep(0.0, 1.0, _fade_t / FADE_TIME)
 		for m: ShaderMaterial in [material, water_material, plant_material]:
 			m.set_shader_parameter("fade", f)
-		fore.set_fade(f)
+		if fore:
+			fore.set_fade(f)
 		if _fade_t >= FADE_TIME:
 			_fade_t = -1.0
 	if fore:
