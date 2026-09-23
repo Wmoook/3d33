@@ -262,7 +262,7 @@ func _build_mesh() -> void:
 					_face(buckets, nx, ny, opp, 0.0, room_r[i], true)   # a room at the map border: closed side
 				elif room[i] != 0 and nx >= 0 and ny >= 0 and nx < W and ny < H:
 					var j := ny * W + nx
-					if room[j] == 0 and not terrain.solid[j] and not terrain.sky[j] and not mass[j]:
+					if room[j] == 0 and not terrain.solid[j] and not mass[j]:   # incl. open sky: the room's open edge is a wall behind the plane
 						# the room opens onto non-room, non-sky air (a forest hollow above a cave mouth): close
 						# the room's open side behind the plane so no ray slips between the two systems
 						_face(buckets, nx, ny, opp, 0.0, room_r[i], true)
