@@ -364,6 +364,30 @@ void fragment() {
 		ALBEDO *= 0.75;
 		rough = 1.0;
 	}
+	float spill = 0.0;
+	float crown_in = 0.0;
+	if (earth_back || (inroom && earth_room)) {
+		// forest light spills into an earth shaft's mouth (first cave, Trial II): the top tiles under the forest
+		// floor read as lit dirt continuous with the tunnel walls, not a flat dark slab between the crowns
+		ivec2 rt = earth_back ? tcell : tcell + across;
+		for (int k = 1; k <= 5; k++) {
+			ivec2 up = clamp(rt - ivec2(0, k), ivec2(0), ivec2(level_size) - 1);
+			if (texelFetch(forest_tex, up, 0).r > 0.5) {
+				spill = max(spill, 1.0 - float(k - 1) / 5.0);
+			}
+		}
+		if (texelFetch(forest_tex, clamp(rt, ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+			spill = 1.0;
+		}
+		if (inroom && (mat == M_GRASS || mat == M_FOLIAGE)) {
+			// a crown's side / underside seen inside the shaft (the forest floor over its mouth): its own lit
+			// leaves, not a near-black panel (the leafy x0.62 / underside x0.72 are undone, full spill)
+			ALBEDO /= (horiz ? 1.0 : 0.62) * (gn.y < -0.5 ? 0.72 : 1.0);
+			spill = 1.0;
+			crown_in = 1.0;
+		}
+		ALBEDO *= mix(1.0, 1.8, spill);
+	}
 	if (wallblock) {
 		ALBEDO = min(ALBEDO, vec3(0.06, 0.045, 0.03));   // edge of a back-wall slab: dark packed rock, never lit
 	}
@@ -401,15 +425,18 @@ void fragment() {
 		vec3 tone = normalize(max(ALBEDO, vec3(0.001))) * 0.577;
 		EMISSION = max(EMISSION, tone * 0.035 + vec3(0.006, 0.005, 0.004));
 	}
+	EMISSION += ALBEDO * (0.25 * spill + 0.45 * crown_in);   // the shaft mouth's spilled forest light (crown faces: lit leaves)
 	if (!FRONT_FACING) {
 		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
 		// side face. Before, back faces were culled and those slits showed the sky as bright vertical lines.
 		// shaded as the rock's own deep shadow (never exact black: seen through slots it read as a black hole)
-		ALBEDO = c.rgb * 0.2;
+		// (a wide one - the cap over the first cave's shaft mouth, seen from the forest floor above - read as a
+		// black slab: shade it as the surface's own darkened tone, lit by the spill, not a near-black c x 0.2)
+		ALBEDO = max(ALBEDO * 0.55, c.rgb * 0.2);
 		ROUGHNESS = 1.0;
 		SPECULAR = 0.0;
 		AO = 0.6;
-		EMISSION = c.rgb * 0.1;
+		EMISSION = max(c.rgb * 0.1, ALBEDO * (0.3 + 0.3 * spill));
 		NORMAL = -NORMAL;
 	}
 }
