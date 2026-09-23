@@ -116,7 +116,9 @@ void fragment() {
 	ivec2 tcell = ivec2(floor(tile));
 	int sidei = int(kind + 0.5);
 	ivec2 across = sidei == 0 ? ivec2(-1, 0) : (sidei == 1 ? ivec2(1, 0) : (sidei == 2 ? ivec2(0, -1) : ivec2(0, 1)));
-	float nstart = kind < 3.5 ? texelFetch(depth_tex, clamp(tcell + across, ivec2(0), ivec2(level_size) - 1), 0).g : 0.0;
+	vec3 nfetch = kind < 3.5 ? texelFetch(depth_tex, clamp(tcell + across, ivec2(0), ivec2(level_size) - 1), 0).rgb : vec3(0.0);
+	float nstart = nfetch.g;
+	bool earth_room = nfetch.b > 0.5;   // the face looks into an earth cave
 	bool inroom = kind < 3.5 && nstart > 2.5 && nstart < 7.5;
 	// any face of a solid that looks into non-sky air (a room, a recess, a pocket): it is the solid's own
 	// shadowed rock / dirt - never sky-lit, no sky reflection
@@ -304,7 +306,7 @@ void fragment() {
 	if (inroom) {
 		// the room's receding side walls / floor / ceiling: AO into the back corner, interior light floor
 		ao *= mix(0.8, 1.0, smoothstep(nstart, nstart - 1.4, d));
-		emit_x = albedo * 0.3;   // lit like the room's back wall (never darker than ~0.6x of it)
+		emit_x = albedo * (earth_room ? 0.18 : 0.3);   // lit like the room's back wall (earth caves stay moodier)
 	}
 	if (lip && horiz) {
 		albedo *= 0.65;   // the near ledge is seen at a grazing angle in full sun: keep it below the level's lawns
@@ -329,8 +331,8 @@ void fragment() {
 		ALBEDO = kind < 14.5 ? vec3(0.17, 0.115, 0.07) * mix(0.8, 1.2, vnoise(wp.xy * 7.0)) : max(c.rgb * 0.7, vec3(0.08, 0.07, 0.06)) * mix(0.85, 1.15, vnoise(wp.xz * 9.0));
 		rough = 1.0;
 	}
-	if (earth_back || prop) {
-		ALBEDO *= mix(1.0, 0.75, smoothstep(1.0, 6.0, d));   // the cave darkens a little as it recedes
+	if (earth_back || prop || (inroom && earth_room)) {
+		ALBEDO *= mix(1.0, 0.7, smoothstep(1.0, 6.0, d));   // the cave darkens a little as it recedes
 	}
 	if ((inner && !inroom) || earth_back) {
 		ALBEDO *= 0.75;

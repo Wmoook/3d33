@@ -218,11 +218,12 @@ func _make_material() -> void:
 		material.set_shader_parameter(k, tm.get_shader_parameter(k))
 	material.set_shader_parameter("haze_z", Vector2(HAZE_Z0, HAZE_Z1))
 	material.set_shader_parameter("forest_tex", ImageTexture.create_from_image(WorldForest.hollow_image(terrain)))
-	var rg := PackedFloat32Array(); rg.resize(W * H * 2)
+	var rg := PackedFloat32Array(); rg.resize(W * H * 3)
 	for i in W * H:
-		rg[i * 2] = depth[i]
-		rg[i * 2 + 1] = _cover(i).x if mass[i] else 99.0   # where the tile's volume starts
-	var dimg := Image.create_from_data(W, H, false, Image.FORMAT_RGF, rg.to_byte_array())
+		rg[i * 3] = depth[i]
+		rg[i * 3 + 1] = _cover(i).x if mass[i] else 99.0   # where the tile's volume starts
+		rg[i * 3 + 2] = 1.0 if room_earth.size() == W * H and room_earth[i] else 0.0   # earth cave room tile
+	var dimg := Image.create_from_data(W, H, false, Image.FORMAT_RGBF, rg.to_byte_array())
 	material.set_shader_parameter("depth_tex", ImageTexture.create_from_image(dimg))
 
 func _cover(i: int) -> Vector2:
