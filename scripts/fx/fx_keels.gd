@@ -92,8 +92,8 @@ func _dust() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.name = "KeelDust"
 	p.amount = 60
-	p.lifetime = 4.5
-	p.preprocess = 4.5
+	p.lifetime = 3.0
+	p.preprocess = 3.0
 	p.randomness = 0.6
 	p.emitting = false
 	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
@@ -102,11 +102,11 @@ func _dust() -> GPUParticles3D:
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	pm.emission_box_extents = Vector3(1.5, 0.05, 0.3)
 	pm.direction = Vector3(0, -1, 0)
-	pm.spread = 10.0
-	pm.initial_velocity_min = 0.25
-	pm.initial_velocity_max = 0.6
-	pm.gravity = Vector3(0.05, -0.35, 0)   # a trail falling ~3-5 tiles before it fades
-	pm.turbulence_enabled = true
+	pm.spread = 6.0
+	pm.initial_velocity_min = 0.6
+	pm.initial_velocity_max = 1.2
+	pm.gravity = Vector3(0.08, -0.6, 0)   # falls ~3-5 tiles over its life   # a trail falling ~3-5 tiles before it fades
+	pm.turbulence_enabled = false
 	pm.turbulence_noise_strength = 0.6
 	pm.turbulence_noise_scale = 3.0
 	pm.turbulence_influence_min = 0.05
@@ -231,10 +231,12 @@ func _process(delta: float) -> void:
 		var tip: Vector3 = site.pos + Vector3(0, -keel_depth, 0)
 		var w: float = clampf(site.w, 1.5, 8.0)
 		s.dust.position = tip
-		(s.dust.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(w * 0.35, 0.05, 0.3)
+		# a thin trickle from the keel tip (not a sheet across the whole cluster)
+		(s.dust.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(clampf(w * 0.08, 0.15, 0.5), 0.05, 0.15)
 		s.dust.restart()
 		s.dust.emitting = true
 		s.pebbles.position = tip
+		(s.pebbles.process_material as ParticleProcessMaterial).emission_box_extents = Vector3(clampf(w * 0.1, 0.2, 0.6), 0.05, 0.15)
 		s.pebbles.emitting = true
 		s.haze.position = tip + Vector3(0, -0.1, 0.1)
 		s.haze.scale = Vector3(w / 4.0 + 0.3, 1.0, 1.0)
