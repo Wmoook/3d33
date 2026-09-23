@@ -7,7 +7,12 @@ extends Node
 ##   bash tools_run_test.sh res://tests/voxel_fore.tscn [-- only=spawn,keep]
 const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS := {"spawn": Vector2i(2, 56), "grove": Vector2i(40, 40), "falls": Vector2i(150, 165),
-	"keep": Vector2i(300, 70), "sanctum": Vector2i(330, 152), "halls": Vector2i(55, 100), "spire_mid": Vector2i(197, 115), "halls2": Vector2i(80, 92), "hall_great": Vector2i(350, 95)}
+	"keep": Vector2i(300, 70), "sanctum": Vector2i(330, 152), "halls": Vector2i(55, 100), "spire_mid": Vector2i(197, 115), "halls2": Vector2i(80, 92), "hall_great": Vector2i(350, 95),
+	# the ball standing in OPEN AIR (snapped to the nearest enclosed air tile): real gameplay framing
+	"grove_air": Vector2i(-2, 30), "halls_air": Vector2i(-2, 55), "halls_air2": Vector2i(-2, 60),
+	"trial1": Vector2i(-1, 1), "trial4": Vector2i(-1, 4), "trial7": Vector2i(-1, 7), "trial11": Vector2i(-1, 11)}
+## air spots (x = -2): the nearest non-solid tile to these seeds
+const AIR_SEEDS := {"grove_air": Vector2i(30, 52), "halls_air": Vector2i(55, 80), "halls_air2": Vector2i(85, 95)}
 var game
 var wv: WorldView
 var vx: WorldVoxel
@@ -19,6 +24,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("only="):
 			only = Array(a.substr(5).split(","))
+	WorldVoxel.fore_enabled = true
 	GameScript.boot_options = {"no_save": true, "quality": 3, "level": "forgotten_veil", "skip_title": true}
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
@@ -38,6 +44,13 @@ func _ready() -> void:
 		if not only.is_empty() and not only.has(n):
 			continue
 		var t: Vector2i = SPOTS[n]
+		if t.x == -1:
+			if wv.trials == null or wv.trial_count() < t.y:
+				continue
+			t = _snap_air(wv.trials.coins[t.y - 1])
+		elif t.x == -2:
+			t = _snap_air(AIR_SEEDS[n])
+		print("SPOT %s ball at %s" % [n, str(t)])
 		await _place(Vector2(t))
 		await _wait(2.0)
 		await RenderingServer.frame_post_draw
@@ -64,6 +77,23 @@ func _place(t: Vector2) -> void:
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		game.sim.speed_x = 0.0; game.sim.speed_y = 0.0
 		await get_tree().physics_frame
+
+## Nearest non-solid, non-sky tile (enclosed gameplay air) to a seed.
+func _snap_air(seed_t: Vector2i) -> Vector2i:
+	var tr := wv.terrain
+	for r in 25:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var x := seed_t.x + dx
+				var y := seed_t.y + dy
+				if x < 1 or y < 1 or x >= tr.W - 1 or y >= tr.H - 1:
+					continue
+				var i := y * tr.W + x
+				if not tr.solid[i] and not tr.solid[i + tr.W] == 0 and not tr.sky[i]:
+					return Vector2i(x, y)
+	return seed_t
 
 func _ball() -> Vector3:
 	return Vector3(game.sim.px / 16.0 + 0.5, -game.sim.py / 16.0 - 0.5, 0.0)
@@ -96,7 +126,7 @@ func _check(nm: String) -> void:
 	for ty in fm.H:
 		for tx in fm.W:
 			var cover := fm.mask[ty * fm.W + tx] > 0
-			var near_ball := Vector2(tx + 0.5 - ball.x, -ty - 0.5 - ball.y).length() < WorldVoxelFore.BALL_R - 0.3
+			var near_ball := Vector2(tx + 0.5 - ball.x, -ty - 0.5 - ball.y).length() < WorldVoxelFore.SAFE_R - 0.2
 			if cover and not near_ball:
 				continue
 			for sy in 3:

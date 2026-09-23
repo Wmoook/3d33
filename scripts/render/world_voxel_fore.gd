@@ -19,6 +19,7 @@ const FY0 := -204
 const FNY := 208
 const FZ0 := 1
 const FNZ := 12
+const SAFE_R := 3.0             # hard per-fragment clear circle around the ball (tiles)
 const BALL_R := 5.5             # fully clear radius around the ball (tiles); fades back in over BALL_FADE
 const BALL_FADE := 0.9
 const MARGIN := 0               # mask covers exactly the level; outside it counts as air
@@ -259,6 +260,7 @@ func _build_mesh() -> void:
 	var norms := PackedVector3Array()
 	var colors := PackedColorArray()
 	var uvs := PackedVector2Array()
+	var cust := PackedFloat32Array()
 	var idx := PackedInt32Array()
 	# faces: normal, then two in-face axes (cell space)
 	var dirs := [
@@ -306,6 +308,7 @@ func _build_mesh() -> void:
 						norms.append(Vector3(n))
 						colors.append(Color(bc.r, bc.g, bc.b, float(id) / 255.0))
 						uvs.append(Vector2(ao, above + (FY0 + j + 1.0 - p.y)))
+						cust.append_array(PackedFloat32Array([FX0 + i + 0.5, FY0 + j + 0.5, FZ0 + k + 0.5, 0.0]))
 					var nf := Vector3(n)
 					var fl := Vector3(a).cross(Vector3(b)).dot(nf) > 0.0
 					idx.append_array(PackedInt32Array([base, base + (2 if fl else 1), base + (1 if fl else 2),
@@ -316,6 +319,7 @@ func _build_mesh() -> void:
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = colors
 	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_CUSTOM0] = cust
 	arr[Mesh.ARRAY_INDEX] = idx
 	_arrays = arr
 
@@ -326,6 +330,12 @@ func upload(sun_dir: Vector3) -> void:
 	var img := Image.create_from_data(W, H, false, Image.FORMAT_R8, mask)
 	material.set_shader_parameter("fg_mask", ImageTexture.create_from_image(img))
 	material.set_shader_parameter("mask_size", Vector2(W, H))
+	var db := PackedByteArray()
+	db.resize(W * H)
+	for i in W * H:
+		db[i] = mini(dist[i], 255)
+	material.set_shader_parameter("fg_dist", ImageTexture.create_from_image(Image.create_from_data(W, H, false, Image.FORMAT_R8, db)))
+	material.set_shader_parameter("safe_r", SAFE_R)
 	material.set_shader_parameter("ball_pos", Vector3(-1000, -1000, 0))
 	material.set_shader_parameter("ball_r", BALL_R)
 	material.set_shader_parameter("ball_fade", BALL_FADE)
@@ -341,7 +351,9 @@ func upload(sun_dir: Vector3) -> void:
 	if verts.is_empty():
 		return
 	var m := ArrayMesh.new()
-	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _arrays)
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _arrays, [], {}, Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+	# blocks near the plane edge of the view keep a generous bound (they shrink in the vertex shader)
+	m.custom_aabb = AABB(Vector3(FX0, FY0, FZ0), Vector3(FNX, FNY, FNZ))
 	var mi := MeshInstance3D.new()
 	mi.name = "ForeMesh"
 	mi.mesh = m
