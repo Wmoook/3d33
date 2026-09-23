@@ -12,6 +12,7 @@ func _ready() -> void:
 	var nm := "tunnel"
 	var key := ""
 	var lvl_id := "odyssey"
+	var q := 3
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("at="):
 			var v := a.substr(3).split(",")
@@ -28,9 +29,11 @@ func _ready() -> void:
 			WorldVoxel.enabled = false
 		elif a == "noglass":
 			WorldDepth.debug_no_glass = true
+		elif a.begins_with("q="):
+			q = int(a.substr(2))
 		elif a == "skin":
 			WorldView.depth_smooth_skin = true
-	GameScript.boot_options = {"no_save": true, "quality": 3, "level": lvl_id}
+	GameScript.boot_options = {"no_save": true, "quality": q, "level": lvl_id}
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
 	if game.state == 0:

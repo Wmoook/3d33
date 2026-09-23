@@ -14,7 +14,7 @@ extends Node3D
 
 const Z_FRONT := -1.2          # solid tiles start here (inside the slab's cliff, which reaches ~-2.3)
 const Z_FRONT_BG := -2.0       # back-wall / pocket tiles start behind the recess (-1.9)
-const SEAM_D := 0.3            # side faces against a neighbouring mass begin this deep (overlapping the slab cliff)
+const SEAM_D := 0.0            # side faces against a neighbouring mass begin this deep (overlapping the slab cliff)
 const E_FULL := 24.8           # ground bodies end at z = -26.0
 const STRUCT_CAP := 11.0
 const GROUND_RW := 48          # horizontal run (tiles) that makes a mass a ground body

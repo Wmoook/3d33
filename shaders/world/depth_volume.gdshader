@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode depth_draw_opaque, cull_back;
+render_mode depth_draw_opaque, cull_disabled;   // inner faces close every slit (see below)
 // Depth continuation volumes (WorldDepth): the level's masses extruded backward behind the gameplay slab.
 // Faces are tile-exact boxes; every hue comes from the painting (the source tile's colour, jittered along
 // the depth so faces don't streak), detail from the shared PBR library, and aerial haze with depth.
@@ -270,4 +270,14 @@ void fragment() {
 	AO_LIGHT_AFFECT = 0.4;
 	EMISSION = hcol * hz * haze_emit + emit_x * ao * (1.0 - hz);
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	if (!FRONT_FACING) {
+		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
+		// side face. Before, back faces were culled and those slits showed the sky as bright vertical lines.
+		ALBEDO = c.rgb * 0.08;
+		ROUGHNESS = 1.0;
+		SPECULAR = 0.0;
+		AO = 0.2;
+		EMISSION = vec3(0.0);
+		NORMAL = -NORMAL;
+	}
 }
