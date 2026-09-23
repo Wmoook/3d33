@@ -32,6 +32,9 @@ func _ready() -> void:
 	for n in [world.decor, world.lights, world.backdrop, world.trials, world.grass, world.foliage, world.keels, world.vista]:
 		if n:
 			n.visible = false   # decals / props / lights are not terrain mass
+	if world.vista:
+		for c in world.vista.get_children():
+			c.visible = false   # WorldVista.update() re-shows itself every frame, so hide its meshes
 	world.atmosphere.post_layer.visible = false
 	world.atmosphere.fog_volume.visible = false
 	for p in world.atmosphere.particles.values():

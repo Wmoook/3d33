@@ -38,7 +38,9 @@ float vista_fog_f(vec3 wpos, vec3 cam, float density, float near_f) {
 	float hy = 0.5 * (wpos.y + cam.y);
 	float hf = mix(1.3, 0.45, smoothstep(-175.0, 40.0, hy));
 	float f = 1.0 - exp(-d * density * hf);
-	return clamp(near_f + (1.0 - near_f) * f, 0.0, 1.0);
+	// the haze floor only builds up with distance: the nearest layers keep their sunlit colour
+	float nf = near_f * smoothstep(35.0, 230.0, d);
+	return clamp(nf + (1.0 - nf) * f, 0.0, 1.0);
 }
 
 vec3 vista_fog(vec3 col, vec3 wpos, vec3 cam, vec3 sd, float density, float near_f) {

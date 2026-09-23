@@ -376,51 +376,34 @@ func _tree_mm(nm: String, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]
 	_setup_instance(mmi, nm)
 
 # ------------------------------------------------------------------ ruin spires
+const STONE := Color(0.52, 0.52, 0.53, 1.0)
+const STONE_CAP := Color(0.52, 0.52, 0.53, 0.0)
+const VINE := Color(0.2, 0.33, 0.13, 0.0)
+
+## Ruins on the far islands, four silhouettes of the level's architecture: a broken spire with a leaning
+## upper section, an aqueduct of arches with a collapsed span, a two-storey arcade wall with a corner
+## tower, and twin towers joined by a broken arch. Vines hang from ledges.
 func _make_ruins() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var stone := Color(0.52, 0.52, 0.53, 1.0)
-	var cap := Color(0.52, 0.52, 0.53, 0.0)
 	var crowns: Array[Vector3] = []
+	var idx := 0
 	for r in _ruin_sites:
-		var x: float = r[0]
-		var gy: float = r[1]
-		var z: float = r[2]
+		var base := Vector3(r[0], r[1], r[2])
 		var ht: float = r[3]
 		var w: float = r[4]
-		var dep := w * 0.8
-		# plinth
-		var y := gy - 10.0
-		var ph := ht * 0.16 + 10.0
-		_box(st, Vector3(x, y + ph * 0.5, z), Vector3(w * 1.35, ph, dep * 1.3), stone)
-		y += ph
-		_box(st, Vector3(x, y + 1.0, z), Vector3(w * 1.5, 2.0, dep * 1.45), cap)
-		y += 2.0
-		# shaft with ledges
-		var crown_y := gy + ht * 0.72
-		var sw := w * 0.5
-		while y < crown_y - 6.0:
-			var th := minf(rng.randf_range(16.0, 26.0), crown_y - y)
-			_box(st, Vector3(x, y + th * 0.5, z), Vector3(sw, th, dep * 0.7), stone)
-			_box(st, Vector3(x, y + th + 0.8, z), Vector3(sw + 3.5, 1.6, dep * 0.7 + 3.0), cap)
-			y += th + 1.6
-		# bulky crown block with a jutting balcony and a broken, jagged top
-		var ch := gy + ht - y
-		_box(st, Vector3(x, y + 1.2, z), Vector3(w * 1.15, 2.4, dep * 1.1), cap)
-		# corbels widening the shaft into the crown, then the crown with a collapsed corner
-		_box(st, Vector3(x, y - 3.0, z), Vector3(w * 0.8, 4.0, dep * 0.85), stone)
-		_box(st, Vector3(x - w * 0.12, y + 2.4 + ch * 0.4, z), Vector3(w * 1.0, ch * 0.8, dep), stone)
-		_box(st, Vector3(x + w * 0.5, y + 2.4 + ch * 0.22, z), Vector3(w * 0.3, ch * 0.44, dep * 0.9), stone)
-		_box(st, Vector3(x - w * 0.72, y + ch * 0.35, z), Vector3(w * 0.34, 2.0, dep * 0.8), cap)
-		var top := y + 2.4 + ch * 0.8
-		for k in 5:
-			var bw := w * rng.randf_range(0.14, 0.24)
-			var bh := rng.randf_range(2.0, 12.0) * (0.4 if k == 2 else 1.0)
-			var ox := (k - 2.0) / 2.0 * (w * 0.5 - bw * 0.5)
-			_box(st, Vector3(x + ox, top + bh * 0.5, z), Vector3(bw, bh, dep * rng.randf_range(0.5, 0.9)), stone)
-		crowns.append(Vector3(x + w * 0.1, top + 1.0, z))
+		match idx % 4:
+			0:
+				crowns.append(_ruin_spire(st, rng, base, ht, w))
+			1:
+				crowns.append(_ruin_aqueduct(st, rng, base, ht * 0.55, w))
+			2:
+				crowns.append(_ruin_arcade(st, rng, base, ht * 0.7, w))
+			_:
+				crowns.append(_ruin_twins(st, rng, base, ht, w))
+		idx += 1
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
@@ -436,17 +419,138 @@ func _make_ruins() -> void:
 	blob.rings = 5
 	var xf: Array[Transform3D] = []
 	var cols: Array[Color] = []
-	for k in range(0, _ruin_sites.size(), 2):
-		var tw: float = _ruin_sites[k][4] * 0.85
+	for k in crowns.size():
+		var tw: float = _ruin_sites[k][4] * 0.7
 		xf.append(Transform3D(Basis.from_scale(Vector3(tw, tw * 0.8, tw * 0.8)), crowns[k] + Vector3(0, tw * 0.3, 0)))
 		cols.append(Color(0.2, 0.34, 0.13))
 	_tree_mm("VistaRuinTrees", blob, xf, cols)
 
-func _box(st: SurfaceTool, c: Vector3, s: Vector3, col: Color) -> void:
+## Vines hanging from a ledge edge (x0..x1 at height y, front face z).
+func _vines(st: SurfaceTool, rng: RandomNumberGenerator, x0: float, x1: float, y: float, z: float, n: int) -> void:
+	for i in n:
+		var vl := rng.randf_range(3.0, 14.0)
+		_box(st, Vector3(rng.randf_range(x0, x1), y - vl * 0.5, z + 0.3), Vector3(rng.randf_range(0.5, 1.1), vl, 0.6), VINE)
+
+## A semicircular arch of voussoirs between two pier tops (x0, x1) springing at height y. Stops after
+## skip_from stones (a collapsed arch).
+func _arch(st: SurfaceTool, x0: float, x1: float, y: float, z: float, thick: float, dep: float, skip_from: int = 99) -> void:
+	var r := (x1 - x0) * 0.5
+	var cx := (x0 + x1) * 0.5
+	var n := 9
+	for i in n:
+		if i >= skip_from:
+			break
+		var a := PI * (i + 0.5) / n
+		var p := Vector3(cx - cos(a) * (r + thick * 0.5), y + sin(a) * (r + thick * 0.5), z)
+		_box(st, p, Vector3(PI * r / n + 0.6, thick, dep), STONE, Basis(Vector3(0, 0, 1), a - PI * 0.5))
+	if skip_from >= n:
+		_box(st, Vector3(cx, y + r + thick * 0.5 + 1.0, z), Vector3(x1 - x0 + thick, 2.0, dep), STONE_CAP)
+
+func _ruin_spire(st: SurfaceTool, rng: RandomNumberGenerator, b: Vector3, ht: float, w: float) -> Vector3:
+	var dep := w * 0.8
+	var y := b.y - 8.0
+	var ph := ht * 0.14 + 8.0
+	_box(st, Vector3(b.x, y + ph * 0.5, b.z), Vector3(w * 1.3, ph, dep * 1.25), STONE)
+	y += ph
+	_box(st, Vector3(b.x, y + 1.0, b.z), Vector3(w * 1.45, 2.0, dep * 1.4), STONE_CAP)
+	_vines(st, rng, b.x - w * 0.7, b.x + w * 0.7, y, b.z + dep * 0.7, 6)
+	y += 2.0
+	var sw := w * 0.55
+	var ox := 0.0
+	var break_y := b.y + ht * 0.55
+	while y < break_y:
+		var th := minf(rng.randf_range(14.0, 22.0), break_y - y + 2.0)
+		_box(st, Vector3(b.x + ox, y + th * 0.5, b.z), Vector3(sw, th, dep * 0.7), STONE)
+		_box(st, Vector3(b.x + ox, y + th + 0.7, b.z), Vector3(sw + 3.0, 1.4, dep * 0.7 + 2.5), STONE_CAP)
+		_vines(st, rng, b.x + ox - sw * 0.6, b.x + ox + sw * 0.6, y + th, b.z + dep * 0.35 + 1.2, 3)
+		y += th + 1.4
+		ox += rng.randf_range(-0.6, 0.6)
+	# the upper section broke and leans on the stump
+	var lean := Basis(Vector3(0, 0, 1), deg_to_rad(rng.randf_range(7.0, 12.0)) * (1.0 if rng.randf() < 0.5 else -1.0))
+	var ch := ht * 0.3
+	var cc := Vector3(b.x + ox + w * 0.08, y + ch * 0.5 + 1.0, b.z)
+	_box(st, cc, Vector3(w * 1.05, ch, dep), STONE, lean)
+	_box(st, cc + lean * Vector3(0, ch * 0.5 + 1.0, 0), Vector3(w * 1.2, 2.0, dep * 1.1), STONE_CAP, lean)
+	for k in 4:
+		var bw := w * rng.randf_range(0.15, 0.24)
+		var bh := rng.randf_range(2.0, 9.0)
+		_box(st, cc + lean * Vector3((k - 1.5) / 1.5 * (w * 0.5 - bw * 0.5), ch * 0.5 + 2.0 + bh * 0.5, 0), Vector3(bw, bh, dep * 0.7), STONE, lean)
+	# fallen blocks at the foot
+	for k in 3:
+		_box(st, Vector3(b.x + rng.randf_range(-w, w), b.y + 1.5, b.z + rng.randf_range(-2.0, 4.0)), Vector3(rng.randf_range(3.0, 6.0), 3.0, 3.0), STONE, Basis(Vector3(0, 0, 1), rng.randf_range(-0.5, 0.5)))
+	return cc + lean * Vector3(-w * 0.2, ch * 0.5 + 2.0, 0)
+
+func _ruin_aqueduct(st: SurfaceTool, rng: RandomNumberGenerator, b: Vector3, ht: float, w: float) -> Vector3:
+	var span := w * 1.3
+	var n := 3
+	var pw := w * 0.32
+	var dep := w * 0.5
+	var x0 := b.x - span * n * 0.5
+	var spring := b.y + ht * 0.62
+	for i in n + 1:
+		var px := x0 + i * span
+		var top := spring + (0.0 if i < n else -ht * 0.3)
+		_box(st, Vector3(px, (b.y - 6.0 + top) * 0.5, b.z), Vector3(pw, top - b.y + 6.0, dep), STONE)
+		_vines(st, rng, px - pw * 0.5, px + pw * 0.5, top, b.z + dep * 0.5, 2)
+	for i in n:
+		var ax0 := x0 + i * span + pw * 0.5
+		var ax1 := x0 + (i + 1) * span - pw * 0.5
+		# the last span collapsed: only a few voussoirs cling to the pier
+		_arch(st, ax0, ax1, spring, b.z, 2.6, dep, 3 if i == n - 1 else 99)
+		if i < n - 1:
+			_box(st, Vector3((ax0 + ax1) * 0.5, spring + (ax1 - ax0) * 0.5 + 4.2, b.z), Vector3(span + 1.0, 2.2, dep + 1.5), STONE_CAP)
+			_vines(st, rng, ax0, ax1, spring + (ax1 - ax0) * 0.5 + 3.0, b.z + dep * 0.5 + 0.8, 4)
+	return Vector3(x0 + span * 0.5, spring + span * 0.5 + 5.0, b.z)
+
+func _ruin_arcade(st: SurfaceTool, rng: RandomNumberGenerator, b: Vector3, ht: float, w: float) -> Vector3:
+	var bays := 4
+	var bay := w * 0.75
+	var dep := w * 0.45
+	var x0 := b.x - bay * bays * 0.5
+	var storey := ht * 0.42
+	for lvl in 2:
+		var y0 := b.y - 4.0 + lvl * storey
+		var nb := bays if lvl == 0 else bays - 1 - int(rng.randf() < 0.5)
+		for i in nb + 1:
+			_box(st, Vector3(x0 + i * bay, y0 + storey * 0.35, b.z), Vector3(bay * 0.28, storey * 0.7, dep), STONE)
+		for i in nb:
+			_arch(st, x0 + i * bay + bay * 0.14, x0 + (i + 1) * bay - bay * 0.14, y0 + storey * 0.7, b.z, 1.8, dep)
+		_box(st, Vector3(x0 + nb * bay * 0.5, y0 + storey - 0.5, b.z), Vector3(nb * bay + bay * 0.3, 1.6, dep + 1.2), STONE_CAP)
+		_vines(st, rng, x0, x0 + nb * bay, y0 + storey - 1.0, b.z + dep * 0.5 + 0.6, 5)
+	# corner tower with broken crenellations
+	var tx := x0 + bays * bay + bay * 0.2
+	var th := ht * 1.2
+	_box(st, Vector3(tx, b.y - 4.0 + th * 0.5, b.z), Vector3(bay * 0.8, th, dep * 1.3), STONE)
+	for k in 3:
+		var hh := rng.randf_range(1.5, 5.0)
+		_box(st, Vector3(tx + (k - 1) * bay * 0.3, b.y - 4.0 + th + hh * 0.5, b.z), Vector3(bay * 0.2, hh, dep * 1.2), STONE)
+	return Vector3(x0 + bay, b.y - 4.0 + storey * 2.0, b.z)
+
+func _ruin_twins(st: SurfaceTool, rng: RandomNumberGenerator, b: Vector3, ht: float, w: float) -> Vector3:
+	var gap := w * 1.4
+	var dep := w * 0.6
+	var tw := w * 0.5
+	var h1 := ht
+	var h2 := ht * rng.randf_range(0.62, 0.78)
+	for side in 2:
+		var tx := b.x + (side - 0.5) * gap
+		var hh := h1 if side == 0 else h2
+		var y := b.y - 6.0
+		while y < b.y + hh - 4.0:
+			var seg := minf(rng.randf_range(15.0, 24.0), b.y + hh - y)
+			_box(st, Vector3(tx, y + seg * 0.5, b.z), Vector3(tw, seg, dep), STONE)
+			_box(st, Vector3(tx, y + seg + 0.6, b.z), Vector3(tw + 2.4, 1.2, dep + 2.0), STONE_CAP)
+			_vines(st, rng, tx - tw * 0.6, tx + tw * 0.6, y + seg, b.z + dep * 0.5 + 1.0, 2)
+			y += seg + 1.2
+	# a bridge arch between them, broken on the shorter tower's side
+	_arch(st, b.x - gap * 0.5 + tw * 0.5, b.x + gap * 0.5 - tw * 0.5, b.y + h2 * 0.55, b.z, 2.2, dep * 0.7, 6)
+	return Vector3(b.x - gap * 0.5, b.y + h1 + 1.0, b.z)
+
+func _box(st: SurfaceTool, c: Vector3, s: Vector3, col: Color, b: Basis = Basis.IDENTITY) -> void:
 	var h := s * 0.5
 	var p := [
-		c + Vector3(-h.x, -h.y, -h.z), c + Vector3(h.x, -h.y, -h.z), c + Vector3(h.x, h.y, -h.z), c + Vector3(-h.x, h.y, -h.z),
-		c + Vector3(-h.x, -h.y, h.z), c + Vector3(h.x, -h.y, h.z), c + Vector3(h.x, h.y, h.z), c + Vector3(-h.x, h.y, h.z),
+		c + b * Vector3(-h.x, -h.y, -h.z), c + b * Vector3(h.x, -h.y, -h.z), c + b * Vector3(h.x, h.y, -h.z), c + b * Vector3(-h.x, h.y, -h.z),
+		c + b * Vector3(-h.x, -h.y, h.z), c + b * Vector3(h.x, -h.y, h.z), c + b * Vector3(h.x, h.y, h.z), c + b * Vector3(-h.x, h.y, h.z),
 	]
 	# faces (outward, clockwise seen from outside = Godot front face)
 	var faces := [[4, 7, 6, 5], [1, 2, 3, 0], [0, 3, 7, 4], [5, 6, 2, 1], [7, 3, 2, 6], [0, 4, 5, 1]]
