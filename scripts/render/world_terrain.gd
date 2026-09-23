@@ -1084,7 +1084,11 @@ func _dilate(buf: PackedByteArray, filled: PackedByteArray) -> void:
 			buf[j * 4] = buf[i * 4]; buf[j * 4 + 1] = buf[i * 4 + 1]; buf[j * 4 + 2] = buf[i * 4 + 2]; buf[j * 4 + 3] = buf[i * 4 + 3]
 			q.append(j)
 
+var flat_pocket := PackedByteArray()
+
 func _field_image() -> Image:
+	flat_pocket.resize(W * H)
+	flat_pocket.fill(0)
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	var b := PackedByteArray(); b.resize(W * H * 4)
 	for i in W * H:
@@ -1095,6 +1099,31 @@ func _field_image() -> Image:
 		var pt := Vector2i(i % W, i / W)
 		var inscr := day and not solid[i] and (WorldPalette.FV_RECT_SCROLL.has_point(pt) or Rect2i(300, 14, 46, 29).has_point(pt))
 		b[i * 4 + 3] = 0 if inscr else 255
+	# a = 128: a tiny (<= 3 tile) wall pocket right beside open sky -> near-flat floor (z -0.9, normal shading):
+	# a deep recess there shows the neighbouring sky through it at an angle (parallax)
+	if day:
+		var seen := PackedByteArray(); seen.resize(W * H)
+		for s0 in W * H:
+			if seen[s0] or solid[s0] or sky[s0] or b[s0 * 4 + 3] == 0:
+				continue
+			var comp := PackedInt32Array([s0]); seen[s0] = 1
+			var qi := 0
+			var touches := false
+			while qi < comp.size() and comp.size() <= 4:
+				var i := comp[qi]; qi += 1
+				for o in [-1, 1, -W, W]:
+					var j: int = i + o
+					if j < 0 or j >= W * H:
+						continue
+					if sky[j] and not solid[j]:
+						touches = true
+					elif not solid[j] and not sky[j] and not seen[j]:
+						seen[j] = 1
+						comp.append(j)
+			if touches and comp.size() <= 3:
+				for i in comp:
+					b[i * 4 + 3] = 128
+					flat_pocket[i] = 1
 	img.set_data(W, H, false, Image.FORMAT_RGBA8, b)
 	return img
 
