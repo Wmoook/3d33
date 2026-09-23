@@ -423,7 +423,7 @@ func _quad(b: Bucket, p: Array, out: Vector3, uv: Vector2, kind: float) -> void:
 		b.uv2.append(Vector2(1.0, kind))
 
 # ---------------------------------------------------------------- smooth skin over the far ground
-const SKIN_D0 := 4.0            # ground: the first tiles behind the slab stay tile-matched to the silhouette
+const SKIN_D0 := 1.5            # voxels in front of this; the skin eases from the stepped profile to smooth by d0+4
 const SKIN_ERO := 3             # samples (0.5 tile) of the x erosion: rounds steps, never rises above them
 const SKIN_BLUR := 4            # samples of the x blur
 const SKIN_DS := [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.5, 11.0, 12.5, 14.0, 16.0, 18.5, 21.0, 23.0, 24.8]
@@ -460,7 +460,7 @@ func _compute_skin() -> void:
 			_skin_row[x] = y
 			run_bot[x] = yb
 			var e_top := depth[i]
-			_skin_d0[x] = SKIN_D0 if e_top >= E_FULL - 0.01 else clampf(0.4 * e_top, 1.0, SKIN_D0)
+			_skin_d0[x] = minf(SKIN_D0, e_top)
 			break
 	# stepped profile per column and depth
 	var raw := PackedFloat32Array(); raw.resize(W * nd)
@@ -484,17 +484,20 @@ func _compute_skin() -> void:
 		floor_y[k] = NAN
 		d0s[k] = SKIN_D0
 		for j in nd:
-			var best := NAN
+			# boundary samples: the mean of both columns (a one-tile slope instead of a spike)
+			var sum := 0.0
+			var cnt := 0
 			for c in cols:
 				if c < 0 or c >= W:
 					continue
 				var v := raw[c * nd + j]
-				if not is_nan(v) and (is_nan(best) or v > best):
-					best = v
+				if not is_nan(v):
+					sum += v
+					cnt += 1
 					if j == 0:
-						floor_y[k] = -float(run_bot[c])
+						floor_y[k] = -float(run_bot[c]) if is_nan(floor_y[k]) else minf(floor_y[k], -float(run_bot[c]))
 						d0s[k] = _skin_d0[c]
-			prof[k * nd + j] = best
+			prof[k * nd + j] = sum / cnt if cnt > 0 else NAN
 	# erode + blur along x (valid samples only), then blur along the depth
 	var ero := PackedFloat32Array(); ero.resize(_skin_nx * nd)
 	for j in nd:

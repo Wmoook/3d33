@@ -75,6 +75,7 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 		sky_mat.set_shader_parameter("has_noise", 1.0)
 		sky_mat.set_shader_parameter("cloud_base", CLOUD_BASE)
 	print("WorldVista built %s" % str(timings))
+	_build_pieces_deferred()
 
 ## Per frame (camera world position). The vista is world-anchored, so nothing moves; this only hides it
 ## when no sky can be visible (sky_visibility 0 = deep underground), which also skips the cloud march.
@@ -870,6 +871,39 @@ var ref_dir := "res://assets/ee_ref_fv"
 ## true: block pieces render through WorldTerrain.build_backdrop (world); false: vista_blocks stand-in.
 var use_world_terrain := true
 
+const PIECE_HAZE_COLOR := Color(0.58, 0.72, 0.94)
+const PIECE_DELAY := 2.0          # seconds after the vista is built before the first piece starts
+const PIECE_FADE := 1.5           # fade-in time per piece
+var _deferred_pieces: Array = []  # [EELevel, origin, scale, index]
+
+func _build_pieces_deferred() -> void:
+	if _deferred_pieces.is_empty() or not is_inside_tree():
+		return
+	await get_tree().create_timer(PIECE_DELAY).timeout
+	for pc in _deferred_pieces:
+		if not is_inside_tree():
+			return
+		var holder := [null]
+		var lvl: EELevel = pc[0]
+		var origin: Vector3 = pc[1]
+		var sc: float = pc[2]
+		var task := WorkerThreadPool.add_task(func() -> void:
+			holder[0] = WorldTerrain.build_backdrop(lvl, origin, sc, 1.0, PIECE_HAZE_COLOR, 3, ref_dir))
+		while not WorkerThreadPool.is_task_completed(task):
+			await get_tree().process_frame
+		WorkerThreadPool.wait_for_task_completion(task)
+		var t: WorldTerrain = holder[0]
+		if t == null or not is_inside_tree():
+			continue
+		t.name = "VistaBlocks%d" % pc[3]
+		add_child(t)
+		# fade in from full haze (invisible against the sky) to its distance haze
+		var target := clampf(0.3 + 0.45 * (1.0 - exp(-(25.0 - origin.z) * 0.0035)), 0.0, 0.85)
+		var tw := create_tween()
+		tw.tween_method(func(h: float) -> void: t.set_haze(h, PIECE_HAZE_COLOR), 1.0, target, PIECE_FADE)
+		await get_tree().process_frame
+	_deferred_pieces.clear()
+
 func _make_block_pieces() -> void:
 	var colors := WorldVistaBlocks.load_colors(ref_dir)
 	var sh := load("res://shaders/world/vista_blocks.gdshader")
@@ -880,13 +914,9 @@ func _make_block_pieces() -> void:
 		var z: float = pc[3]
 		if use_world_terrain:
 			# world's own terrain pipeline in backdrop mode: the pieces look exactly like the level's art.
-			# make_level() adds a 1-tile border, so the origin moves up-left by one tile.
-			var d := 25.0 - z
-			var haze := clampf(0.3 + 0.45 * (1.0 - exp(-d * 0.0035)), 0.0, 0.85)
-			var t := WorldTerrain.build_backdrop(art.make_level(), Vector3(pc[1] - sc, pc[2] + sc, z), sc, haze,
-					Color(0.58, 0.72, 0.94), 3, ref_dir)
-			t.name = "VistaBlocks%d" % k
-			add_child(t)
+			# Built DEFERRED (after the level is playable, on a worker thread, one at a time) and faded in,
+			# so loading doesn't grow. make_level() adds a 1-tile border: origin moves up-left one tile.
+			_deferred_pieces.append([art.make_level(), Vector3(pc[1] - sc, pc[2] + sc, z), sc, k])
 			k += 1
 			continue
 		var tex := art.textures(colors)
