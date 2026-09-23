@@ -566,30 +566,25 @@ func _box(st: SurfaceTool, c: Vector3, s: Vector3, col: Color, b: Basis = Basis.
 ## MIDGROUND islands right behind the level (x, top y, z, radius, depth, ruin fragments): real 3D masses
 ## near the big structures at their heights, so the level's own masses have neighbours in depth.
 const MID_ISLANDS := [
+	# placed (tests: see sky_vista shots) to FRAME the typical views at their edges, never crowding the
+	# central band of the gameplay view: composition over quantity
 	[150.0, -80.0, -36.0, 11.0, 16.5, false],
-	[233.0, -121.0, -50.0, 10.0, 15.0, true],
-	[281.0, -40.0, -44.0, 11.0, 16.5, true],
-	[108.0, -30.0, -58.0, 15.0, 22.5, false],
-	[342.0, -66.0, -26.0, 8.0, 12.0, false],
-	[172.0, -141.0, -30.0, 9.0, 13.5, true],
-	[62.0, -13.0, -46.0, 10.0, 15.0, false],
-	[383.0, -104.0, -56.0, 12.0, 18.0, true],
-	[259.0, -160.0, -58.0, 12.0, 18.0, false],
-	[305.0, -152.0, -21.0, 7.0, 10.5, false],
-	[200.0, -12.0, -52.0, 9.0, 13.5, false],
+	[236.0, -128.0, -58.0, 9.0, 13.5, true],
+	[266.0, -6.0, -58.0, 12.0, 18.0, true],
+	[116.0, -150.0, -40.0, 9.0, 13.5, true],
+	[166.0, -2.0, -56.0, 9.0, 13.5, false],
+	[398.0, -122.0, -45.0, 10.0, 15.0, false],
 ]
 ## DISTANT islands (x, top y, z, radius, depth, waterfall, ruin tower height or 0).
 const FAR_ISLANDS := [
 	[60.0, -150.0, -140.0, 24.0, 45.6, true, 0.0],
 	[335.0, -178.0, -165.0, 28.0, 53.2, true, 0.0],
 	[212.0, -62.0, -225.0, 20.0, 38.0, false, 70.0],
-	[-45.0, -92.0, -265.0, 38.0, 72.2, true, 0.0],
 	[470.0, -42.0, -300.0, 34.0, 64.6, false, 95.0],
 	[140.0, -12.0, -390.0, 44.0, 83.6, true, 120.0],
 	[385.0, -122.0, -420.0, 52.0, 98.8, true, 0.0],
 	[-170.0, -32.0, -480.0, 58.0, 110.2, false, 110.0],
 	[630.0, -84.0, -520.0, 58.0, 110.2, true, 0.0],
-	[255.0, 18.0, -610.0, 50.0, 95.0, false, 0.0],
 ]
 
 func _make_islands() -> void:

@@ -1213,7 +1213,7 @@ func _apply_quality() -> void:
 			var ca := CameraAttributesPractical.new()
 			ca.dof_blur_far_enabled = true
 			ca.dof_blur_far_distance = rig.distance_for_zoom(rig.zoom) + 7.0
-			ca.dof_blur_far_transition = 14.0
+			ca.dof_blur_far_transition = 45.0 if _is_day() else 14.0   # day: keep midground vista islands sharp
 			ca.dof_blur_amount = 0.05
 			rig.cam.attributes = ca
 		else:
