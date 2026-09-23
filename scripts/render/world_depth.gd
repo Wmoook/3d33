@@ -995,9 +995,19 @@ func _add_mesh(b: Bucket, nm: String, shader: String) -> void:
 	mi.name = nm
 	add_child(mi)
 
-## True if the tile is a window opening of a depth room (painted-sky window or rhythmic lancet) or carries a
-## glass pane (for tests / audit masks).
-func is_window(tile: Vector2i) -> bool:
+## True if the tile is a window opening, its glass pane, or the 1-tile stone frame ring (sill, jambs, lintel)
+## drawn around it by design (for tests / audit masks).
+func is_window(tile: Vector2i, with_frame := true) -> bool:
+	if _is_window_core(tile):
+		return true
+	if with_frame:
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				if (dx != 0 or dy != 0) and _is_window_core(tile + Vector2i(dx, dy)):
+					return true
+	return false
+
+func _is_window_core(tile: Vector2i) -> bool:
 	if tile.x < 0 or tile.y < 0 or tile.x >= W or tile.y >= H:
 		return false
 	var i := tile.y * W + tile.x
