@@ -390,11 +390,15 @@ func _build_floating_anchors(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var n := 1 if bird else 2
 			for k in n:
 				var l := _rng.randf_range(0.8, 2.2) if bird else _rng.randf_range(1.2, 4.5)
-				var b := Basis(Vector3.FORWARD, _rng.randf_range(-0.12, 0.12)).scaled(Vector3(0.06, l, 0.06))
+				# soft-edged card, a little wider than the old 0.06 box (which aliased under sub-pixel motion)
+				var b := Basis(Vector3.FORWARD, _rng.randf_range(-0.12, 0.12)).scaled(Vector3(0.1, l, 1.0))
 				xs.append(Transform3D(b, Vector3(x + _rng.randf_range(0.15, 0.85), -y - 1.0 - l * 0.5, _rng.randf_range(-2.2, -1.2))))
 				cs.append(_vary(Color(0.2, 0.36, 0.12) if not bird else Color(0.55, 0.6, 0.5), 0.15))
-	var m := _foliage_mat(0.6, 0.4, 0.0, 0.8)
-	_add_mm("FloatingVines", _box(), m, xs, cs)
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/world/decor_strand.gdshader")
+	var card := QuadMesh.new()
+	card.size = Vector2(1, 1)
+	_add_mm("FloatingVines", _vertex_white(card), m, xs, cs)
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):
