@@ -201,10 +201,12 @@ void sky() {
 			float cov = smoothstep(-0.25, 0.25, pl.y - top);
 			if (cov > 0.0) {
 				float slope = ridge_line(pl.x + 0.5, L == 0 ? 112.0 : 126.0, L == 0 ? 58.0 : 36.0, L == 0 ? 0.02 : 0.034, float(L) * 7.0) - top;
-				float sunlit = slope > 0.0 ? 1.0 : 0.25;                       // east faces lit, west in shadow
 				float depthb = pl.y - top;
+				// sunlit east faces / shaded west faces near the crest, fading to even tone lower down
+				float face = smoothstep(-0.4, 0.4, slope * 2.0 + (fbm(pl * 0.35) - 0.5) * 0.6);
+				float sunlit = mix(0.55, mix(0.25, 1.0, face), exp(-depthb * 0.07));
 				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
-				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 1.2, pl.y * 0.08)));
+				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 0.4 + pl.y * 0.2, pl.y * 0.3)));
 				vec3 rock = mix(vec3(0.16, 0.2, 0.34), vec3(0.4, 0.44, 0.6), sunlit) * (1.0 - gully * 0.25);
 				vec3 sn = mix(vec3(0.55, 0.64, 0.86), vec3(1.0, 0.97, 0.93), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);

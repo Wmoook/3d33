@@ -8,7 +8,7 @@ extends Node3D
 ## crown then snaps on (FxPlayerBall.hold_silver_crown / silver_snap).
 
 const PILLAR_H := 70.0
-const CROWN_SCALE := 1.25
+const CROWN_SCALE := 1.6
 const LIFT_T := 1.5
 const FLY_T := 1.5
 
@@ -56,7 +56,7 @@ func _build_shrine(t: Vector2i) -> void:
 	bm.shader = preload("res://shaders/fx/glyph_halo.gdshader")
 	bm.set_shader_parameter("strength", 0.7)
 	back.material_override = bm
-	back.scale = Vector3.ONE * 2.8
+	back.scale = Vector3.ONE * 3.4
 	back.position = Vector3(0, 0.55, -0.4)
 	root.add_child(back)
 	# the crown relic
@@ -64,12 +64,12 @@ func _build_shrine(t: Vector2i) -> void:
 	crown.name = "CrownRelic"
 	crown.mesh = FxMeshes.crown()
 	var metal := StandardMaterial3D.new()
-	metal.albedo_color = Color(0.93, 0.95, 1.0)
+	metal.albedo_color = Color(1.0, 0.9, 0.66)   # white gold: silver with a warm regal gleam
 	metal.metallic = 1.0
 	metal.roughness = 0.12
 	metal.emission_enabled = true
-	metal.emission = Color(0.75, 0.82, 1.0)
-	metal.emission_energy_multiplier = 0.5
+	metal.emission = Color(1.0, 0.85, 0.55)
+	metal.emission_energy_multiplier = 0.6
 	var gem := StandardMaterial3D.new()
 	gem.albedo_color = Color(0.35, 0.6, 1.0)
 	gem.emission_enabled = true
@@ -115,7 +115,7 @@ func _build_shrine(t: Vector2i) -> void:
 	rise.position = Vector3(0, 0.5, -0.2)
 	root.add_child(rise)
 	_shrines.append({"root": root, "crown": crown, "pillar": pm, "glint": gm, "halo": hm, "light": l,
-		"base": Vector3(0, 0.55, 0), "rise": rise, "tile": t})
+		"base": Vector3(0, 0.75, 0), "rise": rise, "tile": t})
 
 ## Wind-blown petals streaming off the peak.
 func _petals() -> GPUParticles3D:
