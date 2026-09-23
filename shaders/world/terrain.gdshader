@@ -902,7 +902,7 @@ void fragment() {
 		if (any(isnan(n)) || dot(n, n) < 1e-8) { n = (any(isnan(gn)) || dot(gn, gn) < 1e-8) ? vec3(0.0, 0.0, 1.0) : gn; }
 		albedo = max(albedo, vec3(0.0));
 		ao = clamp(ao, 0.15, 1.0);
-		emit = max(emit, albedo * 0.04);   // just above black: cave mood stays within a few %
+		emit = max(emit, albedo * 0.04 + vec3(0.003, 0.0027, 0.0022) * step(level_size.y - 1.5, p_real.y));   // just above black (+ a tiny absolute floor on the bottom lip row), cave mood within a few %
 	}
 	if (backdrop_mode > 0.5 && scroll_rect.x >= 0.0) {   // day levels only (Odyssey unchanged)
 		// far backdrop pieces are sub-pixel detail: no sharp sun glints (they sparkle / bloom as the camera moves)
