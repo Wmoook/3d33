@@ -53,7 +53,7 @@ void fragment() {
 	vec3 meadow = mix(vec3(0.34, 0.47, 0.20), vec3(0.47, 0.54, 0.26), big);
 	vec3 wood = mix(vec3(0.10, 0.22, 0.11), vec3(0.17, 0.30, 0.13), h0) * (0.8 + 0.4 * mid);
 	vec3 rock = mix(vec3(0.44, 0.42, 0.40), vec3(0.56, 0.54, 0.52), mid);
-	vec3 mrock = mix(vec3(0.33, 0.34, 0.39), vec3(0.50, 0.50, 0.54), h0 * 0.6 + mid * 0.4);
+	vec3 mrock = mix(vec3(0.24, 0.26, 0.33), vec3(0.44, 0.44, 0.50), h0 * 0.6 + mid * 0.4);
 	vec3 col = mix(meadow, wood, smoothstep(0.25, 0.6, forest + (h0 - 0.5) * 0.4));
 	col = mix(col, rock, smoothstep(0.35, 0.6, slope) * (1.0 - mtn));
 	// mountains: rock with strata, alpine meadow at the feet, snow above the snow line
@@ -64,7 +64,7 @@ void fragment() {
 	mc = mix(mc, vec3(0.93, 0.95, 1.0), snow);
 	col = mix(col, mc, mtn);
 	// ---- lighting ----
-	vec3 lit = vista_light(col, n, sd, 1.15, 0.62);
+	vec3 lit = vista_light(col, n, sd, 1.15, mix(0.62, 0.42, mtn));
 	// ---- river water: reflects the sky, sun glints, soft banks ----
 	float water = v_col.r;
 	if (water > 0.01) {

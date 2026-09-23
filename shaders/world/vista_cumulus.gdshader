@@ -23,22 +23,20 @@ void vertex() {
 float dens(vec2 uv) {
 	// uv: x in [-1,1], y in [0,1] (0 = base)
 	vec2 s = vec2(seed * 0.173, seed * 0.311);
-	float d = 0.0;
-	// a few overlapping domes along the base, the middle one tallest
+	float d = -10.0;
+	// a few overlapping domes along the base, the middle ones tallest (signed: < 0 outside every dome)
 	for (int i = 0; i < 5; i++) {
 		float fi = float(i);
-		float cx = -0.62 + fi * 0.31 + (v_h2(vec2(seed, fi)) - 0.5) * 0.18;
-		float r = mix(0.24, 0.42, v_h2(vec2(fi, seed + 3.0))) * (1.0 - abs(cx) * 0.55);
-		float cy = r * 0.55;
-		vec2 q = (uv - vec2(cx, cy)) / vec2(r * 1.2, r * 1.7);
+		float cx = -0.56 + fi * 0.28 + (v_h2(vec2(seed, fi)) - 0.5) * 0.16;
+		float r = mix(0.2, 0.36, v_h2(vec2(fi, seed + 3.0))) * (1.0 - abs(cx) * 0.6);
+		float cy = r * 0.7;
+		vec2 q = (uv - vec2(cx, cy)) / vec2(r * 1.15, r * 1.6);
 		d = max(d, 1.0 - dot(q, q));
 	}
-	float n = texture(noise_tex, uv * vec2(0.22, 0.16) + s).r * 0.65 + texture(noise_tex, uv * vec2(0.7, 0.55) + s * 1.7).g * 0.35;
-	d = d + (n - 0.5) * 0.7 - 0.05;
-	// flatten the base, and always fade out well inside the quad
-	d *= mix(1.0, smoothstep(0.0, 0.12, uv.y), flat_base);
-	d = min(d, (1.0 - abs(uv.x)) * 3.0);
-	d = min(d, (1.0 - uv.y) * 3.0);
+	float n = texture(noise_tex, uv * vec2(0.5, 0.36) + s).r * 0.6 + texture(noise_tex, uv * vec2(1.4, 1.1) + s * 1.7).g * 0.4;
+	d = d * 0.8 + (n - 0.5) * 0.9;
+	// soft flat-ish base
+	d -= flat_base * (1.0 - smoothstep(0.0, 0.2, uv.y)) * 0.6;
 	return d;
 }
 

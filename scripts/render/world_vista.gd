@@ -356,11 +356,10 @@ func _tree_mm(nm: String, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]
 ## (x, z, height, width): distant towers of the level's own grey temple architecture (wide plinth, slender
 ## shaft ringed by ledges, a bulky crown block broken at the top - the Great Spire's silhouette).
 const RUINS := [
-	[282.0, -330.0, 150.0, 20.0],
-	[36.0, -300.0, 95.0, 15.0],
-	[132.0, -470.0, 185.0, 24.0],
-	[-80.0, -430.0, 130.0, 19.0],
-	[470.0, -450.0, 160.0, 21.0],
+	[300.0, -350.0, 120.0, 22.0],
+	[20.0, -320.0, 80.0, 18.0],
+	[110.0, -500.0, 150.0, 26.0],
+	[480.0, -470.0, 125.0, 22.0],
 ]
 
 func _make_ruins() -> void:
@@ -387,7 +386,7 @@ func _make_ruins() -> void:
 		y += 2.0
 		# shaft with ledges
 		var crown_y := gy + ht * 0.72
-		var sw := w * 0.62
+		var sw := w * 0.5
 		while y < crown_y - 6.0:
 			var th := minf(rng.randf_range(16.0, 26.0), crown_y - y)
 			_box(st, Vector3(x, y + th * 0.5, z), Vector3(sw, th, dep * 0.7), stone)
@@ -396,8 +395,11 @@ func _make_ruins() -> void:
 		# bulky crown block with a jutting balcony and a broken, jagged top
 		var ch := gy + ht - y
 		_box(st, Vector3(x, y + 1.2, z), Vector3(w * 1.15, 2.4, dep * 1.1), cap)
-		_box(st, Vector3(x, y + 2.4 + ch * 0.4, z), Vector3(w, ch * 0.8, dep), stone)
-		_box(st, Vector3(x - w * 0.62, y + ch * 0.35, z), Vector3(w * 0.3, 2.0, dep * 0.8), cap)
+		# corbels widening the shaft into the crown, then the crown with a collapsed corner
+		_box(st, Vector3(x, y - 3.0, z), Vector3(w * 0.8, 4.0, dep * 0.85), stone)
+		_box(st, Vector3(x - w * 0.12, y + 2.4 + ch * 0.4, z), Vector3(w * 1.0, ch * 0.8, dep), stone)
+		_box(st, Vector3(x + w * 0.5, y + 2.4 + ch * 0.22, z), Vector3(w * 0.3, ch * 0.44, dep * 0.9), stone)
+		_box(st, Vector3(x - w * 0.72, y + ch * 0.35, z), Vector3(w * 0.34, 2.0, dep * 0.8), cap)
 		var top := y + 2.4 + ch * 0.8
 		for k in 5:
 			var bw := w * rng.randf_range(0.14, 0.24)
@@ -420,7 +422,7 @@ func _make_ruins() -> void:
 	blob.rings = 5
 	var xf: Array[Transform3D] = []
 	var cols: Array[Color] = []
-	for k in [0, 2, 4]:
+	for k in [0, 2]:
 		var tw: float = RUINS[k][3] * 0.85
 		xf.append(Transform3D(Basis.from_scale(Vector3(tw, tw * 0.8, tw * 0.8)), crowns[k] + Vector3(0, tw * 0.3, 0)))
 		cols.append(Color(0.2, 0.34, 0.13))

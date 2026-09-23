@@ -506,7 +506,7 @@ func _fern_mesh() -> ArrayMesh:
 	var r := RandomNumberGenerator.new()
 	r.seed = 3131
 	for f in 6:
-		var az := r.randf_range(-1.9, 1.9)             # around +z (toward the camera)
+		var az := (r.randf_range(0.7, 1.9) * (1.0 if f % 2 == 0 else -1.0)) if f < 5 else r.randf_range(-0.5, 0.5)   # mostly sideways (not foreshortened)
 		var el := r.randf_range(0.55, 1.2)             # elevation of the frond's base
 		var L := r.randf_range(0.2, 0.3)
 		var dir := Vector3(sin(az) * cos(el), sin(el), cos(az) * cos(el))
@@ -521,19 +521,25 @@ func _fern_mesh() -> ArrayMesh:
 			if k > 0:
 				_blade_seg(st, prev, pt, 0.006, side, float(k - 1) / segs, t, rnd, 0.5)
 				# a pair of leaflets at this node
-				var pl := L * 0.28 * pow(1.0 - t, 0.7) * (0.4 + 0.6 * sin(minf(t * 3.0, 1.0) * PI * 0.5))
+				var pl := L * 0.42 * pow(1.0 - t, 0.6) * (0.35 + 0.65 * sin(minf(t * 3.0, 1.0) * PI * 0.5))
 				var tang := (pt - prev).normalized()
 				var nrm := side.cross(tang).normalized()
-				if nrm.y < 0.0:
+				if nrm.y + nrm.z < 0.0:
 					nrm = -nrm
-				for sgn in [-1.0, 1.0]:
-					var tip: Vector3 = pt + side * sgn * pl + tang * pl * 0.35 + Vector3.DOWN * pl * 0.2
-					var b0: Vector3 = pt - tang * pl * 0.18
-					var b1: Vector3 = pt + tang * pl * 0.18
+				for sgn: float in [-1.0, 1.0]:
+					# ovate leaflet: a diamond from the rachis out to its tip, swept toward the frond tip
+					var dirl: Vector3 = (side * sgn + tang * 0.45 + Vector3.DOWN * 0.15).normalized()
+					var base: Vector3 = pt
+					var tip: Vector3 = pt + dirl * pl
+					var mid: Vector3 = pt + dirl * pl * 0.45
+					var wv: Vector3 = tang * pl * 0.22
 					var c0 := Color(t, rnd, 1.0, pow(t, 1.5))
-					_v(st, b0, nrm, c0, Vector2(0.5, 0.0))
-					_v(st, tip, nrm, c0, Vector2(sgn * 0.5 + 0.5, 1.0))
-					_v(st, b1, nrm, c0, Vector2(0.5, 0.0))
+					_v(st, base, nrm, c0, Vector2(0.5, 0.0))
+					_v(st, mid - wv, nrm, c0, Vector2(0.0, 0.5))
+					_v(st, tip, nrm, c0, Vector2(0.5, 1.0))
+					_v(st, base, nrm, c0, Vector2(0.5, 0.0))
+					_v(st, tip, nrm, c0, Vector2(0.5, 1.0))
+					_v(st, mid + wv, nrm, c0, Vector2(1.0, 0.5))
 			prev = pt
 	return st.commit()
 

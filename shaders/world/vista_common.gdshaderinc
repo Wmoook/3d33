@@ -3,8 +3,8 @@
 // World space: 1 tile = 1 unit, y up, level ground (valley floor) at y = -172, camera looks down -z.
 
 const vec3 V_ZENITH = vec3(0.13, 0.36, 0.84);
-const vec3 V_UPPER = vec3(0.34, 0.58, 0.95);
-const vec3 V_HORIZON = vec3(0.78, 0.86, 0.95);
+const vec3 V_UPPER = vec3(0.30, 0.55, 0.96);
+const vec3 V_HORIZON = vec3(0.74, 0.84, 0.96);
 const vec3 V_LOW = vec3(0.70, 0.78, 0.88);      // below the horizon: the hazy lowlands under the cloud sea
 const vec3 V_WARM = vec3(1.0, 0.9, 0.76);
 const vec3 V_SUN = vec3(1.0, 0.9, 0.74);        // sunlight on the vista

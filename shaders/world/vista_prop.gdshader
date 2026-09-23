@@ -34,7 +34,7 @@ void fragment() {
 		float nb = texture(noise_tex, wp.xy * 0.03 + wp.z * 0.011).r;
 		float nm = texture(noise_tex, wp.xy * 0.09 + vec2(0.3, 0.1)).g;
 		col *= 0.8 + 0.4 * nb;
-		col *= 1.0 - 0.12 * step(0.85, fract(wp.y * 0.28));
+		col *= 1.0 - 0.1 * step(0.9, fract(wp.y * 0.2));
 		vec3 moss = vec3(0.24, 0.36, 0.16);
 		float mo = smoothstep(0.6, 0.9, n.y) + smoothstep(0.62, 0.8, nm) * 0.55 * (1.0 - abs(n.y));
 		col = mix(col, moss, clamp(mo, 0.0, 1.0) * v_col.a);
