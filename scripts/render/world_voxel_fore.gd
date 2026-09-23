@@ -19,7 +19,8 @@ const FY0 := -204
 const FNY := 208
 const FZ0 := 1
 const FNZ := 12
-const BALL_R := 2.6
+const BALL_R := 6.0             # fully clear radius around the ball (tiles); fades back in over BALL_FADE
+const BALL_FADE := 3.0
 const MARGIN := 0               # mask covers exactly the level; outside it counts as air
 
 var W := 400
@@ -88,7 +89,13 @@ func setup(terrain: WorldTerrain) -> void:
 			if y == H - 1: m = mini(m, 1)
 			dist[i] = m
 
-## Worker thread: pieces + mesh arrays. cols: WorldVoxel block colours (linear), indexed by block id.
+## Worker thread: framing layers + mesh arrays. cols: WorldVoxel block colours (linear), indexed by block id.
+## Everything is GROUNDED on the level's own masses: for every vertical run of coverable rock in a tile column
+##   - BANKS rise from the bottom of the run (its floor) to an organic, noise-driven top edge (layered: a near
+##     dark bank z +1..+3 and a taller one behind it, boulders bulging out of both),
+##   - HANGS drop from the top of the run (its ceiling) with jagged stalactite / root edges and vines,
+##   - a few big TRUNKS span a whole tall run, flaring roots at the floor and a leaf canopy at the ceiling.
+## Adjacent columns share the same noise, so the layers are continuous silhouettes, never isolated cubes.
 func generate(cols: PackedColorArray) -> void:
 	_cols = cols
 	vox.resize(FNX * FNY * FNZ)
@@ -97,33 +104,122 @@ func generate(cols: PackedColorArray) -> void:
 	rng.seed = 90210
 	var fn := FastNoiseLite.new()
 	fn.seed = 313
-	fn.frequency = 0.35
-	var step := 6
-	for gy in range(2, H - 2, step):
-		for gx in range(0, W, step):
-			var tx := gx + rng.randi_range(0, step - 1)
-			var ty := gy + rng.randi_range(0, step - 1)
-			if tx >= W or ty >= H:
+	fn.frequency = 0.07
+	fn.fractal_octaves = 3
+	var trunk_x := -100
+	for tx in W:
+		var ty := 0
+		while ty < H:
+			if mask[ty * W + tx] == 0:
+				ty += 1
 				continue
-			var d := dist[ty * W + tx]
-			if d < 1 or rng.randf() > (0.35 if d < 2 else 0.6):
+			var a := ty
+			while ty < H and mask[ty * W + tx] > 0:
+				ty += 1
+			var b := ty - 1
+			var ln := b - a + 1
+			if ln < 3:
 				continue
-			var r := rng.randf()
-			if d >= 6 and r < 0.26:
-				_trunk(tx, ty, d, rng)
-			elif d >= 5 and r < 0.44:
-				_pillar(tx, ty, d, rng)
-			elif d >= 6 and r < 0.52:
-				_arch(tx, ty, d, rng)
-			elif d >= 4 and r < 0.7:
-				_bank(tx, ty, d, rng, fn)
-			else:
-				_boulder(tx, ty, d, rng, fn)
-			piece_count += 1
+			_column(tx, a, b, ln, fn, rng)
+			if ln >= 12 and tx - trunk_x > 26 and rng.randf() < 0.3 and dist[((a + b) / 2) * W + tx] >= 2:
+				trunk_x = tx
+				_trunk(tx, a, b, rng)
+	_boulders(rng, fn)
 	_moss_tops(rng)
 	_build_mesh()
 
-# ---------------------------------------------------------------- pieces (world block coords, y up)
+## One tile column of one run: bank from the floor, hang from the ceiling (world block y = -tile - 1).
+func _column(tx: int, a: int, b: int, ln: int, fn: FastNoiseLite, rng: RandomNumberGenerator) -> void:
+	var x := float(tx)
+	var nb := fn.get_noise_2d(x, 0.0)            # where banks grow (continuous along x)
+	var nh := fn.get_noise_2d(x, 200.0)          # where hangs grow
+	var jag := fn.get_noise_2d(x * 3.0, 50.0)    # edge roughness
+	# near bank: z 1..(2..3), top at 25..70 % of the run height above its floor
+	if nb > -0.05 and ln >= 4:
+		var hgt := int(round(ln * clampf(0.3 + nb * 0.6 + jag * 0.12, 0.15, 0.8)))
+		var depth := 2 + (1 if nb > 0.25 else 0)
+		for ty in range(b - hgt + 1, b + 1):
+			for z in range(FZ0, FZ0 + depth):
+				_fput(tx, -ty - 1, z, WorldVoxel.STONE if ty > b - hgt + 3 else WorldVoxel.DIRT)
+		# the taller bank behind it (z 4..6), a little higher and offset
+		var hb := hgt + int(round(ln * (0.15 + 0.2 * fn.get_noise_2d(x * 1.7, 90.0))))
+		if nb > 0.12:
+			for ty in range(b - mini(hb, ln - 1) + 1, b + 1):
+				for z in range(FZ0 + 3, FZ0 + 6):
+					_fput(tx, -ty - 1, z, WorldVoxel.STONE_W if ty > b - hb + 2 else WorldVoxel.DIRT)
+	# hang from the ceiling: stone / earth with a stalactite edge, roots and vines below it
+	if nh > 0.05 and ln >= 5:
+		var hl := int(round(ln * clampf(0.15 + nh * 0.5 + jag * 0.15, 0.1, 0.55)))
+		var z0 := FZ0 + 1 + (1 if nh > 0.3 else 0)
+		for ty in range(a, a + hl):
+			for z in range(z0, z0 + 3):
+				_fput(tx, -ty - 1, z, WorldVoxel.STONE if ty < a + hl - 2 else WorldVoxel.DIRT)
+		if rng.randf() < 0.35:
+			var vl := rng.randi_range(2, 5)
+			for q in vl:
+				var vy := a + hl + q
+				if vy >= b:
+					break
+				_fput(tx, -vy - 1, z0, WorldVoxel.PINE if q < vl - 1 or rng.randf() < 0.5 else WorldVoxel.LEAVES)
+		elif rng.randf() < 0.25:
+			for q in rng.randi_range(1, 3):
+				var vy := a + hl + q
+				if vy >= b:
+					break
+				_fput(tx, -vy - 1, z0 + 1, WorldVoxel.LOG)   # a root
+
+## A big tree: 2x2 trunk over the whole run (z 6..7), flaring roots at the floor, canopy at the ceiling.
+func _trunk(tx: int, a: int, b: int, rng: RandomNumberGenerator) -> void:
+	var z := FZ0 + 6
+	for ty in range(a, b + 1):
+		for q in 4:
+			_fput(tx + q % 2, -ty - 1, z + q / 2, WorldVoxel.LOG)
+	# roots
+	for side: int in [-1, 1]:
+		var ox := tx + (2 if side > 0 else -1)
+		for q in rng.randi_range(2, 4):
+			_fput(ox + side * q, -b - 1 + (1 if q == 0 else 0), z - (q % 2), WorldVoxel.LOG)
+			_fput(ox + side * (q - 1), -b - 1, z, WorldVoxel.LOG)
+	# canopy hugging the ceiling: a wide flattened blob of leaves (clipped by the rock outline)
+	var r := rng.randf_range(4.0, 6.0)
+	var cy := -a - 1 - 1
+	for dz in range(-2, 3):
+		for dy in range(-3, 3):
+			for dx in range(-int(r) - 1, int(r) + 2):
+				var p := Vector3(dx / r, dy / 2.6, dz / 2.2)
+				if p.length() <= 1.0 + rng.randf_range(-0.12, 0.08):
+					if _fget(tx + dx, cy + dy, z + dz) == 0:
+						_fput(tx + dx, cy + dy, z + dz, WorldVoxel.LEAVES if rng.randf() < 0.8 else WorldVoxel.PINE)
+	# a few hanging vines from the canopy
+	for _v in 6:
+		var vx := tx + rng.randi_range(-int(r), int(r))
+		for q in rng.randi_range(2, 6):
+			if -a - 5 - q < -b - 1:
+				break
+			_fput(vx, -a - 5 - q, z - 2, WorldVoxel.PINE)
+
+## Layered boulders bulging out of the banks (always touching a bank block below them).
+func _boulders(rng: RandomNumberGenerator, fn: FastNoiseLite) -> void:
+	for _n in 90:
+		var tx := rng.randi_range(0, W - 1)
+		var ty := rng.randi_range(0, H - 1)
+		if dist[ty * W + tx] < 2:
+			continue
+		var wy := -ty - 1
+		# needs bank support right below (grounded)
+		if _fget(tx, wy - 1, FZ0) == 0 and _fget(tx, wy - 1, FZ0 + 1) == 0:
+			continue
+		var r := rng.randf_range(1.3, minf(2.8, dist[ty * W + tx] * 0.7))
+		var cz := float(FZ0) + r * 0.8
+		var ri := int(ceil(r)) + 1
+		var mat := WorldVoxel.STONE if rng.randf() < 0.6 else WorldVoxel.STONE_W
+		for dz in range(-ri, ri + 1):
+			for dy in range(-1, ri + 1):
+				for dx in range(-ri, ri + 1):
+					var p := Vector3(dx, dy * 1.25, dz)
+					if p.length() + fn.get_noise_3d((tx + dx) * 5.0, (wy + dy) * 5.0, dz * 5.0) * 0.8 <= r:
+						_fput(tx + dx, wy + dy, int(cz) + dz, mat)
+
 func _fput(x: int, y: int, z: int, id: int) -> void:
 	var i := x - FX0
 	var j := y - FY0
@@ -139,113 +235,6 @@ func _fget(x: int, y: int, z: int) -> int:
 	if i < 0 or j < 0 or k < 0 or i >= FNX or j >= FNY or k >= FNZ:
 		return 0
 	return vox[(k * FNY + j) * FNX + i]
-
-## Vertical run of coverable tiles through (tx, ty): [top ty, bottom ty] with dist >= 2.
-func _vrun(tx: int, ty: int) -> Vector2i:
-	var a := ty
-	var b := ty
-	while a > 0 and dist[(a - 1) * W + tx] >= 2:
-		a -= 1
-	while b < H - 1 and dist[(b + 1) * W + tx] >= 2:
-		b += 1
-	return Vector2i(a, b)
-
-func _boulder(tx: int, ty: int, d: int, rng: RandomNumberGenerator, fn: FastNoiseLite) -> void:
-	var r := rng.randf_range(1.0, maxf(1.2, minf(3.2, d * 0.6)))
-	var cz := 1.0 + r + rng.randf_range(0.0, 3.0)
-	var c := Vector3(tx + 0.5, -ty - 0.5, cz)
-	var ri := int(ceil(r)) + 1
-	var mat := WorldVoxel.STONE if rng.randf() < 0.7 else WorldVoxel.STONE_W
-	for dz in range(-ri, ri + 1):
-		for dy in range(-ri, ri + 1):
-			for dx in range(-ri, ri + 1):
-				var p := Vector3(dx, dy * 1.2, dz)
-				if p.length() + fn.get_noise_3d(c.x + dx, c.y + dy, dz * 3.0) * 0.9 <= r:
-					_fput(int(floorf(c.x)) + dx, int(floorf(c.y)) + dy, int(floorf(cz)) + dz, mat)
-
-func _bank(tx: int, ty: int, d: int, rng: RandomNumberGenerator, fn: FastNoiseLite) -> void:
-	var w := rng.randi_range(4, mini(10, d + 3))
-	var hh := rng.randi_range(2, 3)
-	var zc := rng.randi_range(1, 3)
-	var x0 := tx - w / 2
-	var y0 := -ty - hh
-	for dx in w:
-		var edge := mini(dx, w - 1 - dx)
-		var ch := mini(hh, edge + 1 + int(fn.get_noise_1d((x0 + dx) * 2.0) * 1.5))
-		for dz in range(0, rng.randi_range(2, 4)):
-			for dy in maxi(ch - dz / 2, 1):
-				_fput(x0 + dx, y0 + dy, zc + dz, WorldVoxel.DIRT)
-
-func _trunk(tx: int, ty: int, _d: int, rng: RandomNumberGenerator) -> void:
-	var run := _vrun(tx, ty)
-	var top := run.x + rng.randi_range(1, 3)
-	var bot := run.y
-	if bot - top < 6:
-		return
-	var z := rng.randi_range(3, 7)
-	var wide := rng.randf() < 0.35
-	for ty2 in range(top, bot + 1):
-		_fput(tx, -ty2 - 1, z, WorldVoxel.LOG)
-		if wide:
-			_fput(tx + 1, -ty2 - 1, z, WorldVoxel.LOG)
-	# leaf clumps along the trunk and a crown at its top, vines hanging from them
-	var clumps := [top]
-	for _c in rng.randi_range(1, 2):
-		clumps.append(rng.randi_range(top + 2, maxi(top + 3, (top + bot) / 2)))
-	for cy: int in clumps:
-		var rr := 2 if cy == top else 1
-		for dz in range(-1, 2):
-			for dy in range(-rr, rr + 1):
-				for dx in range(-rr - 1, rr + 2):
-					if absi(dx) + absi(dy) + absi(dz) > rr + 1 or rng.randf() < 0.2:
-						continue
-					if _fget(tx + dx, -cy - 1 + dy, z + dz) == 0:
-						_fput(tx + dx, -cy - 1 + dy, z + dz, WorldVoxel.LEAVES)
-		for _v in rng.randi_range(1, 3):
-			var vx := tx + rng.randi_range(-rr - 1, rr + 1)
-			var ln := rng.randi_range(2, 6)
-			for q in ln:
-				if -cy - 2 - q < -bot - 1:
-					break
-				_fput(vx, -cy - 2 - q, z + 1, WorldVoxel.PINE)
-
-func _pillar(tx: int, ty: int, _d: int, rng: RandomNumberGenerator) -> void:
-	var run := _vrun(tx, ty)
-	var bot := run.y
-	var top := maxi(run.x + 1, bot - rng.randi_range(4, 11))
-	if bot - top < 3:
-		return
-	var z := rng.randi_range(2, 5)
-	for ty2 in range(top, bot + 1):
-		for q in 4:
-			if ty2 == top and rng.randf() < 0.45:
-				continue   # broken top
-			_fput(tx + q % 2, -ty2 - 1, z + q / 2, WorldVoxel.RUIN)
-	# plinth + moss cap + a hanging vine
-	for dx in range(-1, 3):
-		_fput(tx + dx, -bot - 1, z - 1 if z > 1 else z, WorldVoxel.RUIN)
-	_fput(tx, -top, z, WorldVoxel.RUIN_MOSS)
-	if rng.randf() < 0.6:
-		for q in rng.randi_range(2, 5):
-			_fput(tx + 1, -top - 1 - q, z + 2, WorldVoxel.PINE)
-
-func _arch(tx: int, ty: int, d: int, rng: RandomNumberGenerator) -> void:
-	var span := mini(rng.randi_range(3, 5), d - 2)
-	var hh := mini(rng.randi_range(4, 7), d)
-	var z := rng.randi_range(2, 4)
-	var base := -ty + hh / 2
-	for side: int in [-1, 1]:
-		var px := tx + side * (span / 2 + 1)
-		for y in hh:
-			_fput(px, base - 1 - y, z, WorldVoxel.RUIN)
-	var broken := rng.randf() < 0.5
-	for dx in range(-(span / 2 + 1), span / 2 + 2):
-		if broken and dx > 0:
-			continue
-		_fput(tx + dx, base, z, WorldVoxel.RUIN_MOSS if rng.randf() < 0.4 else WorldVoxel.RUIN)
-	if rng.randf() < 0.7:
-		for q in rng.randi_range(2, 4):
-			_fput(tx - 1, base - 1 - q, z + 1, WorldVoxel.PINE)
 
 ## Exposed tops of dirt / stone turn to grass (moss), like the landscape.
 func _moss_tops(rng: RandomNumberGenerator) -> void:
@@ -287,6 +276,10 @@ func _build_mesh() -> void:
 					continue
 				voxel_count += 1
 				var bc: Color = _cols[id] if id < _cols.size() else Color(0.3, 0.3, 0.3)
+				# blocks stacked above this one (-> darker toward the bottom of every mass: grounded, AO-like)
+				var above := 0
+				while above < 12 and _occ(i, j + above + 1, k):
+					above += 1
 				for dd: Array in dirs:
 					var n: Vector3i = dd[0]
 					if _occ(i + n.x, j + n.y, k + n.z):
@@ -312,7 +305,7 @@ func _build_mesh() -> void:
 						verts.append(p)
 						norms.append(Vector3(n))
 						colors.append(Color(bc.r, bc.g, bc.b, float(id) / 255.0))
-						uvs.append(Vector2(ao, 0.0))
+						uvs.append(Vector2(ao, above + (FY0 + j + 1.0 - p.y)))
 					var nf := Vector3(n)
 					var fl := Vector3(a).cross(Vector3(b)).dot(nf) > 0.0
 					idx.append_array(PackedInt32Array([base, base + (2 if fl else 1), base + (1 if fl else 2),
@@ -335,6 +328,7 @@ func upload(sun_dir: Vector3) -> void:
 	material.set_shader_parameter("mask_size", Vector2(W, H))
 	material.set_shader_parameter("ball_pos", Vector3(-1000, -1000, 0))
 	material.set_shader_parameter("ball_r", BALL_R)
+	material.set_shader_parameter("ball_fade", BALL_FADE)
 	material.set_shader_parameter("sun_dir", sun_dir)
 	material.set_shader_parameter("fade", 0.0)
 	WorldPbr.bind(material, false, 1.0)
@@ -363,6 +357,7 @@ func set_ball(p: Vector3) -> void:
 	if material:
 		material.set_shader_parameter("ball_pos", p)
 		material.set_shader_parameter("ball_r", BALL_R)
+		material.set_shader_parameter("ball_fade", BALL_FADE)
 
 ## Fallback when nobody feeds the ball: keep a wide clear circle around the camera's aim point.
 func fallback_from_camera(cam: Camera3D) -> void:
@@ -370,7 +365,7 @@ func fallback_from_camera(cam: Camera3D) -> void:
 		return
 	var p := cam.global_position
 	material.set_shader_parameter("ball_pos", Vector3(p.x, p.y, 0.0))
-	material.set_shader_parameter("ball_r", 5.0)
+	material.set_shader_parameter("ball_r", 8.0)
 
 ## Tests: flat magenta output for the safety check.
 func set_debug_mask(on: bool) -> void:

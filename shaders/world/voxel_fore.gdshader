@@ -11,11 +11,12 @@ render_mode depth_draw_opaque, cull_back, diffuse_lambert_wrap;
 uniform sampler2D fg_mask : filter_linear, repeat_disable;
 uniform vec2 mask_size = vec2(400.0, 200.0);
 uniform vec3 ball_pos = vec3(-1000.0, -1000.0, 0.0);
-uniform float ball_r = 2.6;
+uniform float ball_r = 6.0;
+uniform float ball_fade = 3.0;
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
-uniform float darken = 0.34;
-uniform float desat = 0.4;
-uniform vec3 cool = vec3(0.86, 0.93, 1.06);
+uniform float darken = 0.62;
+uniform float desat = 0.3;
+uniform vec3 cool = vec3(0.9, 0.95, 1.04);
 uniform float fade = 1.0;
 uniform float debug_mask = 0.0;
 uniform vec3 dirt_col = vec3(0.17, 0.12, 0.07);
@@ -24,6 +25,7 @@ uniform vec3 grass_col = vec3(0.06, 0.13, 0.006);   // tests: 1 = flat magenta (
 varying vec3 w_pos;
 varying vec3 w_nrm;
 varying float v_ao;
+varying float v_depth;
 
 float h12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -35,6 +37,7 @@ void vertex() {
 	w_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	w_nrm = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	v_ao = UV.x;
+	v_depth = UV.y;
 }
 
 void fragment() {
@@ -52,7 +55,7 @@ void fragment() {
 		float mn = texelFetch(fg_mask, ivec2(floor(tc)), 0).r;
 		keep = smoothstep(0.62, 0.9, m) * step(0.5, mn);
 	}
-	keep *= smoothstep(ball_r, ball_r + 1.0, length(p - ball_pos.xy));
+	keep *= smoothstep(ball_r, ball_r + ball_fade, length(p - ball_pos.xy));
 	keep *= fade;
 	// dithered edge (no transparency sorting; TAA smooths it)
 	if (keep < 0.999 && keep <= h12(FRAGCOORD.xy)) {
@@ -98,7 +101,9 @@ void fragment() {
 	PbrS ps = pbr_tri(layer, w_pos + vec3(hb * 11.0, hb * 7.0, hb * 5.0), gn, sc, 1.0, false);
 	pbr_apply(ps, 0.55, 0.45, 0.4, 0.05, col, n, rough, ao);
 	float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-	col = mix(col, vec3(l), desat) * cool * darken;
+	// Trine / Ori style depth silhouettes: darker toward the bottom of each mass and the nearer to the camera
+	float dk = mix(1.0, 0.42, smoothstep(0.0, 9.0, v_depth)) * mix(1.0, 0.45, smoothstep(2.0, 12.0, w_pos.z));
+	col = mix(col, vec3(l), desat) * cool * darken * dk;
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	SPECULAR = 0.15;

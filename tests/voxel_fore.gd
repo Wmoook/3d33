@@ -7,7 +7,7 @@ extends Node
 ##   bash tools_run_test.sh res://tests/voxel_fore.tscn [-- only=spawn,keep]
 const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS := {"spawn": Vector2i(2, 56), "grove": Vector2i(40, 40), "falls": Vector2i(150, 165),
-	"keep": Vector2i(300, 70), "sanctum": Vector2i(330, 152), "halls": Vector2i(55, 100), "spire_mid": Vector2i(197, 115)}
+	"keep": Vector2i(300, 70), "sanctum": Vector2i(330, 152), "halls": Vector2i(55, 100), "spire_mid": Vector2i(197, 115), "halls2": Vector2i(80, 92), "hall_great": Vector2i(350, 95)}
 var game
 var wv: WorldView
 var vx: WorldVoxel

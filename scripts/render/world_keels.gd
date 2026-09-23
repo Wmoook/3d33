@@ -7,6 +7,7 @@ extends Node3D
 ## underside. Small clusters (V-birds, ledges) get a mini keel. Exposes keel_sites for FX.
 
 const MAX_CLUSTER := 1500      # bigger components count as ground masses
+const MAX_WIDTH := 14.0        # wider clusters get no keel
 const Z_TOP := -1.2
 const Z_TIP := -3.6
 
@@ -66,6 +67,8 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 		var width := float(x1 - x0 + 1)
 		if width < 2.0:
 			continue   # a lone floating block with a dark spike under it reads as a hazard
+		if width > MAX_WIDTH:
+			continue   # big floating ruins: one keel fan would sweep across their play rooms; the depth volume's own underside carries them
 		# pale marble sculptures (the V-birds) get only a tiny weathered-stone stub
 		var marble := 0
 		for i in comp:
