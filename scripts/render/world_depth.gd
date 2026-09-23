@@ -782,7 +782,7 @@ func _build_cave_props(buckets: Dictionary) -> void:
 			if not buckets.has(key):
 				buckets[key] = Bucket.new()
 			var b: Bucket = buckets[key]
-			if terrain.solid[i - W]:
+			if false and terrain.solid[i - W]:   # thin hanging roots read as floating dark lines in the dim caves
 				for k in 2:
 					if rng.randf() > 0.55:
 						continue
@@ -791,7 +791,7 @@ func _build_cave_props(buckets: Dictionary) -> void:
 					var len := rng.randf_range(0.35, 1.3)
 					var w := rng.randf_range(0.04, 0.09)
 					_prop_box(b, cx - w, cx + w, -float(y), -float(y) - len, Z_FRONT - d + w, Z_FRONT - d - w, Vector2(x + 0.5, y - 0.5), 14.0)
-			if terrain.solid[i + W] and rng.randf() < 0.5:
+			if false and terrain.solid[i + W] and rng.randf() < 0.5:   # small floor rocks read as black blocks at the floor line
 				var d := rng.randf_range(0.5, r - 0.3)
 				var cx := x + rng.randf_range(0.2, 0.8)
 				var s := rng.randf_range(0.08, 0.22)
