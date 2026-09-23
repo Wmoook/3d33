@@ -268,10 +268,20 @@ static func hollow_image(terrain: WorldTerrain, room_border := false) -> Image:
 				# behind the plane (through the room box's back-faced side wall) into the forest space: the forest
 				# must draw there too. The closed room box is nearer and still occludes everything inside it.
 				elif room_border and stone_room(terrain, i):
+					# any non-solid tile of a stone room within 3 tiles of the hollow (small rooms set inside the
+					# forest): far-zoom rays through the room leave it behind the plane into forest space
+					for dy in range(-3, 4):
+						for dx in range(-3, 4):
+							var nx := x + dx
+							var ny := y + dy
+							if nx >= 0 and ny >= 0 and nx < W and ny < H and m[ny * W + nx]:
+								b[i] = 90   # backstop only (forest_visible_deep): nothing may draw in front of the room
+				elif room_border and not terrain.solid[i]:
+					# other non-hollow air next to the hollow (pockets / code-2 slots world recesses): backstop too
 					for d: int in [-1, 1, -W, W]:
 						var j := i + d
 						if j >= 0 and j < W * H and m[j]:
-							b[i] = 90   # backstop only (forest_visible_deep): nothing may draw in front of the room
+							b[i] = 90
 							break
 				continue
 			for dy in range(-1, 2):
