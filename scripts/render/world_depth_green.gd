@@ -73,6 +73,14 @@ func build_depth(lvl: EELevel, terrain: WorldTerrain, top_at: Callable, mat_at: 
 						var band := 0 if near else 1
 						var kind := Kind.TALL if near else Kind.SHORT
 						var s := _rng.randf_range(0.8, 1.15) * (1.0 if near else 1.6)
+						# optional smooth skin (WorldDepth.smooth_skin): sink the clump by its footprint's rise on
+						# gentle slopes; block steps (rise >= 0.4 over 0.25) are walls, not slopes -> ignored
+						var hx: float = top_at.call(px + 0.25, pz)
+						var hz: float = top_at.call(px, pz - 0.25)
+						if not is_nan(hx) and not is_nan(hz):
+							var rise := maxf(absf(hx - py), absf(hz - py))
+							if rise > 0.005 and rise < 0.4:
+								py -= minf(rise / 0.25, 1.5) * (0.3 if near else 0.45) * s * 0.6
 						_group_push(Vector3i(int(px) / CHUNK, band, 0), kind, Vector3(px, py, pz), s, _vary(base, 0.12))
 						n["near" if near else "mid"] += 1
 					if z < -4.0 and not cm[ty * W + clampi(int(x), 0, W - 1)] and _rng.randf() < BUSH_CHANCE:

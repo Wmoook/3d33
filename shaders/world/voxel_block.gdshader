@@ -181,7 +181,6 @@ void fragment() {
 	float ao = block_ao;
 	vec3 off = vec3(hb, hb2, h31(bcf + 5.7)) * 13.0;
 	vec3 sp = floor(wp - gn * 0.25) + off + (wp - floor(wp - gn * 0.25));
-	float dist = length(CAMERA_POSITION_WORLD - wp);
 	float fadek = pbr_fade(wp, CAMERA_POSITION_WORLD, 0.35) * pbr_strength;
 	PbrS s = pbr_tri(layer, sp, gn, tscale, 1.0, false);
 	float kalb = mat == PBR_M_SNOW ? 0.3 : 0.85;
