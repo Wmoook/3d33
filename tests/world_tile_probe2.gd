@@ -19,10 +19,11 @@ func _init() -> void:
 	t._classify()
 	t.window_image()
 	var h := WorldForest.hollow_mask(t)
+	var hi := WorldForest.hollow_image(t)
 	for y in range(at.y - 3, at.y + 4):
 		var line := "%3d " % y
 		for x in range(at.x - 6, at.x + 7):
 			var i := y * lvl.width + x
-			line += "%s%3d%s%s " % ["S" if t.solid[i] else ".", t.wall_code[i], "h" if h[i] else " ", "k" if t.sky[i] else " "]
+			line += "%s%3d%s%s%s " % ["S" if t.solid[i] else ".", t.wall_code[i], "h" if h[i] else " ", "k" if t.sky[i] else " ", "i" if hi.get_pixel(x, y).r > 0.1 else " "]
 		print(line)
 	quit()

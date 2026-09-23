@@ -2,3 +2,4 @@
 *.import.bak
 build/
 .tests_visible
+__pycache__/
