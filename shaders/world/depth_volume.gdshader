@@ -313,10 +313,14 @@ void fragment() {
 		hcol = forest_fog;   // forest: faces recede into the dark forest fog, not the sky
 		hz = max(hz, smoothstep(0.3, 6.0, d) * 0.8);
 		albedo *= 0.7;
+		if (gn.y < -0.5) {
+			albedo /= 0.45 * 1.6;   // crown / trunk undersides in the forest: no near-black dashes along slab edges
+		}
 	}
 	ALBEDO = albedo * ao * (1.0 - hz);
 	if (prop) {
-		ALBEDO = kind < 14.5 ? vec3(0.05, 0.034, 0.02) * mix(0.8, 1.2, vnoise(wp.xy * 7.0)) : c.rgb * 0.45 * mix(0.8, 1.15, vnoise(wp.xz * 9.0));
+		// roots are dirt-brown, rocks the floor's colour (never black specks against the dark cave)
+		ALBEDO = kind < 14.5 ? vec3(0.17, 0.115, 0.07) * mix(0.8, 1.2, vnoise(wp.xy * 7.0)) : max(c.rgb * 0.7, vec3(0.08, 0.07, 0.06)) * mix(0.85, 1.15, vnoise(wp.xz * 9.0));
 		rough = 1.0;
 	}
 	if (earth_back || prop || (inroom && sf > 0.5 && ownstart < 2.5)) {
@@ -334,6 +338,9 @@ void fragment() {
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.4;
 	EMISSION = hcol * hz * haze_emit + emit_x * ao * (1.0 - hz);
+	if (hcol == forest_fog) {
+		EMISSION = max(EMISSION, ALBEDO * 0.3 + forest_fog * 0.6);   // forest faces never sink to black lines
+	}
 	if (wallblock) {
 		EMISSION *= 0.2;
 	}

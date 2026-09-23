@@ -248,8 +248,8 @@ func _build_mesh() -> void:
 				var nc := Vector2(-1.0, -1.0)
 				if nx >= 0 and ny >= 0 and nx < W and ny < H:
 					nc = _cover(ny * W + nx)
-				elif nx < 0 or nx >= W or ny >= H:
-					continue   # the level border: the margin mass continues there
+				elif (nx < 0 or nx >= W or ny >= H) and c.y <= STRUCT_CAP and room[i] == 0:
+					continue   # the level border: the margin mass continues there (deep rooms / ground close it themselves)
 				var clip := INF
 				if nx >= 0 and ny >= 0 and nx < W and ny < H and room[ny * W + nx] != 0 and room[i] == 0:
 					clip = room_r[ny * W + nx] + ROOM_WALL   # behind a room's back-wall slab: open (the view out of windows)
@@ -257,6 +257,15 @@ func _build_mesh() -> void:
 					if piece.x >= clip - 0.01:
 						continue
 					_face(buckets, x, y, side, piece.x, minf(piece.y, clip), solid_t)
+				var opp: int = [1, 0, 3, 2][side]   # the closing faces are built from the neighbour, facing into the room
+				if room[i] != 0 and (nx < 0 or nx >= W or ny >= H):
+					_face(buckets, nx, ny, opp, 0.0, room_r[i], true)   # a room at the map border: closed side
+				elif room[i] != 0 and nx >= 0 and ny >= 0 and nx < W and ny < H:
+					var j := ny * W + nx
+					if room[j] == 0 and not terrain.solid[j] and not terrain.sky[j] and not mass[j]:
+						# the room opens onto non-room, non-sky air (a forest hollow above a cave mouth): close
+						# the room's open side behind the plane so no ray slips between the two systems
+						_face(buckets, nx, ny, opp, 0.0, room_r[i], true)
 	_build_room_backs(buckets)
 	_build_cave_props(buckets)
 	for key in buckets:
@@ -880,9 +889,27 @@ func _rhythm_windows(comp: PackedInt32Array, rid: int) -> void:
 ## +z faces of the room back walls (kind 4) at d = R, plus an opaque front cap (kind 5, just behind the slab)
 ## on every solid tile touching a room: the slab's rounded corners otherwise open slits onto what lies behind.
 func _build_room_backs(buckets: Dictionary) -> void:
+	# rooms without windows get a closed back (behind their wall slab): side views past a room edge must hit
+	# rock, not the empty space behind the tower. Rooms with windows stay open behind (the view out).
+	var windowed := {}
+	for i in W * H:
+		if win[i] and room[i] != 0:
+			windowed[room[i]] = true
 	for y in H:
 		for x in W:
 			var i := y * W + x
+			if room[i] != 0 and not win[i] and not windowed.has(room[i]):
+				var kb := Vector2i(x / CHUNK, y / CHUNK)
+				if not buckets.has(kb):
+					buckets[kb] = Bucket.new()
+				var bb: Bucket = buckets[kb]
+				var zb := Z_FRONT - room_r[i] - ROOM_WALL
+				var pb := [Vector3(x, -y, zb), Vector3(x + 1, -y, zb), Vector3(x + 1, -y - 1, zb), Vector3(x, -y - 1, zb)]
+				for j in [0, 1, 2, 0, 2, 3]:
+					bb.v.append(pb[j])
+					bb.n.append(Vector3(0, 0, 1))
+					bb.uv.append(Vector2(x + 0.5, y + 0.5))
+					bb.uv2.append(Vector2(1.0, 5.0))
 			if room[i] == 0 and terrain.solid[i] and _touches_room(x, y):
 				var kc := Vector2i(x / CHUNK, y / CHUNK)
 				if not buckets.has(kc):

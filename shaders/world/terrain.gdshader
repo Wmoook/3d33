@@ -205,10 +205,10 @@ void fragment() {
 		layer = (s.y >= -0.13) ? 1 : 2;
 	}
 	if (layer == 1 && s.y < -0.07) { layer = 2; }
-	if (depth_cont > 0.5 && layer != 0 && room_near(p)) {
+	if (depth_cont > 0.5 && layer != 0 && p_out <= 0.0 && room_near(p)) {
 		discard;   // structure interior / earth tunnel: WorldDepth draws the recessed room
 	}
-	if (layer != 0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+	if (layer != 0 && p_out <= 0.0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
 		discard;   // forest hollow: WorldForest's deep forest shows through
 	}
 	if (layer == 2 && fld.r > 0.5) {
