@@ -859,23 +859,8 @@ func _make_home_keel() -> void:
 	m.set_shader_parameter("fog_near", 0.1)
 	mi.material_override = m
 	_setup_instance(mi, "VistaHomeKeel")
-	# roots hanging from the lip, and the level's water spilling off the underside
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	var roots := SurfaceTool.new()
-	roots.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for k in 60:
-		var rx := rng.randf_range(-60.0, 460.0)
-		var rl := rng.randf_range(2.5, 9.0)
-		_box(roots, Vector3(rx, -199.0 - rl * 0.5, -5.5 - rng.randf() * 4.0), Vector3(rng.randf_range(0.15, 0.4), rl, 0.3), Color(0.16, 0.13, 0.1, 0.0) if rng.randf() < 0.75 else VINE)
-	roots.generate_normals()
-	var rm := MeshInstance3D.new()
-	rm.mesh = roots.commit()
-	var rmat := _mat("res://shaders/world/vista_prop.gdshader")
-	rmat.set_shader_parameter("kind", 1)
-	rmat.set_shader_parameter("fog_near", 0.1)
-	rm.material_override = rmat
-	_setup_instance(rm, "VistaHomeRoots")
+	# the level's water spilling off the underside (hanging roots removed: detached from world's lip,
+	# they read as floating poles)
 	_make_falls([[Vector3(150.0, -197.0, -4.0), 6.0], [Vector3(358.0, -197.0, -4.0), 4.0], [Vector3(8.0, -197.0, -4.0), 3.5]])
 
 # ------------------------------------------------------------------ block-built scenery
