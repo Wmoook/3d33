@@ -359,7 +359,6 @@ func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
 ## Coin door reached its count (non-Odyssey): the bars grind up with dust, sparks and a warm flare at every
 ## piece of the door; the grand final gate (the highest count in the level) gets a much bigger unsealing.
 func _unseal(b: Dictionary) -> void:
-	print("[fx] unseal coin door need=", b.need, " pieces=", b.labels.size())
 	if bursts == null:
 		return
 	var grand := true
@@ -372,6 +371,8 @@ func _unseal(b: Dictionary) -> void:
 		spots.append(Vector3(l.position.x, l.position.y, 0.1))
 	if spots.is_empty():
 		spots.append(b.center)
+	# only pieces near the ball (off-screen doors would just steal the burst pools)
+	spots = spots.filter(func(q: Vector3) -> bool: return Vector2(q.x - _ball_pos.x, q.y - _ball_pos.y).length() < 30.0)
 	for p in spots:
 		bursts.play(&"dust", p + Vector3(0, -0.5, 0.2), Vector3.UP, Color(0.85, 0.75, 0.55), 1.0)
 		bursts.play(&"sparks", p + Vector3(0, 0.4, 0.2), Vector3.UP, col, 1.0)

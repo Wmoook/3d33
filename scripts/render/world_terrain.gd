@@ -400,6 +400,37 @@ func _mark_crags(fgb: PackedByteArray) -> void:
 			else:
 				run = false
 
+## Day levels: a lone bg tile whose colour none of its 8 neighbours share (e.g. the pink 547 at the FV
+## spawn) takes the most common neighbour colour, so it can't read as an object on the back wall.
+func _despeckle_bg(bgb: PackedByteArray, has_bgc: PackedByteArray) -> void:
+	var src := bgb.duplicate()
+	for y in range(1, H - 1):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if not has_bgc[i]:
+				continue
+			var mine := Vector3i(src[i * 4], src[i * 4 + 1], src[i * 4 + 2])
+			var counts := {}
+			var same := false
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if dx == 0 and dy == 0:
+						continue
+					var j := i + dy * W + dx
+					if not has_bgc[j]:
+						continue
+					var c := Vector3i(src[j * 4], src[j * 4 + 1], src[j * 4 + 2])
+					if c == mine:
+						same = true
+					counts[c] = counts.get(c, 0) + 1
+			if same or counts.is_empty():
+				continue
+			var best: Vector3i = counts.keys()[0]
+			for c in counts:
+				if counts[c] > counts[best]:
+					best = c
+			bgb[i * 4] = best.x; bgb[i * 4 + 1] = best.y; bgb[i * 4 + 2] = best.z
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
@@ -559,6 +590,8 @@ func _classify() -> void:
 			bgb[i * 4] = int(fgb[i * 4] * 0.5); bgb[i * 4 + 1] = int(fgb[i * 4 + 1] * 0.5)
 			bgb[i * 4 + 2] = int(fgb[i * 4 + 2] * 0.5); bgb[i * 4 + 3] = 255
 			has_bgc[i] = 1
+	if day:
+		_despeckle_bg(bgb, has_bgc)
 	_dilate(bgb, has_bgc)
 	# bg alpha: 255 present, else 0 (colour stays dilated)
 	for i in n:

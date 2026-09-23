@@ -196,7 +196,10 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		float cave = mix(-2.3 - fbm2(p * 0.7) * 0.3, cave_depth(p, fld), skirt * skirt * (3.0 - 2.0 * skirt));
 		back = mix(zbase, cave, smoothstep(0.0, -0.0625, sw));
 	}
-	return mix(0.0, back, smoothstep(0.0, mix(-0.3, -0.0625, fld.a), sf));   // inscriptions: soft rounded bevel
+	if (fld.a < 0.999) {
+		return -0.9;   // inscription tiles (scroll / logo letters): flat ink floor across the whole tile
+	}
+	return mix(0.0, back, smoothstep(0.0, -0.0625, sf));
 }
 
 vec4 field_at(vec2 p) {
