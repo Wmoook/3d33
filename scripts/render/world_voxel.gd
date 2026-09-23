@@ -514,7 +514,7 @@ func _fill_task(k: int) -> void:
 		var hf := _H[ci - NX] if k > 0 else h
 		var hb := _H[ci + NX] if k < NZ - 1 else h
 		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
-		var snow_y := -34.0 + nz.biome.get_noise_2d(x, z) * 10.0
+		var snow_y := -52.0 + nz.biome.get_noise_2d(x, z) * 9.0
 		if h < b:
 			var any_isl := false
 			for isl: PackedFloat32Array in _islands:
