@@ -36,6 +36,11 @@ var timings := {}
 ## Per-level reference art directory (minimap_ee.png, minimap_colors.json) and time of day.
 var ref_dir := "res://assets/ee_ref"
 var day := false
+## Backdrop instance (sky's distant block-built islands): no margin ring, no shadow meshes, low VPT, placed
+## by set_placement(), hazed by set_haze(). Build with WorldTerrain.build_backdrop().
+var backdrop := false
+var backdrop_vpt := 3
+var minimap_override: Image
 ## Day levels: air tiles whose back wall is decided after the sky flood (sky-painted bg, minimap-coloured air).
 var _deferred := PackedByteArray()
 var _deferred_col := PackedColorArray()
@@ -185,6 +190,12 @@ func _fg_has_minimap_colour(id: int) -> bool:
 	return _mm_ids.has(id)
 
 func _load_minimap() -> Image:
+	if minimap_override:
+		var o := minimap_override.duplicate() as Image
+		o.convert(Image.FORMAT_RGB8)
+		return o
+	if backdrop:
+		return null
 	var buf := FileAccess.get_file_as_bytes(ref_dir + "/minimap_ee.png")
 	if buf.is_empty():
 		return null
@@ -888,6 +899,7 @@ func _make_material() -> void:
 	if day:
 		material.set_shader_parameter("mottle", 0.12)
 		material.set_shader_parameter("bg_bevel", 0.12)   # day: back walls recessed and flat (readability)
+		material.set_shader_parameter("bottom_cut", 1.0)
 		var r := WorldPalette.FV_RECT_SCROLL
 		material.set_shader_parameter("scroll_rect", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
 		material.set_shader_parameter("trans_tex", ImageTexture.create_from_image(transition_image()))
@@ -969,17 +981,48 @@ func _grid_mesh(vpt: int = VPT) -> ArrayMesh:
 
 const SHADOW_VPT := 4
 
+## A distant, non-gameplay copy of the terrain pipeline for a synthetic level (EELevel with width/height/fg/bg;
+## colours come from WorldPalette.base_color(id) since there is no minimap). Day styling. Returns the node;
+## the caller adds it to the tree (under an identity-transform parent). origin = world position of tile
+## (0, 0)'s top-left corner, scale = world units per tile.
+## ref: the level's ref_dir (block-id minimap colour table); colours: optional W x H RGB8 image of per-tile
+## colours (the "minimap" of the synthetic level) - without it each block uses WorldPalette.base_color(id).
+static func build_backdrop(lvl: EELevel, origin: Vector3, scale: float, haze: float = 0.3,
+		haze_color := Color(0.74, 0.82, 0.92), vpt := 3, ref := "res://assets/ee_ref_fv", colors: Image = null) -> WorldTerrain:
+	var t := WorldTerrain.new()
+	t.name = "BackdropTerrain"
+	t.day = true
+	t.backdrop = true
+	t.backdrop_vpt = vpt
+	t.ref_dir = ref
+	t.minimap_override = colors
+	t.build(lvl)
+	t.set_placement(origin, scale)
+	t.set_haze(haze, haze_color)
+	return t
+
+func set_placement(origin: Vector3, scale: float) -> void:
+	transform = Transform3D(Basis.from_scale(Vector3.ONE * scale), origin)
+	material.set_shader_parameter("level_inv", Projection(transform.affine_inverse()))
+
+func set_haze(amount: float, color: Color) -> void:
+	material.set_shader_parameter("backdrop_haze", amount)
+	material.set_shader_parameter("backdrop_haze_color", color)
+
 func _make_chunks() -> void:
-	var mesh := _grid_mesh()
+	if backdrop:
+		material.set_shader_parameter("backdrop_mode", 1.0)
+	var mesh := _grid_mesh(backdrop_vpt if backdrop else VPT)
 	var smesh := _grid_mesh(SHADOW_VPT)
 	shadow_material = ShaderMaterial.new()
 	shadow_material.shader = load("res://shaders/world/terrain_shadow.gdshader")
 	for k in ["sdf_tex", "field_tex", "level_size", "height_tex", "height_margin"]:
 		shadow_material.set_shader_parameter(k, material.get_shader_parameter(k))
-	var x0 := -MARGIN
-	while x0 < W + MARGIN:
-		var y0 := -MARGIN
-		while y0 < H + MARGIN:
+	var mg := 0 if backdrop else MARGIN
+	var x0 := -mg
+	while x0 < W + mg:
+		var y0 := -mg
+		while y0 < H + mg:
 			var mi := MeshInstance3D.new()
 			mi.mesh = mesh
 			mi.material_override = material
@@ -988,6 +1031,9 @@ func _make_chunks() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.name = "Chunk_%d_%d" % [x0, y0]
 			add_child(mi)
+			if backdrop:
+				y0 += CHUNK
+				continue
 			var sh := MeshInstance3D.new()
 			sh.mesh = smesh
 			sh.material_override = shadow_material

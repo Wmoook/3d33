@@ -29,7 +29,13 @@ uniform sampler2D trans_tex : filter_linear, repeat_disable;   // day: r foliage
 uniform vec4 scroll_rect = vec4(-1.0);
 uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
 uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
-uniform float depth_cont = 0.0;   // 1 = WorldDepth continues the masses backward (day levels)
+uniform float depth_cont = 0.0;
+uniform float bottom_cut = 0.0;
+// backdrop instances (WorldTerrain.backdrop, sky's distant block-built islands): world = level_inv^-1 * tile space
+uniform mat4 level_inv = mat4(1.0);
+uniform float backdrop_mode = 0.0;
+uniform float backdrop_haze = 0.0;
+uniform vec3 backdrop_haze_color : source_color = vec3(0.74, 0.82, 0.92);   // day levels: no margin terrain below the level's bottom edge (sky's island keel shows)   // 1 = WorldDepth continues the masses backward (day levels)
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -71,10 +77,10 @@ float height_smooth(vec2 p) {
 }
 
 void vertex() {
-	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 wp = (level_inv * (MODEL_MATRIX * vec4(VERTEX, 1.0))).xyz;   // tile space
 	vec2 p = vec2(wp.x, -wp.y);
 	float z = textureLod(height_tex, huv(p), 0.0).r;
-	VERTEX.z = z - MODEL_MATRIX[3].z;
+	VERTEX.z = z - (level_inv * MODEL_MATRIX)[3].z;
 	w_pos = vec3(wp.xy, z);
 	NORMAL = vec3(0.0, 0.0, 1.0);
 }
@@ -146,11 +152,19 @@ float triplanar_h(sampler2D t, vec3 pos, vec3 n, float scale) {
 }
 
 void fragment() {
+	vec3 cam_t = (level_inv * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	float t = TIME * time_scale;
 	vec3 wp = w_pos;
 	vec2 p_real = vec2(wp.x, -wp.y);
 	vec2 p = level_mirror(p_real);   // outside the level: sample the mirrored edge region (no stretching)
 	float p_out = level_out(p_real);
+	if (backdrop_mode > 0.5 && p_out > 0.0) {
+		discard;   // backdrop islands: no margin ring
+	}
+	float lip_y = level_size.y + 0.3 + 0.3 * fbm2(vec2(p_real.x * 0.4, 3.7));
+	if (bottom_cut > 0.5 && p_real.y > lip_y) {
+		discard;   // the land ends in a ragged rock lip at the bottom edge
+	}
 	vec4 s = sdf_bicubic(p);
 	s.x = sdf_linear(p).x;
 	s = margin_solidify(p_real, p, s);
@@ -417,13 +431,13 @@ void fragment() {
 		rough = 0.55;
 		n = normalize(mix(gn, dn, 0.5));
 		// frost sparkle
-		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
+		vec3 vdir = normalize(cam_t - wp);
 		float sp = hash12(floor(wp.xy * 40.0 + vdir.xy * 6.0));
 		emit += vec3(0.7, 0.85, 1.0) * step(0.996, sp) * 3.0;
 	} else if (mat == M_ICE || mat == M_GLASS || mat == M_GEM) {
 		// crystal: faceted (flat voronoi facets with per-facet tilt), parallax inner depth, subsurface glow
 		// that brightens where the ice is thin (edges, hanging tips), fresnel rim
-		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
+		vec3 vdir = normalize(cam_t - wp);
 		vec2 fq = p * (mat == M_ICE ? 1.6 : 2.2);
 		vec2 fi = floor(fq);
 		vec2 ff = fq - fi;
@@ -475,7 +489,7 @@ void fragment() {
 		if (scroll_rect.x >= 0.0 && (fld.b > 0.5 || s.w < 1.2)) {   // day levels only (Odyssey keeps its approved water)
 			// water held in suspension (splash droplets, thin falling sheets): translucent deep blue orb with
 			// internal flow streaks running down, caustic sparkle, wobbling normals, bright fresnel rim
-			vec3 vd = normalize(CAMERA_POSITION_WORLD - wp);
+			vec3 vd = normalize(cam_t - wp);
 			vec2 wob = vec2(sin(t * 3.1 + p.y * 4.0 + p.x), cos(t * 2.7 + p.x * 3.3 - p.y)) * 0.18;
 			n = normalize(gn + vec3(wob, 0.0) * smoothstep(0.2, 0.9, gn.z));
 			float flow = fbm2(vec2(p.x * 2.0, p.y * 0.7 - t * 1.6)) * 0.5 + 0.5;
@@ -529,7 +543,7 @@ void fragment() {
 	} else if (mat == M_OBSIDIAN) {
 		// volcanic glass: near-black, mirror gloss, conchoidal ripples, cool rim sheen + edge highlight so it
 		// always reads as solid against dark backdrops
-		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
+		vec3 vdir = normalize(cam_t - wp);
 		float ripple = sin(length(fract(p * 0.5) - 0.5) * 18.0 + fbm2(p * 0.8) * 4.0) * 0.5 + 0.5;
 		n = normalize(gn + vec3(dn.xy - gn.xy, 0.0) * 0.12 + vec3((ripple - 0.5) * 0.08, 0.0, 0.0));
 		albedo = vec3(0.018, 0.02, 0.028) * (0.8 + 0.4 * ripple);
@@ -569,7 +583,7 @@ void fragment() {
 		albedo = base * mix(0.5, 1.1, sinew) * mix(1.0, 0.45, crevice);
 		rough = mix(0.22, 0.5, crevice);
 		spec = 0.65;
-		vec3 vdir = normalize(CAMERA_POSITION_WORLD - wp);
+		vec3 vdir = normalize(cam_t - wp);
 		float fres = pow(1.0 - clamp(dot(gn, vdir), 0.0, 1.0), 2.5);
 		emit += base * vec3(1.0, 0.35, 0.35) * 0.18 * (1.0 - crevice);                 // subsurface red
 		emit += vec3(0.35, 0.55, 1.0) * fres * 0.45 * smoothstep(-0.2, 0.9, -gn.x + gn.y * 0.3);  // lake rim
@@ -641,7 +655,7 @@ void fragment() {
 		n = normalize(mix(gn, dn, 0.8 * detail_amt));
 	}
 
-	float pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+	float pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, cam_t, albedo, n, rough, ao);
 	if (scroll_rect.x >= 0.0 && layer == 1) {
 		// back walls behind air must read recessed and non-solid: darker (<= ~55% of the fg value), flatter
 		// relief and light, strong AO toward the foreground edges, cooler, no highlights
@@ -728,7 +742,7 @@ void fragment() {
 		float cap = smoothstep(0.35, 0.75, gn.y + fbm2(p * 2.0) * 0.25);
 		albedo = mix(albedo, vec3(0.86, 0.9, 0.97), cap * 0.85);
 		rough = mix(rough, 0.6, cap);
-		vec3 vd2 = normalize(CAMERA_POSITION_WORLD - wp);
+		vec3 vd2 = normalize(cam_t - wp);
 		emit += vec3(0.8, 0.9, 1.0) * cap * step(0.996, hash12(floor(wp.xy * 40.0 + vd2.xy * 6.0))) * 2.5;
 	}
 	// opening readability: a crisp thin dark contact line where the recess meets the solid, and a
@@ -773,11 +787,17 @@ void fragment() {
 		emit += albedo * rimc * clamp(edge, 0.0, 1.0) * sky_here * smoothstep(-1.5, 0.2, wp.z);
 	}
 	n = normalize(n + rune_n);
-	ALBEDO = albedo * ao;
+	if (bottom_cut > 0.5) {
+		// rounded-off lip: the last tile darkens and turns its normal downward, reading as an edge
+		float lipk = smoothstep(lip_y - 1.4, lip_y, p_real.y);
+		ao *= mix(1.0, 0.45, lipk);
+		n = normalize(mix(n, vec3(0.0, -1.0, 0.35), lipk * 0.6));
+	}
+	ALBEDO = albedo * ao * (1.0 - backdrop_haze);
 	ROUGHNESS = rough;
 	METALLIC = metal;
 	SPECULAR = spec;
-	EMISSION = emit;
+	EMISSION = emit * (1.0 - backdrop_haze) + backdrop_haze_color * backdrop_haze;
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.4;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);

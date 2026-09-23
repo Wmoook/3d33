@@ -19,6 +19,7 @@ uniform float haze_emit = 0.9;
 varying vec3 w_pos;
 varying vec2 tile;
 varying float solid_f;
+varying float kind;   // 0-3 volume face side, 10 = foreground lip top, 11 = lip cliff
 
 const int M_EARTH = 1;
 const int M_GRASS = 10;
@@ -44,6 +45,7 @@ void vertex() {
 	w_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	tile = UV;
 	solid_f = UV2.x;
+	kind = UV2.y;
 }
 
 void fragment() {
@@ -63,6 +65,19 @@ void fragment() {
 	vec4 c = solid_f > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
 	int mat = solid_f > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
 	vec3 albedo = c.rgb;
+	bool lip = kind > 9.5;
+	if (lip) {
+		horiz = kind < 10.5;
+		if (horiz) {
+			mat = M_GRASS;   // the ledge's top: a lawn with patchy earth
+			float pn = vnoise(wp.xz * 0.45) * 0.7 + vnoise(wp.xz * 1.7) * 0.3;
+			albedo = mix(vec3(0.07, 0.14, 0.03), vec3(0.13, 0.2, 0.05), vnoise(wp.xz * 2.3));
+			albedo = mix(albedo, vec3(0.17, 0.12, 0.07), smoothstep(0.6, 0.78, pn));   // bare earth patches
+		} else {
+			mat = M_EARTH;
+			albedo = mix(c.rgb, vec3(0.2, 0.15, 0.1), 0.5) * mix(0.7, 1.0, vnoise(vec2(wp.x * 0.8, wp.y * 2.5)));
+		}
+	}
 	float rough = 0.85;
 	float ao = 1.0;
 	vec3 n = gn;
@@ -100,7 +115,7 @@ void fragment() {
 		vec3 t1 = texture(detail_nrm2, luv * 0.18).xyz * 2.0 - 1.0;
 		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
 		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
-		n = normalize(n + (U * tb.x + V * tb.y) * (mat == M_RUIN ? 0.35 : (leafy ? (horiz ? 0.25 : 0.6) : 0.7)));
+		n = normalize(n + (U * tb.x + V * tb.y) * (mat == M_RUIN ? 0.35 : (leafy ? (horiz ? (lip ? 0.6 : 0.25) : 0.6) : 0.7)));
 		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
 	}
 	pbr_terrain(mat, wp, gn, vec2(wp.x, -wp.y), CAMERA_POSITION_WORLD, albedo, n, rough, ao);
@@ -111,8 +126,17 @@ void fragment() {
 		ao *= 0.8;
 	}
 	// contact shading where the volume leaves the slab (matches the slab cliff's darkening)
-	ao *= mix(0.75, 1.0, smoothstep(0.0, 2.5, d));
+	if (!lip) {
+		ao *= mix(0.75, 1.0, smoothstep(0.0, 2.5, d));
+	}
 	float hz = smoothstep(haze_z.x, haze_z.y, wp.z) * haze_amt;
+	if (lip && horiz) {
+		albedo *= 0.65;   // the near ledge is seen at a grazing angle in full sun: keep it below the level's lawns
+	}
+	if (lip) {
+		// the cliff dissolves into the sky below the world
+		hz = smoothstep(-level_size.y - 0.5, -level_size.y - 6.5, wp.y) * 0.85;
+	}
 	ALBEDO = albedo * ao * (1.0 - hz);
 	ROUGHNESS = rough;
 	SPECULAR = 0.35;

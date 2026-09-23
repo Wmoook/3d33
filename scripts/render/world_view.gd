@@ -171,6 +171,8 @@ func _step_vista() -> void:
 		return
 	var t := Time.get_ticks_msec()
 	vista = _add(WorldVista.new(), "Vista")
+	if depth:
+		vista.set_depth_seam(depth.depth_seam())
 	vista.build(level, lights.moon.transform.basis.z, atmosphere.sky_mat)
 	timings["vista"] = Time.get_ticks_msec() - t
 

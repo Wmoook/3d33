@@ -59,6 +59,7 @@ func build(t: WorldTerrain) -> void:
 	t0 = Time.get_ticks_msec()
 	_make_material()
 	_build_mesh()
+	_build_lip()
 	terrain.material.set_shader_parameter("depth_cont", 1.0)
 	timings["depth_mesh"] = Time.get_ticks_msec() - t0
 
@@ -296,3 +297,113 @@ func _face(buckets: Dictionary, x: int, y: int, side: int, d0: float, d1: float,
 			b.uv.append(uv)
 			b.uv2.append(uv2)
 		face_count += 1
+
+# ---------------------------------------------------------------- foreground lip
+const LIP_MARGIN := 16          # extends across the side margins too
+const LIP_BAND := 5             # the lip top never sits higher than this many tiles above the bottom edge
+const LIP_CLEAR := 2            # ... and stays this many tiles below the bottom mass's top (only solid behind it)
+
+## The world's bottom edge comes TOWARD the camera: the bottom earth mass continues forward (z +0.5 .. +7)
+## as a grassy ledge that rounds off into a cliff dropping away into the sky below the level. It only ever
+## sits in front of solid tiles (LIP_CLEAR below the top of the bottom mass, widened over +-3 columns),
+## so perspective can only push it further over solid rock, never over gameplay air.
+func _build_lip() -> void:
+	var btop := PackedInt32Array(); btop.resize(W)
+	for x in W:
+		var y := H - 1
+		while y > 0 and terrain.solid[(y - 1) * W + x]:
+			y -= 1
+		btop[x] = y if terrain.solid[(H - 1) * W + x] else H
+	var ln := FastNoiseLite.new()
+	ln.seed = 777
+	ln.frequency = 0.08
+	var b := Bucket.new()
+	var x0 := float(-LIP_MARGIN)
+	var x1 := float(W + LIP_MARGIN)
+	var step := 0.5
+	var nx := int((x1 - x0) / step)
+	var zs: Array[float] = [0.4, 1.2, 2.0, 2.8, 3.6, 4.4, 5.2, 6.0]
+	var bottom := -float(H) - 7.0
+	# per x sample: top height and lip reach
+	var tops := PackedFloat32Array(); tops.resize(nx + 1)
+	var reach := PackedFloat32Array(); reach.resize(nx + 1)
+	for k in nx + 1:
+		var x := x0 + k * step
+		var worst := 0
+		for dx in range(-3, 4):
+			var cx := clampi(int(floor(x)) + dx, 0, W - 1)
+			worst = maxi(worst, btop[cx])
+		var yt := maxf(float(worst + LIP_CLEAR), float(H - LIP_BAND))
+		tops[k] = -yt + ln.get_noise_2d(x * 3.0, 11.0) * 0.12
+		reach[k] = 4.2 + 2.6 * (ln.get_noise_1d(x) * 0.5 + 0.5)
+	for k in nx:
+		var xa := x0 + k * step
+		var xb := xa + step
+		var colx := Vector2(clampf(xa + 0.25, 0.5, W - 0.5), H - 0.5)
+		# top surface (x, z) with a rounded front edge
+		var prof_a := _lip_profile(tops[k], reach[k], zs, ln, xa)
+		var prof_b := _lip_profile(tops[k + 1], reach[k + 1], zs, ln, xb)
+		for j in prof_a.size() - 1:
+			_quad(b, [Vector3(xa, prof_a[j].y, prof_a[j].x), Vector3(xb, prof_b[j].y, prof_b[j].x),
+				Vector3(xb, prof_b[j + 1].y, prof_b[j + 1].x), Vector3(xa, prof_a[j + 1].y, prof_a[j + 1].x)],
+				Vector3(0, 1, 0.3), colx, 10.0)
+		# cliff face dropping from the rounded edge into the sky, receding slightly as it falls
+		var ea: Vector2 = prof_a[prof_a.size() - 1]
+		var eb: Vector2 = prof_b[prof_b.size() - 1]
+		var rows := 6
+		for r in rows:
+			var ta := float(r) / rows
+			var tb := float(r + 1) / rows
+			var ya0 := lerpf(ea.y, bottom, ta)
+			var ya1 := lerpf(ea.y, bottom, tb)
+			var yb0 := lerpf(eb.y, bottom, ta)
+			var yb1 := lerpf(eb.y, bottom, tb)
+			var za0 := ea.x - ta * ta * 2.5 + ln.get_noise_2d(xa * 2.0, ya0 * 1.5) * 0.35
+			var za1 := ea.x - tb * tb * 2.5 + ln.get_noise_2d(xa * 2.0, ya1 * 1.5) * 0.35
+			var zb0 := eb.x - ta * ta * 2.5 + ln.get_noise_2d(xb * 2.0, yb0 * 1.5) * 0.35
+			var zb1 := eb.x - tb * tb * 2.5 + ln.get_noise_2d(xb * 2.0, yb1 * 1.5) * 0.35
+			_quad(b, [Vector3(xa, ya0, za0), Vector3(xb, yb0, zb0), Vector3(xb, yb1, zb1), Vector3(xa, ya1, za1)],
+				Vector3(0, 0, 1), colx, 11.0)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = b.v
+	arr[Mesh.ARRAY_NORMAL] = b.n
+	arr[Mesh.ARRAY_TEX_UV] = b.uv
+	arr[Mesh.ARRAY_TEX_UV2] = b.uv2
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.mesh = m
+	mi.material_override = material
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.name = "Lip"
+	add_child(mi)
+
+## (z, y) points of the lip top from the slab front to the rounded edge.
+func _lip_profile(top: float, reach: float, zs: Array[float], ln: FastNoiseLite, x: float) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var r := 1.3
+	for k in zs.size():
+		var z := lerpf(zs[0], reach - r, float(k) / (zs.size() - 1))   # same vertex count for every column
+		out.append(Vector2(z, top - 0.05 * z + ln.get_noise_2d(x * 1.3, z * 1.3) * 0.12))
+	var base: Vector2 = out[out.size() - 1]
+	for q in range(1, 6):
+		var a := float(q) / 5.0 * PI * 0.5
+		var zz := (reach - r) + sin(a) * r
+		out.append(Vector2(zz, base.y - (1.0 - cos(a)) * r))
+	return out
+
+func _quad(b: Bucket, p: Array, out: Vector3, uv: Vector2, kind: float) -> void:
+	var nrm: Vector3 = ((p[1] as Vector3) - (p[0] as Vector3)).cross((p[2] as Vector3) - (p[0] as Vector3))
+	if nrm.length_squared() < 1e-12:
+		return
+	nrm = nrm.normalized()
+	if nrm.dot(out) > 0.0:
+		p = [p[0], p[3], p[2], p[1]]
+	else:
+		nrm = -nrm
+	for j in [0, 1, 2, 0, 2, 3]:
+		b.v.append(p[j])
+		b.n.append(nrm)
+		b.uv.append(uv)
+		b.uv2.append(Vector2(1.0, kind))
