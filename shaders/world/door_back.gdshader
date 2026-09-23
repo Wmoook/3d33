@@ -8,6 +8,9 @@ render_mode cull_back;
 #include "res://shaders/world/door_common.gdshaderinc"
 
 uniform float back_z = -2.8;
+// the painting's background colour per tile (terrain bgcol, dilated): the cave / room wall that was
+// painted behind the door, so the hollow matches its surroundings
+uniform sampler2D bgcol_tex : source_color, filter_linear, repeat_disable;
 varying vec3 w_pos;
 
 float rockh(vec2 p) {
@@ -38,7 +41,8 @@ void fragment() {
 	// brighter in the middle of large openings
 	float ao = mix(0.22, 0.85, smoothstep(0.0, 4.0, sf));
 	float crev = smoothstep(0.35, 0.1, h);
-	vec3 rock = mix(vec3(0.13, 0.11, 0.11), base_color * 0.5 + vec3(0.05), 0.28);
+	vec3 bg = texture(bgcol_tex, (p + 0.5) / level_size).rgb;
+	vec3 rock = mix(bg * 0.62, base_color * 0.4, 0.12);
 	vec3 alb = rock * mix(0.55, 1.1, h) * (1.0 - crev * 0.45) * ao;
 	// damp drip streaks running down
 	float drip = smoothstep(0.75, 0.95, fbm2(vec2(p.x * 2.5, p.y * 0.25)));

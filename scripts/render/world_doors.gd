@@ -127,6 +127,8 @@ func _materials(id: int, terrain: WorldTerrain) -> Array:
 		m.set_shader_parameter("key_color", Vector3(kc.r, kc.g, kc.b))
 		m.set_shader_parameter("door_code", code_tex)
 		m.set_shader_parameter("my_code", _code(id))
+		if terrain.bgcol_img:
+			m.set_shader_parameter("bgcol_tex", _bgcol_tex(terrain))
 		out.append(m)
 	return out
 
@@ -164,6 +166,12 @@ func _grid_n(tw: int, th: int, vpt: int) -> ArrayMesh:
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return m
+
+var _bgtex: ImageTexture
+func _bgcol_tex(terrain: WorldTerrain) -> ImageTexture:
+	if _bgtex == null:
+		_bgtex = ImageTexture.create_from_image(terrain.bgcol_img)
+	return _bgtex
 
 static func _code(id: int) -> int:
 	return CODES.get(id, 0)
