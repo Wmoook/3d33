@@ -811,7 +811,8 @@ func _block(_xs: Array[Transform3D], _cs: Array[Color], _cu: Array[Color], c: Ve
 
 ## Turns the mid / far layers from a mosaic into masses: closes the small holes inside foliage (air with the
 ## same crown within 3 tiles on all four sides -> crown), then stands 2-wide trunk columns every 3-6 tiles in
-## the far layer's remaining gaps (floor to the top of the stamp), so the flat backstop never shows as squares.
+## the far layer's gaps (floor to the top of the stamp) and closes the rest with dark foliage, so the flat
+## backstop never shows as squares.
 func _fill_layers(floor_key: int) -> void:
 	if _grid.is_empty():
 		return
@@ -854,6 +855,14 @@ func _fill_layers(floor_key: int) -> void:
 				if not _grid.has(k):
 					_grid[k] = [WorldPalette.M_WOOD, 1.0, bark]
 		x += 5 + _rng.randi() % 4
+	# whatever far-layer air is left becomes dark foliage: the far layer is a closed wall of trunks and leaves,
+	# so the light backstop never shows through as teal rectangles
+	var dark := Color(0.13, 0.26, 0.08).srgb_to_linear()
+	for y in range(floor_key - 2, hi.y + 1):
+		for xx in range(lo.x, hi.x + 1):
+			var k := Vector3i(xx, y, 2)
+			if not _grid.has(k):
+				_grid[k] = [WorldPalette.M_FOLIAGE, 1.0, dark]
 
 ## Greedy-merges each layer's same-material, same-depth cells into boxes (row runs, then stacked while the run
 ## below matches), one colour per (layer, material) so merged faces never step in tone. Returns
