@@ -5,10 +5,10 @@ extends Node3D
 ## block visibly continues into depth and stands on structure instead of hanging in the painted sky.
 ## Only drawn where the gameplay plane shows open sky (see echo.gdshader).
 
+## ONE far band only (a near echo reads as a wall behind the ball): big silhouettes, strong aerial perspective.
 const LAYERS := [
 	# z, offset (world x, y), scale, darken, haze
-	[-4.0, Vector2(-0.6, 0.9), 1.02, 0.62, 0.22],
-	[-10.0, Vector2(1.4, 2.4), 1.06, 0.5, 0.48],
+	[-45.0, Vector2(8.0, 6.0), 1.0, 0.55, 0.72],
 ]
 const CHUNK := 32
 const VPT := 4
@@ -24,17 +24,18 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	col.resize(W * H * 4)
 	var fg := terrain.fgcol_img.get_data()
 	var scroll := WorldPalette.FV_RECT_SCROLL
+	var big := _big_mass(terrain, W, H)
 	for x in W:
 		var carry := -1   # colour source index while extruding down
 		for y in H:
 			var i := y * W + x
-			var real := terrain.solid[i] == 1 and terrain.speck[i] == 0 and lvl.fg[i] != 87 and not scroll.has_point(Vector2i(x, y))
+			var real := big[i] == 1 and lvl.fg[i] != 87 and not scroll.has_point(Vector2i(x, y))
 			if real:
 				carry = i
 				mask[i] = 1
 				for k in 3:
 					col[i * 4 + k] = fg[i * 4 + k]
-			elif carry >= 0:
+			elif carry >= 0 and _keep_foundation(x, y - carry / W, W):
 				# foundation below: inherits the mass above (stone stays stone, earth -> rock, canopy -> trunk)
 				mask[i] = 1
 				var m: int = terrain.mat_ids[carry]
@@ -45,7 +46,9 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 					c = Color8(70, 76, 80)
 				c = c.darkened(clampf(float(y - carry / W) * 0.012, 0.0, 0.45))
 				col[i * 4] = c.r8; col[i * 4 + 1] = c.g8; col[i * 4 + 2] = c.b8
-			col[i * 4 + 3] = 255
+				col[i * 4 + 3] = clampi(int(float(y - carry / W) / 28.0 * 255.0), 0, 255)   # depth below: fades into mist
+			if real:
+				col[i * 4 + 3] = 0
 	for i in W * H:
 		mask[i] = 1 if mask[i] else 0
 	# SDF of the echo mask (bit0), soft corners
@@ -84,11 +87,41 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				mi.material_override = m
 				mi.position = Vector3(x0, -y0, L[0])
 				mi.custom_aabb = AABB(Vector3(0, -CHUNK, -2.0), Vector3(CHUNK, CHUNK, 3.0))
+				mi.scale = Vector3.ONE
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 				add_child(mi)
 				y0 += CHUNK
 			x0 += CHUNK
+
+## Only the level's big masses (spires, keep, cliffs): the solid mask blurred over ~3 tiles, thresholded.
+func _big_mass(terrain: WorldTerrain, W: int, H: int) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(W * H)
+	for i in W * H:
+		b[i] = 255 if terrain.solid[i] else 0
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
+	img.resize(W / 3, H / 3, Image.INTERPOLATE_BILINEAR)
+	img.resize(W, H, Image.INTERPOLATE_CUBIC)
+	var d := img.get_data()
+	var out := PackedByteArray()
+	out.resize(W * H)
+	for i in W * H:
+		out[i] = 1 if d[i] > 150 else 0
+	return out
+
+## Foundations: solid right under a mass, then breaking into pillars / buttresses (column noise), all
+## ending within ~28 tiles (the mist bank swallows the rest).
+var _fn := FastNoiseLite.new()
+func _keep_foundation(x: int, depth: int, _W: int) -> bool:
+	if depth <= 3:
+		return true
+	if depth > 28:
+		return false
+	_fn.frequency = 0.21
+	var v := _fn.get_noise_2d(float(x), 0.0) * 0.5 + 0.5
+	# wider supports thin out with depth
+	return v > 0.35 + float(depth) * 0.012
 
 func _grid() -> ArrayMesh:
 	var n := CHUNK * VPT

@@ -36,6 +36,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	var cols := terrain.fgcol_img
 	var n_front := 0
 	var n_fringe := 0
+	var n_edge := 0
+	var n_litter := 0
 	for y in H:
 		for x in W:
 			var i := y * W + x
@@ -70,12 +72,65 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 					var cy := -y - r + TOP_OVER * _rng.randf_range(0.5, 1.0)
 					_push(key, Vector3(cx, cy, _rng.randf_range(-1.6, 0.35)), r / VIS_R, base, 0.6 + 0.3 * _rng.randf())
 					n_fringe += 1
+			# outline breakers: small clusters hugging every open side (overhang <= EDGE_OVER) so the crown's
+			# silhouette is leafy instead of the sculpted blob edge
+			for side in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+				var e: float = ext_l if side.x < 0 else (ext_r if side.x > 0 else ext_d)
+				if e >= 0.5:
+					continue
+				for k in 2:
+					var r := _rng.randf_range(0.17, 0.27)
+					var along := _rng.randf_range(0.1, 0.9)
+					var out := 0.5 + EDGE_OVER - r      # centre offset from the tile centre toward the side
+					var cx := x + (0.5 + side.x * out if side.x != 0 else along)
+					var cy := y + (0.5 + side.y * out if side.y != 0 else along)
+					_push(key, Vector3(cx, -cy, _rng.randf_range(0.3, 0.65)), r / VIS_R, base, 0.55 + 0.35 * _rng.randf())
+					n_edge += 1
 			if ext_d < 0.5 and _rng.randf() < 0.35:
 				leaf_spawn_points.append(Vector3(x + _rng.randf(), -y - 1.0, _rng.randf_range(-0.6, 0.6)))
+	n_litter = _build_litter(lvl, terrain, canopy)
 	for key in _chunks:
 		_make_chunk(key, _chunks[key])
 	_chunks.clear()
-	stats = {"front": n_front, "fringe": n_fringe, "spawn_points": leaf_spawn_points.size()}
+	stats = {"front": n_front, "fringe": n_fringe, "edge": n_edge, "litter": n_litter, "spawn_points": leaf_spawn_points.size()}
+
+## Fallen leaves on the ground under / beside crowns: small leaf piles lying on the top strip, tilted a
+## little toward the camera; colour = the crown's painted colour faded toward the ground's (dry litter).
+func _build_litter(lvl: EELevel, terrain: WorldTerrain, canopy: PackedByteArray) -> int:
+	var W := lvl.width
+	var H := lvl.height
+	var lm := litter_map(terrain)
+	var cols := terrain.fgcol_img
+	var n := 0
+	for y in range(1, H):
+		for x in W:
+			var i := y * W + x
+			if lm[i] < 60 or terrain.solid[i - W]:
+				continue
+			var above: int = lvl.fg[i - W]
+			if above != 0 and not WorldPalette.is_world_solid(above) and not WorldPalette.is_world_deco(above):
+				continue   # never over a gameplay glyph
+			# the crown this litter fell from: first crown tile up the column
+			var crown := cols.get_pixel(x, y)
+			for d in range(1, 18):
+				if y - d < 0:
+					break
+				if canopy[(y - d) * W + x]:
+					crown = cols.get_pixel(x, y - d)
+					break
+			var ground := cols.get_pixel(x, y)
+			var key := Vector2i(x / CHUNK, y / CHUNK)
+			var cnt := int(2.0 + 5.0 * lm[i] / 255.0)
+			for k in cnt:
+				var size := _rng.randf_range(0.3, 0.5)
+				var z := _rng.randf_range(-1.7, 0.3)
+				var p := Vector3(x + _rng.randf_range(0.1, 0.9), -y + 0.015 - WorldGrass._bevel_drop(z), z)
+				var c := crown.lerp(ground, _rng.randf_range(0.25, 0.55)).darkened(_rng.randf_range(0.1, 0.3))
+				var roll := _rng.randf() * TAU
+				var b := Basis(Vector3.RIGHT, -PI * 0.5 + _rng.randf_range(0.25, 0.6)) * Basis(Vector3.BACK, roll)
+				_push_basis(key, Transform3D(b.scaled(Vector3.ONE * size), p), c, 0.35 + 0.35 * _rng.randf())
+				n += 1
+	return n
 
 func update_focus(world_pos: Vector3, _delta: float) -> void:
 	if material:
@@ -88,8 +143,66 @@ static func _is_canopy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) ->
 		return false
 	return WorldGrass.canopy_column(terrain, x, y, W, H)
 
+## Leaf-litter weight per tile (0..255), cached on the terrain: the ground under a crown (first solid top
+## below the crown's underside, within 14 tiles of air) and the trunk / earth right beside a crown, spread
+## sideways with a soft falloff. Crown tiles themselves are 0.
+static func litter_map(terrain: WorldTerrain) -> PackedByteArray:
+	if terrain.has_meta(&"litter_map"):
+		return terrain.get_meta(&"litter_map")
+	var W := terrain.W
+	var H := terrain.H
+	var cm := WorldGrass.canopy_map(terrain)
+	var raw := PackedFloat32Array()
+	raw.resize(W * H)
+	for x in W:
+		var under := -1   # rows of air since the last crown tile above (-1 = no crown above)
+		for y in H:
+			var i := y * W + x
+			if cm[i]:
+				under = 0
+				continue
+			if not terrain.solid[i]:
+				if under >= 0:
+					under += 1
+					if under > 14:
+						under = -1
+				continue
+			if under >= 0:
+				# ground under the crown: strongest right below it, fading with the drop
+				var w := 1.0 - float(under) / 16.0
+				raw[i] = maxf(raw[i], w)
+				if y + 1 < H and terrain.solid[i + W]:
+					raw[i + W] = maxf(raw[i + W], w * 0.5)   # the front face just under the top
+			under = -1
+	# beside crowns: trunks / earth / stone touching a crown tile get a litter dusting
+	for y in H:
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if not terrain.solid[i] or cm[i]:
+				continue
+			var n := 0
+			for d in [-1, 1, -W, W]:
+				var j: int = i + d
+				if j >= 0 and j < W * H and cm[j]:
+					n += 1
+			if n > 0:
+				raw[i] = maxf(raw[i], 0.45 + 0.15 * n)
+	var out := PackedByteArray()
+	out.resize(W * H)
+	for y in H:
+		for x in W:
+			var v := raw[y * W + x]
+			for dx in [-2, -1, 1, 2]:
+				var xx: int = clampi(x + dx, 0, W - 1)
+				v = maxf(v, raw[y * W + xx] * (1.0 - absf(dx) * 0.3))
+			if not terrain.solid[y * W + x] or cm[y * W + x]:
+				v = 0.0
+			out[y * W + x] = int(clampf(v, 0.0, 1.0) * 255.0)
+	terrain.set_meta(&"litter_map", out)
+	return out
+
 ## Tiles of canopy/trunk mass beyond (x, y) in direction (dx, dy) before open air, capped at 3.
-## Other terrain (earth, stone) counts as a hard stop (the leaves may only touch it).
+## Leaves may spill over the first non-crown solid tile (trunk, bark top, earth) and stop there.
 static func _reach(terrain: WorldTerrain, canopy: PackedByteArray, x: int, y: int, dx: int, dy: int, W: int, H: int) -> float:
 	var n := 0
 	for k in range(1, 4):
@@ -100,9 +213,9 @@ static func _reach(terrain: WorldTerrain, canopy: PackedByteArray, x: int, y: in
 		var j := ny * W + nx
 		if not terrain.solid[j]:
 			break
-		if not canopy[j] and terrain.mat_ids[j] != WorldPalette.M_WOOD:
-			break
 		n = k
+		if not canopy[j]:
+			break   # leaves spill over one tile of the trunk / bark / earth they touch, never further
 	return float(n)
 
 ## Random centre for a cluster of radius r inside the tile, limited by the allowed extents measured from
@@ -118,13 +231,15 @@ func _fit(x: int, y: int, r: float, el: float, er: float, eu: float, ed: float) 
 	return Vector3(x + 0.5 + ox, -(y + 0.5 + oy), r)
 
 func _push(key: Vector2i, p: Vector3, size: float, c: Color, shade: float) -> void:
-	if not _chunks.has(key):
-		_chunks[key] = [[], []]
 	var roll := _rng.randf() * TAU
 	var b := Basis(Vector3.BACK, roll)
 	b = Basis(Vector3.RIGHT, _rng.randf_range(-0.35, 0.35)) * Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)) * b
-	b = b.scaled(Vector3.ONE * size)
-	_chunks[key][0].append(Transform3D(b, p))
+	_push_basis(key, Transform3D(b.scaled(Vector3.ONE * size), p), c, shade)
+
+func _push_basis(key: Vector2i, t: Transform3D, c: Color, shade: float) -> void:
+	if not _chunks.has(key):
+		_chunks[key] = [[], []]
+	_chunks[key][0].append(t)
 	var lc := c.srgb_to_linear()
 	var f := 1.0 + _rng.randf_range(-0.12, 0.12)
 	# custom: rgb = tint (linear), a = atlas cell (0..3) + shade (0..0.99)

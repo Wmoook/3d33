@@ -3,7 +3,7 @@ shader_type spatial;
 // with every mass extruded down into foundations. Drawn only where the terrain in front shows open sky, so
 // behind every block you see its own ruin / cliff continuing back into depth. Darker, desaturated and
 // hazed with distance; no shadows.
-render_mode cull_back, shadows_disabled;
+render_mode cull_back, shadows_disabled, unshaded, fog_disabled;
 
 uniform sampler2D echo_sdf : filter_linear, repeat_disable;     // R = echo mask SDF (tiles, + inside), B smooth
 uniform sampler2D echo_col : source_color, filter_linear, repeat_disable;   // colour per tile (foundations inherit)
@@ -69,13 +69,19 @@ void fragment() {
 	vec3 n = normalize(vec3(-g.x, g.y, 0.0) * bev * 6.0 + vec3(0.0, 0.0, 1.0));
 	vec3 dn = texture(detail_nrm, p * 0.35).xyz * 2.0 - 1.0;
 	n = normalize(n + vec3(dn.xy, 0.0) * 0.5);
-	vec3 c = textureLod(echo_col, p / level_size, 0.0).rgb;
+	vec4 ec = textureLod(echo_col, p / level_size, 0.0);
+	vec3 c = ec.rgb;
 	float l = dot(c, vec3(0.3, 0.55, 0.15));
-	c = mix(vec3(l), c, 0.65) * darken;
-	c *= mix(0.85, 1.1, h12(floor(p * vec2(0.6, 1.2))));   // coarse block tone
-	c = mix(c, haze_col, haze_amt);
+	c = mix(vec3(l), c, 0.4) * darken;
+	float tone = 0.85 + 0.25 * smoothstep(-0.2, 0.6, n.y + 0.3 - n.x * 0.5);   // gentle sun-side lift
+	c *= tone;
+	// strong aerial perspective: value close to the sky, low contrast; foundations and edges dissolve
+	float fade = max(ec.a, 1.0 - smoothstep(0.0, 0.8, sd) * 0.4);
+	c = mix(c, haze_col, clamp(haze_amt + ec.a * 0.25, 0.0, 0.97));
 	ALBEDO = c;
 	ROUGHNESS = 0.9;
+	AO = 0.6;
+	AO_LIGHT_AFFECT = 0.5;
 	SPECULAR = 0.2;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

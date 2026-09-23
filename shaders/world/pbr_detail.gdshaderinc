@@ -15,7 +15,7 @@ uniform float pbr_strength = 1.0;      // global detail multiplier (0 disables t
 uniform float pbr_fade_near = 45.0;    // camera distance where detail starts to fade
 uniform float pbr_fade_far = 110.0;    // camera distance where only a faint residue remains
 uniform int pbr_level = 0;             // 0 = Forgotten Veil (day), 1 = Odyssey (night)
-uniform sampler2D pbr_canopy_tex : filter_nearest, repeat_disable;   // R8 per tile: 1 = tree canopy foliage
+uniform sampler2D pbr_canopy_tex : filter_linear, repeat_disable;    // RG8 per tile: R = tree crown, G = leaf litter (bilinear = soft bands)
 uniform vec2 pbr_level_size = vec2(400.0, 200.0);
 
 // layer indices in the arrays
@@ -184,6 +184,46 @@ void pbr_apply(PbrS s, float k_alb, float k_nrm, float k_rough, float rough_bias
 	ao *= mix(1.0, s.ao, 0.35 * k_alb);
 }
 
+// ---------- height-based transitions (for world's material blend bands) ----------
+// Generic height-aware blend: t = linear band weight of b (0..1), ha/hb = the two surfaces' heights (0..1).
+// The higher surface wins early, so the seam follows the texture's relief (stones poke through soil,
+// grass tufts creep over earth) instead of a soft cross-fade.
+float height_blend(float a, float b, float t, float ha, float hb) {
+	return mix(a, b, pbr_hblend(ha, hb, t, 0.2));
+}
+vec3 height_blend3(vec3 a, vec3 b, float t, float ha, float hb) {
+	return mix(a, b, pbr_hblend(ha, hb, t, 0.2));
+}
+
+// Main photoscan layer for a material class (the one pbr_terrain leads with).
+int pbr_layer_of(int mat) {
+	if (mat == 10 || mat == 11) return PBR_GRASS;
+	if (mat == 20) return PBR_ROCK;
+	if (mat == 1) return pbr_level == 1 ? PBR_REDEARTH : PBR_SOIL;
+	if (mat == 21) return PBR_STRATA;
+	if (mat == 16) return PBR_SAND;
+	if (mat == 13) return PBR_BARK;
+	if (mat == 3 || mat == 19) return PBR_MARBLE;
+	if (mat == 8) return PBR_BASALT;
+	return PBR_ROCK;
+}
+
+// Cheap (1 tap, dominant plane) height of a layer at a world position.
+float pbr_height_at(int layer, vec3 wp, vec3 gn, float scale) {
+	vec3 an = abs(gn);
+	vec2 uv = an.z >= max(an.x, an.y) ? vec2(wp.x, -wp.y) : (an.y >= an.x ? wp.xz : vec2(wp.z, -wp.y));
+	return texture(pbr_tex, vec3(uv * scale, float(layer))).g;
+}
+
+// Height-aware transition weight between material a and b at this pixel (t = world's band weight of b).
+// Use it to mix the two materials' albedo / roughness / normals; then call pbr_terrain with the dominant
+// material (w < 0.5 ? a : b) for the detail.
+float pbr_transition(int mat_a, int mat_b, float t, vec3 wp, vec3 gn) {
+	float ha = pbr_height_at(pbr_layer_of(mat_a), wp, gn, 0.4);
+	float hb = pbr_height_at(pbr_layer_of(mat_b), wp, gn, 0.4);
+	return pbr_hblend(ha, hb, t, 0.2);
+}
+
 // Terrain material ids (mirror WorldPalette.M_*); duplicated here so the include is self-contained.
 const int PBR_M_EARTH = 1; const int PBR_M_STONE = 2; const int PBR_M_MARBLE = 3; const int PBR_M_OBSIDIAN = 8;
 const int PBR_M_GRASS = 10; const int PBR_M_FOLIAGE = 11; const int PBR_M_WOOD = 13; const int PBR_M_METAL = 14;
@@ -211,21 +251,24 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	float patchv = mix(mix(pbr_hash(qi), pbr_hash(qi + vec2(1.0, 0.0)), fq.x),
 		mix(pbr_hash(qi + vec2(0.0, 1.0)), pbr_hash(qi + vec2(1.0, 1.0)), fq.x), fq.y);
 	bool leafy = mat == PBR_M_FOLIAGE || mat == PBR_M_GRASS;
-	if (leafy && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5) {
-		// tree crowns: dense leaf scan, big leaves, strong relief
-		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, hex);
-		pbr_apply(l, 1.0 * fade, 0.9 * fade, 0.6, 0.0, albedo, n, rough, ao);
-		return 1.0;
-	}
+	// crown mask (R) and litter mask (G), bilinear: soft world-space bands, no tile steps
+	vec2 cmask = texture(pbr_canopy_tex, p / pbr_level_size).rg;
+	float litter = cmask.g * smoothstep(0.25, 0.75, patchv + 0.35);
 	if (leafy) {
-		// lawn, broken up by leaf-litter patches (secondary layer only where the patch mask is on)
-		PbrS s = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, hex);
-		float cov = smoothstep(0.45, 0.85, patchv) * 0.6;
-		if (cov > 0.01) {
-			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
-			s = pbr_mix(s, l, pbr_hblend(s.h, l.h, cov, 0.25));
+		float cw = smoothstep(0.3, 0.7, cmask.r);
+		PbrS s;
+		if (cw > 0.99) {
+			s = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, hex);   // tree crowns: dense leaf scan, big leaves
+		} else {
+			// lawn, broken up by leaf-litter patches; blends into the crown scan across the crown edge
+			s = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, hex);
+			float cov = max(smoothstep(0.45, 0.85, patchv) * 0.6, max(cw, litter));
+			if (cov > 0.01) {
+				PbrS l = pbr_tri(PBR_LITTER, wp, gn, cw > 0.01 ? 0.3 : 0.45, 1.0, false);
+				s = pbr_mix(s, l, pbr_hblend(s.h, l.h, cov, 0.25));
+			}
 		}
-		pbr_apply(s, 1.0 * fade, 0.85 * fade, 0.6, 0.1, albedo, n, rough, ao);
+		pbr_apply(s, 1.0 * fade, mix(0.85, 0.9, cw) * fade, 0.6, mix(0.1, 0.0, cw), albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_RUIN) {
@@ -235,6 +278,10 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 		if (cov > 0.01) {
 			PbrS m = pbr_tri(PBR_LICHEN, wp, gn, 0.4, 1.0, false);
 			s = pbr_mix(s, m, pbr_hblend(s.h, m.h, cov, 0.2));
+		}
+		if (litter > 0.02) {
+			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
+			s = pbr_mix(s, l, pbr_hblend(s.h, l.h, litter * 0.8, 0.2));
 		}
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
 		return 1.0;
@@ -246,6 +293,10 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 		if (cov > 0.01) {
 			PbrS r = pbr_tri(PBR_ROCK, wp, gn, 0.25, 1.0, false);
 			s = pbr_mix(s, r, pbr_hblend(s.h, r.h, cov, 0.2));
+		}
+		if (litter > 0.02) {
+			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
+			s = pbr_mix(s, l, pbr_hblend(s.h, l.h, litter * 0.8, 0.2));
 		}
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
 		return 1.0;
@@ -267,6 +318,10 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	}
 	if (mat == PBR_M_WOOD) {
 		PbrS s = pbr_tri(PBR_BARK, wp, gn, 0.5, 0.0, hex);
+		if (litter > 0.02) {
+			PbrS m = pbr_tri(PBR_MOSS, wp, gn, 0.4, 1.0, false);   // mossy bark where the crown touches
+			s = pbr_mix(s, m, pbr_hblend(s.h, m.h, litter * 0.7, 0.2));
+		}
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}

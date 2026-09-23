@@ -693,9 +693,12 @@ const PATTERN := {
 func _pattern_image() -> Image:
 	var b := PackedByteArray(); b.resize(W * H * 4)
 	var data := fgcol_img.get_data()
+	var canopy := PackedByteArray()   # DETAIL-PATCH: WorldGrass.canopy_map(self) if day
 	for i in W * H:
 		var m: int = data[i * 4 + 3]
 		var pw: Array = PATTERN.get(m, [1.0, 0.0, 0.0, 0.0])
+		if day and (m == WorldPalette.M_FOLIAGE or m == WorldPalette.M_GRASS) and canopy.size() == W * H and canopy[i] == 0:
+			pw = [0.0, 0.0, 0.0, 0.2]
 		for k in 4:
 			b[i * 4 + k] = int(clampf(pw[k], 0.0, 1.0) * 255.0)
 	return Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, b)
@@ -768,6 +771,7 @@ func _make_material() -> void:
 	material.set_shader_parameter("detail_nrm", _noise_tex(0.025, 11, 5, 5.0))
 	material.set_shader_parameter("detail_nrm2", _noise_tex(0.03, 23, 4, 4.0))
 	material.set_shader_parameter("detail_hgt", _noise_tex(0.015, 37, 4, 0.0))
+	# DETAIL-PATCH: WorldPbr.bind(material, WorldPalette.is_odyssey(), 1.0, self)
 
 const HTPT := 16         # baked height texels per tile
 const HMARGIN := 16      # tiles of margin in the height bake

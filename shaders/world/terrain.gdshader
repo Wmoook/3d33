@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode depth_draw_opaque, cull_back;
 
 #include "res://shaders/world/terrain_common.gdshaderinc"
+// DETAIL-PATCH #include "res://shaders/world/pbr_detail.gdshaderinc"
 
 uniform sampler2D fgcol_tex : source_color, filter_nearest, repeat_disable; // rgb colour, a = material/255 (dilated)
 uniform sampler2D orig_tex : source_color, filter_nearest, repeat_disable;  // pre-merge colours (the painting's dither)
@@ -628,6 +629,7 @@ void fragment() {
 		n = normalize(mix(gn, dn, 0.8 * detail_amt));
 	}
 
+	float pbr_k = 0.0;   // DETAIL-PATCH: (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
 	if (layer == 0) {
 		// soft rim of the bevel catches light; tiny cavity darkening at colour boundaries
 		albedo *= mix(1.0, 0.8, boundary);
@@ -688,7 +690,7 @@ void fragment() {
 		spec = mix(spec, 0.7, wetb * 0.6);
 	}
 	// crisp micro grain on every rock-like surface
-	if (mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {
+	if (pbr_k < 0.5 && mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {
 		// single planar projection (front-facing) is enough for the fine grain; skipped on steep cliffs
 		float fz = smoothstep(0.35, 0.7, abs(gn.z));
 		vec3 mt = texture(detail_nrm2, wp.xy * 1.6).xyz * 2.0 - 1.0;

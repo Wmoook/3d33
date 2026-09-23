@@ -23,6 +23,8 @@ var backdrop: WorldBackdrop
 var zones: WorldZones
 var trials: WorldTrials
 var echo: WorldEcho
+var grass: Node3D   # DETAIL-PATCH: WorldGrass
+var foliage: Node3D   # DETAIL-PATCH: WorldFoliage
 var is_built := false
 var build_ms := 0
 var timings := {}
@@ -122,6 +124,8 @@ func _step_decor() -> void:
 	var t := Time.get_ticks_msec()
 	decor = _add(WorldDecor.new(), "Decor")
 	decor.build(level, terrain)
+	# DETAIL-PATCH: grass = _add(WorldGrass.new(), "Grass"); grass.build(level, terrain)
+	# DETAIL-PATCH: foliage = _add(WorldFoliage.new(), "Foliage"); foliage.build(level, terrain)
 	timings["decor"] = Time.get_ticks_msec() - t
 
 func _step_lights() -> void:
@@ -168,6 +172,10 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	atmosphere.update_focus(world_pos, delta)
 	lights.update_focus(world_pos, delta)
 	decor.update_focus(world_pos, delta)
+	if grass:
+		grass.update_focus(world_pos, delta)
+	if foliage:
+		foliage.update_focus(world_pos, delta)
 	backdrop.update_focus(world_pos, delta)
 	var z := get_zone_at(EECoords.world_to_tile(world_pos))
 	if current_zone == &"":

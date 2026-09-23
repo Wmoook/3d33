@@ -91,11 +91,48 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				var p := Vector3(_rng.randf_range(x0, x1), -y, _rng.randf_range(zb, Z_FRONT_TALL - 0.2))
 				_push(key, Kind.FLOWER, p, _rng.randf_range(0.8, 1.15), _vary(base, 0.08), 1.0 + float(_rng.randi() % 5) + _rng.randf() * 0.99)
 				n_inst[Kind.FLOWER] += 1
+	n_inst[Kind.SHORT] += _build_fringes(lvl, terrain)
 	for key in _chunks:
 		_make_chunk(key, _chunks[key])
 	stats = {"sites": sites, "chunks": _chunks.size(), "tall": n_inst[Kind.TALL], "short": n_inst[Kind.SHORT],
 		"clover": n_inst[Kind.CLOVER], "flower": n_inst[Kind.FLOWER]}
 	_chunks.clear()
+
+## Grass fringes where the lawn meets other ground: (a) tufts drooping from the lawn's lower edge over the
+## front face of the earth / stone below it (covers only solid tiles), (b) blades leaning out over the open
+## side of a lawn ledge (overhang <= 0.12 tile).
+func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
+	var W := lvl.width
+	var H := lvl.height
+	var cols := terrain.fgcol_img
+	var cm := canopy_map(terrain)
+	var n := 0
+	for y in range(1, H - 1):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if not terrain.solid[i] or cm[i] or not is_leafy(terrain.mat_ids[i]):
+				continue
+			var base := cols.get_pixel(x, y)
+			var key := Vector2i(x / CHUNK, y / CHUNK)
+			var below := i + W
+			if terrain.solid[below] and not is_leafy(terrain.mat_ids[below]):
+				for k in 7:
+					var up := Vector3(_rng.randf_range(-0.25, 0.25), -0.8, 0.6).normalized()
+					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.02, 0.1), _rng.randf_range(0.72, 0.95))
+					_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.25), _vary(base, 0.12), _rng.randf() * 0.99, up)
+					n += 1
+			if not terrain.solid[i - W]:
+				for side: int in [-1, 1]:
+					if terrain.solid[i + side]:
+						continue
+					for k in 4:
+						var up := Vector3(side * 0.6, 0.8, _rng.randf_range(-0.1, 0.2)).normalized()
+						var ex := x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12)
+						var z := _rng.randf_range(-1.6, 0.25)
+						var p := Vector3(ex, -y - _bevel_drop(z) - _rng.randf_range(0.0, 0.08), z)
+						_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.9), _vary(base, 0.12), _rng.randf() * 0.99, up)
+						n += 1
+	return n
 
 ## Every frame: the ball flattens nearby blades.
 func update_focus(world_pos: Vector3, _delta: float) -> void:
