@@ -37,6 +37,8 @@ float dens(vec2 uv) {
 	d = d * 0.8 + (n - 0.5) * 0.9;
 	// soft flat-ish base
 	d -= flat_base * (1.0 - smoothstep(0.0, 0.2, uv.y)) * 0.6;
+	// never cut by the quad: fade out well inside every edge
+	d = min(d, min(uv.y * 5.0 - 0.05, min((1.0 - abs(uv.x)) * 4.0, (1.0 - uv.y) * 4.0)));
 	return d;
 }
 

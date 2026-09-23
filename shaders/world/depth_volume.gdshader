@@ -65,7 +65,8 @@ void fragment() {
 	vec4 c = solid_f > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
 	int mat = solid_f > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
 	vec3 albedo = c.rgb;
-	bool lip = kind > 9.5;
+	bool lip = kind > 9.5 && kind < 11.5;
+	bool skin = kind > 11.5;
 	if (lip) {
 		horiz = kind < 10.5;
 		if (horiz) {
@@ -130,6 +131,11 @@ void fragment() {
 		ao *= mix(0.75, 1.0, smoothstep(0.0, 2.5, d));
 	}
 	float hz = smoothstep(haze_z.x, haze_z.y, wp.z) * haze_amt;
+	if (!horiz && !lip && !skin) {
+		// structure side faces recede into the air: lighter and hazier with depth, so the open air beside a
+		// tower still reads as sky
+		hz = max(hz, smoothstep(0.5, 10.0, d) * 0.38);
+	}
 	if (lip && horiz) {
 		albedo *= 0.65;   // the near ledge is seen at a grazing angle in full sun: keep it below the level's lawns
 	}

@@ -865,6 +865,8 @@ const BLOCK_PIECES := [
 	[3, 485.0, -10.0, -290.0, 3.0],    # a far keep, far east
 ]
 var ref_dir := "res://assets/ee_ref_fv"
+## true: block pieces render through WorldTerrain.build_backdrop (world); false: vista_blocks stand-in.
+var use_world_terrain := true
 
 func _make_block_pieces() -> void:
 	var colors := WorldVistaBlocks.load_colors(ref_dir)
@@ -872,21 +874,32 @@ func _make_block_pieces() -> void:
 	var k := 0
 	for pc in BLOCK_PIECES:
 		var art := WorldVistaBlocks.make(pc[0], 3 + k)
-		var tex := art.textures(colors)
 		var sc: float = pc[4]
+		var z: float = pc[3]
+		if use_world_terrain:
+			# world's own terrain pipeline in backdrop mode: the pieces look exactly like the level's art.
+			# make_level() adds a 1-tile border, so the origin moves up-left by one tile.
+			var d := 25.0 - z
+			var haze := clampf(0.3 + 0.45 * (1.0 - exp(-d * 0.0035)), 0.0, 0.85)
+			var t := WorldTerrain.build_backdrop(art.make_level(), Vector3(pc[1] - sc, pc[2] + sc, z), sc, haze,
+					Color(0.58, 0.72, 0.94), 3, ref_dir)
+			t.name = "VistaBlocks%d" % k
+			add_child(t)
+			k += 1
+			continue
+		var tex := art.textures(colors)
 		var q := QuadMesh.new()
 		q.size = Vector2(art.w * sc, art.h * sc)
 		var mi := MeshInstance3D.new()
 		mi.mesh = q
-		mi.position = Vector3(pc[1] + art.w * sc * 0.5, pc[2] - art.h * sc * 0.5, pc[3])
+		mi.position = Vector3(pc[1] + art.w * sc * 0.5, pc[2] - art.h * sc * 0.5, z)
 		var m := ShaderMaterial.new()
 		m.shader = sh
 		m.set_shader_parameter("sun_dir", sun_dir)
 		m.set_shader_parameter("noise_tex", noise_tex)
 		var ci: Image = tex[0]
 		m.set_shader_parameter("col_tex", ImageTexture.create_from_image(ci))
-		var cs := ci.duplicate()
-		m.set_shader_parameter("col_smooth", ImageTexture.create_from_image(cs))
+		m.set_shader_parameter("col_smooth", ImageTexture.create_from_image(ci.duplicate()))
 		m.set_shader_parameter("mask_tex", ImageTexture.create_from_image(tex[1]))
 		m.set_shader_parameter("map_size", Vector2(art.w, art.h))
 		_mats.append(m)

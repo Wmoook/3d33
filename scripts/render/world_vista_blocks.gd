@@ -43,13 +43,19 @@ static func make(kind: int, seed_v: int = 1) -> WorldVistaBlocks:
 			m._far_keep()
 	return m
 
+## The map as an EELevel with a 1-tile empty border (WorldTerrain's sky flood needs it): tile (x, y) of
+## the map is tile (x + 1, y + 1) of the level.
 func make_level() -> EELevel:
 	var lvl := EELevel.new()
-	lvl.width = w
-	lvl.height = h
-	lvl.fg = fg.duplicate()
+	lvl.width = w + 2
+	lvl.height = h + 2
+	lvl.fg = PackedInt32Array()
+	lvl.fg.resize(lvl.width * lvl.height)
 	lvl.bg = PackedInt32Array()
-	lvl.bg.resize(w * h)
+	lvl.bg.resize(lvl.width * lvl.height)
+	for y in h:
+		for x in w:
+			lvl.fg[(y + 1) * lvl.width + x + 1] = fg[y * w + x]
 	return lvl
 
 # ------------------------------------------------------------------ painting primitives (tile coords, y down)
