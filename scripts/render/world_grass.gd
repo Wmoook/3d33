@@ -140,8 +140,9 @@ func _build_ruin_growth(lvl: EELevel, terrain: WorldTerrain) -> Vector2i:
 				for k in (2 if _rng.randf() < 0.5 else 1):
 					if _rng.randf() > 0.65:
 						continue
-					var p := Vector3(x + _rng.randf_range(0.15, 0.85), -y, _rng.randf_range(-1.6, 0.0))
-					_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.95), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99)
+					# slender grass tufts (read as grass against the sky, not as debris)
+					var p := Vector3(x + _rng.randf_range(0.15, 0.85), -y, _rng.randf_range(-1.6, -0.2))
+					_push(key, Kind.TALL, p, _rng.randf_range(0.5, 0.8), _vary(SHRINE_GREEN.lerp(stone, 0.15), 0.12), _rng.randf() * 0.99)
 					nw += 1
 				continue
 			# cracks in the face: prefer the courses just under a ledge (water and seeds collect there)

@@ -23,6 +23,7 @@ var backdrop: WorldBackdrop
 var zones: WorldZones
 var trials: WorldTrials
 var keels: WorldKeels
+var vista: WorldVista
 var grass: WorldGrass
 var foliage: WorldFoliage
 var is_built := false
@@ -72,6 +73,7 @@ func _steps(lvl: EELevel) -> Array:
 		["Growing grass and roots", _step_decor],
 		["Lighting the fires", _step_lights],
 		["Breathing in the air", _step_atmosphere],
+		["Painting the far valley", _step_vista],
 	]
 
 func _step_terrain() -> void:
@@ -147,6 +149,14 @@ func _step_atmosphere() -> void:
 	atmosphere.build(level, terrain, lights, zones)
 	timings["atmosphere"] = Time.get_ticks_msec() - t
 
+func _step_vista() -> void:
+	if not is_day():
+		return
+	var t := Time.get_ticks_msec()
+	vista = _add(WorldVista.new(), "Vista")
+	vista.build(level, lights.moon.transform.basis.z, atmosphere.sky_mat)
+	timings["vista"] = Time.get_ticks_msec() - t
+
 func _add(n: Node, nm: String) -> Node:
 	n.name = nm
 	add_child(n)
@@ -180,6 +190,9 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	if foliage:
 		foliage.update_focus(world_pos, delta)
 	backdrop.update_focus(world_pos, delta)
+	if vista:
+		var cam := get_viewport().get_camera_3d()
+		vista.update(cam.global_position if cam else world_pos)
 	var z := get_zone_at(EECoords.world_to_tile(world_pos))
 	if current_zone == &"":
 		current_zone = z

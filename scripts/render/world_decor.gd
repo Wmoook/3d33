@@ -336,7 +336,7 @@ func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var right := not terrain.solid[i + 1]
 			if not (top or left or right):
 				continue
-			var n := 18 if top else 7
+			var n := 2 if top else 0   # a few tall wind-swept accents; WorldGrass carpets the shrine
 			for k in n:
 				var sc := _rng.randf_range(0.9, 1.7)
 				var px := x + _rng.randf()
