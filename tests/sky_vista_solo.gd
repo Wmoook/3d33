@@ -30,6 +30,8 @@ func _ready() -> void:
 	var sun := Vector3(-0.30, 0.67, 0.68).normalized()
 	var vista := WorldVista.new()
 	add_child(vista)
+	if "handoff" in OS.get_cmdline_user_args():
+		vista.near_limit = -90.0
 	vista.build(lvl, sun, sm)
 	_make_cutout(lvl)
 	var cam := Camera3D.new()
@@ -40,6 +42,8 @@ func _ready() -> void:
 	add_child(cam)
 	cam.current = true
 	var only := OS.get_cmdline_user_args()
+	if only.has("handoff"):
+		only.remove_at(only.find("handoff"))
 	for n in SPOTS:
 		if only.size() > 0 and not (n in only):
 			continue

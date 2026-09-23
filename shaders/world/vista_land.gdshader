@@ -38,7 +38,8 @@ void fragment() {
 	float dist = length(wp - cam);
 	vec3 n = normalize(v_n);
 	vec3 sd = normalize(sun_dir);
-	vec2 q = wp.xz;
+	// steep faces (cliffs, the handoff front face) sample their detail on the wall plane, not stretched
+	vec2 q = abs(n.y) < 0.35 ? vec2(wp.x + wp.z, wp.y * 1.3) : wp.xz;
 	// detail normal (forest canopy / rock strata) from the noise texture, fading with distance
 	float e = 0.004;
 	vec2 uq = q * 0.035;

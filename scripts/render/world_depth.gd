@@ -424,8 +424,8 @@ func _quad(b: Bucket, p: Array, out: Vector3, uv: Vector2, kind: float) -> void:
 
 # ---------------------------------------------------------------- smooth skin over the far ground
 const SKIN_D0 := 1.5            # voxels in front of this; the skin eases from the stepped profile to smooth by d0+4
-const SKIN_ERO := 3             # samples (0.5 tile) of the x erosion: rounds steps, never rises above them
-const SKIN_BLUR := 4            # samples of the x blur
+const SKIN_ERO := 1             # samples (0.5 tile) of the x erosion: rounds steps, never rises above them
+const SKIN_BLUR := 2            # samples of the x blur
 const SKIN_DS := [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.5, 11.0, 12.5, 14.0, 16.0, 18.5, 21.0, 23.0, 24.8]
 var _skin_row := PackedInt32Array()   # per column: top row of the natural run under the skin (-1 none)
 var _skin_d0 := PackedFloat32Array()  # per column: depth where the skin takes over from the voxels

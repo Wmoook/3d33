@@ -44,6 +44,10 @@ var _broad_c: Array[Color] = []
 var _seam_h := PackedFloat32Array()   # world's depth continuation back edge (WorldDepth.depth_seam)
 var _seam_c := PackedColorArray()
 var _seam_z := -26.0
+## Foreground handoff: when another layer (the voxel landscape) owns the space in front, set this BEFORE
+## build() to its back depth (e.g. -90): the vista then starts behind it (no home-island top, midground
+## islands or low cloud banks in front of it, no depth seam) and only keeps its far layers.
+var near_limit := NEAR_Z
 var _vcount := {}                   # SurfaceTool instance id -> vertices added (indexed islands)
 var _ruin_sites: Array = []          # [x, ground_y, z, height, width] ruins standing on island tops
 
@@ -57,7 +61,9 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 	_make_profile(lvl, sky_ids)
 	timings["vista_profile"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
-	_land_near = _land_mesh("VistaLandNear", -150.0, 560.0, 2.0, NEAR_Z, MID_Z, 1.4, 0.012, true)
+	if near_limit < NEAR_Z - 1.0:
+		_seam_h = PackedFloat32Array()
+	_land_near = _land_mesh("VistaLandNear", -150.0, 560.0, 2.0, near_limit, MID_Z, 1.4, 0.012, true)
 	_land_far = _land_mesh("VistaLandFar", -560.0, 960.0, 4.0, MID_Z + 6.0, FAR_Z, 4.0, 0.0, false)
 	timings["vista_land"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
@@ -331,6 +337,18 @@ func _land_mesh(nm: String, x0: float, x1: float, dx: float, z0: float, z1: floa
 			var a := (nz - 1) * nx + i
 			var b := base + i
 			idx.append_array([a, a + 1, b, b, a + 1, b + 1])
+	if skirt and near_limit < NEAR_Z - 1.0:
+		# foreground handed off (voxel layer in front): close the cut front edge with a rock face
+		var fb := verts.size()
+		for i in nx:
+			verts.append(verts[i] - Vector3(0, 300.0, 0))
+			norms.append(Vector3(0, 0, 1))
+			cols.append(Color(0, 0, 0, 0))
+			cust.append_array([0.0, 0.0, 0.0, 0.0])
+		for i in nx:
+			norms[i] = (norms[i] + Vector3(0, 0, 0.6)).normalized()
+		for i in nx - 1:
+			idx.append_array([i, i + 1, fb + i, fb + i, i + 1, fb + i + 1])
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
@@ -384,7 +402,7 @@ func _make_trees() -> void:
 	var broad := _broad
 	var broad_c := _broad_c
 	var step := 4.2
-	var z := NEAR_Z - 12.0
+	var z := near_limit - 12.0
 	while z > MID_Z:
 		var x := -150.0
 		while x < 560.0:
@@ -665,7 +683,7 @@ func _make_islands() -> void:
 	frag.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var stone := Color(0.54, 0.54, 0.55, 0.0)
 	var k := 0
-	for d in MID_ISLANDS:
+	for d in (MID_ISLANDS if near_limit >= NEAR_Z - 1.0 else []):
 		var c := Vector3(d[0], d[1], d[2])
 		var R: float = d[3]
 		_island(mid, c, R, d[4], k)
@@ -969,6 +987,9 @@ func _make_cumulus() -> void:
 	var sh := load("res://shaders/world/vista_cumulus.gdshader")
 	var k := 0
 	for c in CUMULUS:
+		if c[2] > near_limit - 5.0 and near_limit < NEAR_Z - 1.0:
+			c = c.duplicate()
+			c[2] = near_limit - 8.0 - absf(c[2] - NEAR_Z) * 0.3   # push the low banks behind the handoff
 		var q := QuadMesh.new()
 		q.size = Vector2(c[3], c[4])
 		var mi := MeshInstance3D.new()
@@ -988,7 +1009,8 @@ func _make_cumulus() -> void:
 
 func _make_cloud_sea() -> void:
 	var bmin := Vector3(-560.0, CLOUD_BASE - 8.0, FAR_Z)
-	var bmax := Vector3(960.0, CLOUD_BASE + 20.0, CLOUD_NEAR_Z)
+	var cnz := minf(CLOUD_NEAR_Z, near_limit)
+	var bmax := Vector3(960.0, CLOUD_BASE + 20.0, cnz)
 	var box := BoxMesh.new()
 	box.size = bmax - bmin
 	_clouds = MeshInstance3D.new()
@@ -998,7 +1020,7 @@ func _make_cloud_sea() -> void:
 	m.set_shader_parameter("box_min", bmin)
 	m.set_shader_parameter("box_max", bmax)
 	m.set_shader_parameter("base_y", CLOUD_BASE)
-	m.set_shader_parameter("near_z", CLOUD_NEAR_Z)
+	m.set_shader_parameter("near_z", cnz)
 	m.render_priority = -100
 	_clouds.material_override = m
 	_setup_instance(_clouds, "VistaCloudSea")
