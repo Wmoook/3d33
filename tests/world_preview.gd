@@ -445,6 +445,49 @@ func _seam_check(img: Image, nm: String) -> void:
 	mk.save_png("user://world_fv_%s_seam.png" % nm)
 	print("SEAM %s: %d / %d joint samples show sky %s" % [nm, bad, total, "OK" if bad == 0 else "CHECK"])
 
+## TOPS: solid tiles with sky above (merlons, ledge tops): fraction of their footprint (5x5 samples inside the
+## tile at the gameplay plane) that renders as sky. Worst tile and mean; the target is <= 12% per tile.
+func _tops_check(img: Image, nm: String) -> void:
+	var t := world.terrain
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var vr := _view_rect()
+	var worst := 0.0
+	var worst_t := Vector2i(-1, -1)
+	var sum := 0.0
+	var cnt := 0
+	var over := 0
+	for ty in range(maxi(1, vr.position.y), vr.end.y):
+		for tx in range(vr.position.x, vr.end.x):
+			var i := ty * t.W + tx
+			if not t.solid[i] or not t.sky[i - t.W]:
+				continue
+			var n := 0
+			var sk := 0
+			for sy in 5:
+				for sx in 5:
+					var w := Vector3(tx + 0.1 + sx * 0.2, -ty - 0.1 - sy * 0.2, 0.0)
+					if cam.is_position_behind(w):
+						continue
+					var sp := cam.unproject_position(w) / vp * vs
+					if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+						continue
+					n += 1
+					var px := img.get_pixelv(Vector2i(sp))
+					if px.get_luminance() > 0.45 and px.b > px.r + 0.06 and px.b >= px.g:
+						sk += 1
+			if n < 20:
+				continue
+			var f := float(sk) / n
+			sum += f
+			cnt += 1
+			if f > 0.12:
+				over += 1
+			if f > worst:
+				worst = f
+				worst_t = Vector2i(tx, ty)
+	print("TOPS %s: %d top tiles, mean sky %.1f%%, worst %.0f%% at %s, %d over 12%% %s" % [nm, cnt, 100.0 * sum / maxi(cnt, 1), worst * 100.0, worst_t, over, "OK" if over == 0 else "CHECK"])
+
 func _run() -> void:
 	if _perf:
 		await _run_perf()
@@ -469,5 +512,6 @@ func _run() -> void:
 			_black_air_check(img.duplicate() as Image, nm)
 			_sky_in_structure_check(img, nm)
 			_seam_check(img, nm)
+			_tops_check(img, nm)
 			_sky_luma_check(img, nm)
 	get_tree().quit()

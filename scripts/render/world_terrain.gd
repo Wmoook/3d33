@@ -706,6 +706,43 @@ func window_image() -> Image:
 	wall_code = b
 	return Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
 
+## Day levels: air that may show the sky - a clear column of air up to the level top, or within SKY_REACH
+## tiles (through air) of such a column. The flood alone also reached underground halls via long corridors.
+const SKY_REACH := 10
+
+func _open_sky_mask() -> PackedByteArray:
+	var n := W * H
+	var o := PackedByteArray(); o.resize(n)
+	var dist := PackedInt32Array(); dist.resize(n); dist.fill(1 << 20)
+	var q := PackedInt32Array()
+	for x in W:
+		for y in H:
+			var i := y * W + x
+			if solid[i]:
+				break
+			o[i] = 1
+			dist[i] = 0
+			q.append(i)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		if dist[i] >= SKY_REACH:
+			continue
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if solid[j] or dist[j] <= dist[i] + 1:
+				continue
+			dist[j] = dist[i] + 1
+			o[j] = 1
+			q.append(j)
+	return o
+
 func _classify() -> void:
 	_find_art_doors()
 	_find_enclosed_sky_bg()
@@ -798,9 +835,16 @@ func _classify() -> void:
 	_sky_flood = sky.duplicate()   # open air reached from the top (before painted-sky windows join the sky)
 	if day:
 		_mark_crags(fgb)
+		var open := _open_sky_mask()
 		for i in n:
 			if not sky[i] and _deferred[i] and level.bg[i] in WorldPalette.FV_SKY_BG and not enclosed_sky_bg[i]:
 				sky[i] = 1   # painted sky seen through windows / behind the falls is real sky, not a wall
+			if sky[i] and not open[i] and not solid[i]:
+				sky[i] = 0   # deep underground air the flood reached through corridors: never see-through
+				if not _deferred[i] and level.bg[i] == 0:
+					continue
+				if not _deferred[i]:
+					continue
 			if sky[i]:
 				zones[i] = WorldPalette.Z_DAY
 			elif _deferred[i]:
