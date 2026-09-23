@@ -1,0 +1,1096 @@
+class_name WorldVoxel
+extends Node3D
+## Day levels: a MINECRAFT-STYLE procedural voxel landscape behind the level, in the level's own block
+## language (1-unit cubes, the level's palette: grass 35/19, earth 45/47/48, stone 9/46/86, leaves 14,
+## trunks 16/48, water 54/10, sand 88, ruin stone 42).
+##
+## Volume: x [X0, X0+NX), y [Y0, Y0+NY), z from -Z0 back to BACK_Z (voxel k spans z [-(Z0+k+1), -(Z0+k)]).
+## Generation (deterministic, seeded):
+##   - macro landform = the sky's WorldVista.sample() (the level's ground profile, the falls' river, the home
+##     island), continued from world's depth seam (WorldDepth.depth_seam) at z -26 and blended back into the
+##     vista exactly at BACK_Z, so the smooth far land continues the voxels;
+##   - Minecraft relief on top: fbm hills, ridged mountains with snow caps, terraced cliffs, 3D-noise overhangs,
+##     a river valley kept open, a lake at WATER_Y, a floating-island keel underside with voxel stalactites;
+##   - floating voxel islands (ruins held aloft) with tapering undersides and waterfalls, voxel oaks / pines /
+##     big oaks, bushes, tall grass + flowers, small ruins (pillars, arches, broken walls), cliff waterfalls.
+## READABILITY: nothing is ever in front of z = -Z0; right behind open sky-connected air the terrain stays
+## below the local air bottom (a clearance that only relaxes >= 20 units back), and everything hazes toward
+## the sky colour with depth (voxel_block.gdshader), so open air keeps reading as open.
+## Meshing: face-culled (only faces the fixed front camera can see: +-x, +-y, +z), side faces merged vertically,
+## chunked; per-block colour, smooth Minecraft vertex-style AO, bevels and edge seams are all resolved in the
+## shader from a 3D block-id texture (so merged faces cost nothing). Built on worker threads AFTER the level is
+## playable (start()), then chunks are uploaded over a few frames and the whole landscape fades in.
+## Usage (WorldView, day levels): add_child; setup(terrain, depth, vista) during the build; start() when built.
+
+signal finished
+
+const X0 := -72
+const NX := 544
+const Y0 := -240
+const NY := 280
+const Z0 := 3
+const NZ := 88
+const BACK_Z := -91.0            # = -(Z0 + NZ): the vista (near_limit) starts here
+const CHX := 32
+const CHY := 40
+const CHK := 22
+const WATER_Y := -172            # lake / river surface (top of the water blocks), = WorldVista.FLOOR_Y
+const NEAR_K := 24               # voxel rows inside world's depth-extrusion range (z > -27)
+const G3 := 4                    # 3D noise lattice spacing
+const SHADOW_K := 44             # chunks starting in front of this row cast sun shadows
+const PLANT_K := 60              # plants only in front of this row (sub-pixel beyond)
+const UPLOADS_PER_FRAME := 14
+const FADE_TIME := 1.6
+
+enum { AIR, GRASS, DIRT, DIRT_L, CLAY, STONE, STONE_W, STONE_L, SAND, SNOW, SNOW_GRASS, LOG, LEAVES, PINE,
+	RUIN, RUIN_MOSS, GRAVEL, PINE_LOG, N_SOLID }
+const WATER := 64
+const TALLGRASS := 65
+const FLOWER_R := 66
+const FLOWER_Y := 67
+const FLOWER_B := 68
+const FERN := 69
+
+## Tests: false disables the landscape (WorldView checks it).
+static var enabled := true
+
+var W := 400                      # level width
+var vox := PackedByteArray()      # block ids, index (k * NY + j) * NX + i
+var timings := {}
+var face_count := 0
+var is_ready := false
+var material: ShaderMaterial
+var water_material: ShaderMaterial
+var plant_material: ShaderMaterial
+var vol_tex: ImageTexture3D
+var sun_dir := Vector3(-0.30, 0.67, 0.68)
+
+var _ab := PackedFloat32Array()   # per level column: world y of the bottom of the deepest open-sky air tile
+var _seam := PackedFloat32Array() # per level column: world's depth seam height (NAN = none)
+var _dtop := PackedFloat32Array() # level column x NEAR_K: world's depth top (NAN = none)
+var _vg := PackedFloat32Array()   # vista macro heights on a G3 grid
+var _vgx := 0
+var _vgk := 0
+var _river := PackedFloat32Array()  # vista river x per voxel row k
+var _has_vista := false
+var _palette := {}                # level block id -> Color (sRGB)
+# column fields (NX * NZ, index k * NX + i)
+var _H := PackedFloat32Array()
+var _B := PackedFloat32Array()
+var _AMP := PackedFloat32Array()
+var _HMAX := PackedFloat32Array()
+var _FOR := PackedFloat32Array()
+var _n3 := PackedFloat32Array()
+var _g3x := 0
+var _g3y := 0
+var _g3k := 0
+var _islands: Array[PackedFloat32Array] = []   # [cx, cy, ck, R, Rz, D, falls, ruin]
+var _rows: Array = []
+var _slices: Array = []
+var _images: Array[Image] = []
+var _chunks: Array = []
+var _thread: Thread
+var _abort := false
+var _upload_i := 0
+var _uploading := false
+var _fade_t := -1.0
+var _vista: Node3D
+
+class Noises:
+	var hill := FastNoiseLite.new()
+	var detail := FastNoiseLite.new()
+	var mask := FastNoiseLite.new()
+	var ridge := FastNoiseLite.new()
+	var cliff := FastNoiseLite.new()
+	var forest := FastNoiseLite.new()
+	var under := FastNoiseLite.new()
+	var biome := FastNoiseLite.new()
+	var cave := FastNoiseLite.new()
+
+	func _init() -> void:
+		_set(hill, 101, 0.028, 4, FastNoiseLite.FRACTAL_FBM)
+		_set(detail, 102, 0.11, 2, FastNoiseLite.FRACTAL_FBM)
+		_set(mask, 103, 0.0085, 3, FastNoiseLite.FRACTAL_FBM)
+		_set(ridge, 104, 0.019, 4, FastNoiseLite.FRACTAL_RIDGED)
+		_set(cliff, 105, 0.021, 2, FastNoiseLite.FRACTAL_FBM)
+		_set(forest, 106, 0.03, 3, FastNoiseLite.FRACTAL_FBM)
+		_set(under, 107, 0.07, 3, FastNoiseLite.FRACTAL_RIDGED)
+		_set(biome, 108, 0.014, 2, FastNoiseLite.FRACTAL_FBM)
+		_set(cave, 109, 0.06, 3, FastNoiseLite.FRACTAL_FBM)
+
+	func _set(n: FastNoiseLite, s: int, f: float, o: int, t: FastNoiseLite.FractalType) -> void:
+		n.seed = s
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		n.frequency = f
+		n.fractal_octaves = o
+		n.fractal_type = t
+
+class Buf:
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	var idx := PackedInt32Array()
+
+static func _occ(id: int) -> bool:
+	return id > 0 and id < 64
+
+func _exit_tree() -> void:
+	_abort = true
+	if _thread and _thread.is_started():
+		_thread.wait_to_finish()
+
+# =================================================================== setup (main thread, fast)
+## Reads everything it needs from the other world modules (all three may be null except terrain).
+func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
+	var t0 := Time.get_ticks_msec()
+	W = terrain.W
+	var H := terrain.H
+	_vista = vista
+	if vista:
+		sun_dir = vista.sun_dir
+	_ab.resize(W)
+	for x in W:
+		var deep := -1
+		for y in H:
+			var i := y * W + x
+			if terrain.sky[i] and not terrain.solid[i]:
+				deep = y
+		_ab[x] = -float(deep + 1) if deep >= 0 else 0.0
+	_seam.resize(W)
+	_seam.fill(NAN)
+	_dtop.resize(W * NEAR_K)
+	_dtop.fill(NAN)
+	if depth:
+		var sm: Dictionary = depth.depth_seam()
+		var hs: PackedFloat32Array = sm.get("height", PackedFloat32Array())
+		for x in mini(W, hs.size()):
+			_seam[x] = hs[x]
+		for k in NEAR_K:
+			var z := -(Z0 + k + 0.5)
+			for x in W:
+				_dtop[k * W + x] = depth.depth_top_y(x + 0.5, z)
+	_vgx = NX / G3 + 1
+	_vgk = NZ / G3 + 1
+	_vg.resize(_vgx * _vgk)
+	_river.resize(NZ)
+	_has_vista = vista != null
+	for gk in _vgk:
+		var z := -(Z0 + gk * G3 + 0.5)
+		for gi in _vgx:
+			var x := X0 + gi * G3 + 0.5
+			_vg[gk * _vgx + gi] = vista.sample(x, z).x if vista else _fallback_base(x)
+	for k in NZ:
+		_river[k] = vista.river_x(Z0 + k + 0.5) if vista else 148.0
+	_load_palette(terrain.ref_dir)
+	timings["voxel_setup"] = Time.get_ticks_msec() - t0
+
+func _fallback_base(x: float) -> float:
+	var lx := clampi(int(floor(x)), 0, W - 1)
+	return maxf(_ab[lx] - 6.0, float(WATER_Y) - 2.0)
+
+func _load_palette(ref_dir: String) -> void:
+	var f := FileAccess.open(ref_dir.path_join("minimap_colors.json"), FileAccess.READ)
+	if f == null:
+		return
+	var d: Variant = JSON.parse_string(f.get_as_text())
+	if d is Dictionary:
+		for key: String in (d as Dictionary):
+			var v: Variant = d[key]
+			if v is String:
+				_palette[int(key)] = Color.html(v as String)
+
+func _pal(id: int, fallback: Color) -> Color:
+	return _palette.get(id, fallback)
+
+# =================================================================== async build
+func start() -> void:
+	if _thread:
+		return
+	_thread = Thread.new()
+	_thread.start(_run)
+
+func _group(fn: Callable, n: int) -> void:
+	var g := WorkerThreadPool.add_group_task(fn, n, -1, false, "WorldVoxel")
+	WorkerThreadPool.wait_for_group_task_completion(g)
+
+func _run() -> void:
+	var t0 := Time.get_ticks_msec()
+	# P1: column fields
+	_rows.resize(NZ)
+	_group(_row_task, NZ)
+	if _abort: return
+	for k in NZ:
+		var r: Array = _rows[k]
+		_H.append_array(r[0])
+		_B.append_array(r[1])
+		_AMP.append_array(r[2])
+		_HMAX.append_array(r[3])
+		_FOR.append_array(r[4])
+	_rows.clear()
+	_place_islands()
+	timings["voxel_fields"] = Time.get_ticks_msec() - t0
+	# P2: 3D noise lattice
+	var t1 := Time.get_ticks_msec()
+	_g3x = NX / G3 + 2
+	_g3y = NY / G3 + 2
+	_g3k = NZ / G3 + 2
+	_rows.resize(_g3k)
+	_group(_n3_task, _g3k)
+	if _abort: return
+	for k in _g3k:
+		_n3.append_array(_rows[k])
+	_rows.clear()
+	# P3: fill
+	_slices.resize(NZ)
+	_group(_fill_task, NZ)
+	if _abort: return
+	vox = PackedByteArray()
+	for k in NZ:
+		vox.append_array(_slices[k])
+	_slices.clear()
+	timings["voxel_fill"] = Time.get_ticks_msec() - t1
+	# P4: features
+	t1 = Time.get_ticks_msec()
+	_stamp_features()
+	timings["voxel_features"] = Time.get_ticks_msec() - t1
+	if _abort: return
+	# P5: texture slices + meshes
+	t1 = Time.get_ticks_msec()
+	var sl := NX * NY
+	for k in NZ:
+		_images.append(Image.create_from_data(NX, NY, false, Image.FORMAT_R8, vox.slice(k * sl, (k + 1) * sl)))
+	var ncx := NX / CHX
+	var ncy := NY / CHY
+	var nck := NZ / CHK
+	_chunks.resize(ncx * ncy * nck)
+	_group(_mesh_task, _chunks.size())
+	timings["voxel_mesh"] = Time.get_ticks_msec() - t1
+	timings["voxel_thread_total"] = Time.get_ticks_msec() - t0
+	if not _abort:
+		call_deferred("_on_generated")
+
+# ------------------------------------------------------------------- P1 column fields
+func _row_task(k: int) -> void:
+	var nz := Noises.new()
+	var d := k + 0.5
+	var z := -(Z0 + d)
+	var hs := PackedFloat32Array(); hs.resize(NX)
+	var bs := PackedFloat32Array(); bs.resize(NX)
+	var am := PackedFloat32Array(); am.resize(NX)
+	var hm := PackedFloat32Array(); hm.resize(NX)
+	var fo := PackedFloat32Array(); fo.resize(NX)
+	# clearance: sliding min of the air bottom over a window that widens with depth (camera parallax)
+	var r := 1 + int(d * 0.42)
+	var cl := PackedFloat32Array(); cl.resize(W)
+	for x in W:
+		var m := INF
+		for q in range(maxi(0, x - r), mini(W, x + r + 1)):
+			m = minf(m, _ab[q])
+		cl[x] = m
+	var rise := pow(maxf(d - 20.0, 0.0), 1.25) * 1.6
+	var riv := _river[k]
+	var env_h := smoothstep(18.0, 40.0, d) * (1.0 - smoothstep(80.0, 90.0, d))
+	var mtn_env := smoothstep(26.0, 48.0, d) * (1.0 - smoothstep(74.0, 89.0, d))
+	for i in NX:
+		var x := X0 + i + 0.5
+		var lx := clampi(int(floor(x)), 0, W - 1)
+		var hmax := cl[lx] - 1.5 + rise
+		var v := _vista_at(i, k)
+		var base := v
+		var sv := _seam[lx]
+		var valley := 0.0
+		if not is_nan(sv):
+			var near := sv - maxf(d - 23.0, 0.0) * 0.05
+			base = lerpf(near, v, smoothstep(23.0, 70.0, d))
+		else:
+			valley = 1.0 - smoothstep(-160.0, -135.0, v)
+		var h := base
+		h += nz.hill.get_noise_2d(x, z) * 6.0 * env_h
+		h += nz.detail.get_noise_2d(x, z) * 1.4 * env_h
+		var mask := smoothstep(-0.08, 0.32, nz.mask.get_noise_2d(x, z)) * mtn_env
+		var rv := smoothstep(16.0, 52.0, absf(x - riv))
+		mask *= lerpf(1.0, rv, valley)
+		var rg := nz.ridge.get_noise_2d(x, z) * 0.5 + 0.5
+		h += mask * (12.0 + 78.0 * rg * rg)
+		var cliffy := smoothstep(0.05, 0.4, nz.cliff.get_noise_2d(x, z)) * env_h
+		if cliffy > 0.0:
+			var step := 7.0
+			var q := h / step
+			var f := q - floor(q)
+			h = lerpf(h, (floor(q) + smoothstep(0.5, 0.8, f)) * step, cliffy)
+		# the river valley (continues the falls' pool) and the lake floor
+		if valley > 0.2:
+			var rd := absf(x - riv)
+			if rd < 6.0:
+				h = minf(h, lerpf(WATER_Y - 4.0, WATER_Y - 0.5, rd / 6.0))
+		h = minf(h, hmax)
+		if k < NEAR_K and x >= 0.0 and x < W:
+			var dt := _dtop[k * W + lx]
+			if not is_nan(dt):
+				h = minf(h, dt - 1.0)
+		# keel underside (follows the vista's home keel, a little deeper so that one stays hidden)
+		var u := (x - 200.0) / 280.0
+		var dk := 190.0 * pow(maxf(1.0 - pow(absf(u), 1.8), 0.0), 0.7) + 8.0
+		var t := _keel_t(-z, absf(u))
+		var ky := -196.0 - dk * pow(t, 1.15)
+		var s01 := nz.under.get_noise_2d(x, z) * 0.5 + 0.5
+		var b := ky - 4.0 - pow(s01, 3.0) * 16.0 - absf(nz.detail.get_noise_2d(x * 3.1, z * 3.1)) * 2.5
+		b = maxf(b, float(Y0) + 0.5)
+		h = maxf(h, b + 2.0)
+		var amp := (mask * 0.9 + cliffy * 0.6) * 7.0 * smoothstep(28.0, 40.0, d)
+		amp = clampf(minf(amp, hmax - h - 1.0), 0.0, 9.0)
+		hs[i] = h
+		bs[i] = b
+		am[i] = amp
+		hm[i] = hmax
+		fo[i] = nz.forest.get_noise_2d(x, z)
+	_rows[k] = [hs, bs, am, hm, fo]
+
+func _vista_at(i: int, k: int) -> float:
+	var fx := float(i) / G3
+	var fk := float(k) / G3
+	var gi := mini(int(fx), _vgx - 2)
+	var gk := mini(int(fk), _vgk - 2)
+	var tx := fx - gi
+	var tk := fk - gk
+	var a := _vg[gk * _vgx + gi]
+	var b := _vg[gk * _vgx + gi + 1]
+	var c := _vg[(gk + 1) * _vgx + gi]
+	var e := _vg[(gk + 1) * _vgx + gi + 1]
+	return lerpf(lerpf(a, b, tx), lerpf(c, e, tx), tk)
+
+## Parameter t of the vista's home keel surface at depth dz behind z = 0 (inverts its z(t)).
+func _keel_t(dz: float, au: float) -> float:
+	if dz <= 4.0:
+		return 0.0
+	var lo := 0.0
+	var hi := 1.0
+	for _it in 22:
+		var m := (lo + hi) * 0.5
+		var zz := 4.0 + pow(m, 0.8) * 300.0 + au * m * 40.0
+		if zz < dz:
+			lo = m
+		else:
+			hi = m
+	return (lo + hi) * 0.5
+
+# ------------------------------------------------------------------- floating islands
+func _place_islands() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242
+	var tries := 0
+	while _islands.size() < 20 and tries < 900:
+		tries += 1
+		var cx := rng.randf_range(95.0, 310.0) if rng.randf() < 0.55 else rng.randf_range(-55.0, 455.0)
+		var R := rng.randf_range(4.5, 13.0)
+		var Rz := R * rng.randf_range(0.55, 0.8)
+		var ck := rng.randf_range(30.0 + Rz, 84.0 - Rz)
+		var D := R * rng.randf_range(1.3, 1.9)
+		var ground := -INF
+		var hmin := INF
+		for s in 9:
+			var px := int(cx - X0 + (s % 3 - 1) * R * 0.9)
+			var pk := int(ck + (s / 3 - 1) * Rz * 0.9)
+			if px < 0 or px >= NX or pk < 0 or pk >= NZ:
+				continue
+			ground = maxf(ground, _H[pk * NX + px] + _AMP[pk * NX + px])
+			hmin = minf(hmin, _HMAX[pk * NX + px])
+		var lo := ground + D + 9.0
+		var hi := minf(ground + D + 75.0, minf(24.0, hmin - 3.0))
+		if lo > hi:
+			continue
+		var cy := rng.randf_range(lo, hi)
+		var ok := true
+		for o in _islands:
+			if absf(o[0] - cx) < (o[3] + R) * 1.15 and absf(o[2] - ck) < (o[4] + Rz) * 1.3 and absf(o[1] - cy) < o[5] + D + 6.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		var falls := 1.0 if (R > 7.0 and rng.randf() < 0.6) else 0.0
+		var ruin := 1.0 if rng.randf() < 0.6 else 0.0
+		_islands.append(PackedFloat32Array([cx, floor(cy), ck, R, Rz, D, falls, ruin]))
+
+## Island top / bottom at a column, or Vector2(NAN, NAN).
+func _island_col(isl: PackedFloat32Array, x: float, k: float, nz: Noises) -> Vector2:
+	var qx := (x - isl[0]) / isl[3]
+	var qk := (k - isl[2]) / isl[4]
+	var q := qx * qx + qk * qk
+	if q > 1.35:
+		return Vector2(NAN, NAN)
+	q += nz.detail.get_noise_2d(x * 1.4 + isl[0], k * 1.4) * 0.28
+	if q >= 1.0:
+		return Vector2(NAN, NAN)
+	var top := isl[1] + (1.0 - q) * 1.6 + nz.hill.get_noise_2d(x * 2.0, k * 2.0) * 0.9
+	var s01 := nz.under.get_noise_2d(x * 1.3 + 50.0, k * 1.3) * 0.5 + 0.5
+	var bot := isl[1] - isl[5] * pow(1.0 - q, 0.62) * (0.7 + 0.6 * s01) - 1.0
+	return Vector2(floor(top) + 1.0, bot)
+
+# ------------------------------------------------------------------- P2 3D noise lattice
+func _n3_task(gk: int) -> void:
+	var nz := Noises.new()
+	var out := PackedFloat32Array(); out.resize(_g3x * _g3y)
+	var z := -(Z0 + gk * G3)
+	for gj in _g3y:
+		var y := Y0 + gj * G3
+		for gi in _g3x:
+			out[gj * _g3x + gi] = nz.cave.get_noise_3d(X0 + gi * G3, y, z)
+	_rows[gk] = out
+
+func _n3_at(i: int, j: int, k: int) -> float:
+	var gi := i / G3
+	var gj := j / G3
+	var gk := k / G3
+	var tx := float(i - gi * G3) / G3
+	var ty := float(j - gj * G3) / G3
+	var tk := float(k - gk * G3) / G3
+	var sx := 1
+	var sy := _g3x
+	var sk := _g3x * _g3y
+	var o := gk * sk + gj * sy + gi
+	var c00 := lerpf(_n3[o], _n3[o + sx], tx)
+	var c10 := lerpf(_n3[o + sy], _n3[o + sy + sx], tx)
+	var c01 := lerpf(_n3[o + sk], _n3[o + sk + sx], tx)
+	var c11 := lerpf(_n3[o + sk + sy], _n3[o + sk + sy + sx], tx)
+	return lerpf(lerpf(c00, c10, ty), lerpf(c01, c11, ty), tk)
+
+# ------------------------------------------------------------------- P3 fill
+func _fill_task(k: int) -> void:
+	var nz := Noises.new()
+	var buf := PackedByteArray(); buf.resize(NX * NY)
+	var z := -(Z0 + k + 0.5)
+	var kf := k + 0.5
+	var col := PackedByteArray(); col.resize(NY)
+	for i in NX:
+		var ci := k * NX + i
+		var h := _H[ci]
+		var b := _B[ci]
+		var amp := _AMP[ci]
+		var x := X0 + i + 0.5
+		var hl := _H[ci - 1] if i > 0 else h
+		var hr := _H[ci + 1] if i < NX - 1 else h
+		var hf := _H[ci - NX] if k > 0 else h
+		var hb := _H[ci + NX] if k < NZ - 1 else h
+		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
+		var snow_y := -34.0 + nz.biome.get_noise_2d(x, z) * 10.0
+		var jhi := mini(NY - 1, int(floor(h + amp - Y0)) + 1)
+		var jlo := maxi(0, int(floor(b - Y0)))
+		col.fill(0)
+		# solid mask (with 3D overhangs in the band around the surface)
+		for j in range(jlo, jhi + 1):
+			var yc := Y0 + j + 0.5
+			if yc <= b:
+				continue
+			var dens := h - yc
+			if amp > 0.5 and absf(dens) < amp:
+				dens += amp * _n3_at(i, j, k) * 1.6
+			if dens > 0.0:
+				col[j] = 1
+		# islands
+		for isl in _islands:
+			if absf(x - isl[0]) > isl[3] * 1.2 or absf(kf - isl[2]) > isl[4] * 1.2:
+				continue
+			var tb := _island_col(isl, x, kf, nz)
+			if is_nan(tb.x):
+				continue
+			for j in range(maxi(0, int(floor(tb.y - Y0))), mini(NY, int(tb.x - Y0))):
+				col[j] = 2
+		# materials, top-down
+		var dep := 0
+		var dirt_n := 3 + int(absf(nz.detail.get_noise_2d(x * 2.0, z * 2.0)) * 3.0)
+		var clay := nz.biome.get_noise_2d(x * 3.0 + 99.0, z * 3.0) > 0.35
+		var lighter := nz.detail.get_noise_2d(x * 0.7 + 30.0, z * 0.7) > 0.25
+		for jj in range(NY - 1, -1, -1):
+			if col[jj] == 0:
+				dep = 0
+				if Y0 + jj + 1 <= WATER_Y and jj >= jlo and jj <= jhi + 1 and col[jj] == 0 and jj > 0 and h < WATER_Y:
+					buf[jj * NX + i] = WATER
+				continue
+			var yt := Y0 + jj + 1.0   # top of this block
+			var id := STONE
+			var isl_blk := col[jj] == 2
+			if dep == 0:
+				if yt <= WATER_Y and not isl_blk:
+					id = SAND if (i * 7 + k * 13) % 5 != 0 else GRAVEL
+				elif yt <= WATER_Y + 1.5 and not isl_blk:
+					id = SAND
+				elif yt > snow_y:
+					id = SNOW if slope > 2.2 else SNOW_GRASS
+				elif slope > 2.6 and not isl_blk:
+					id = STONE
+				else:
+					id = GRASS
+			elif dep <= dirt_n:
+				if yt <= WATER_Y + 1.5 and not isl_blk:
+					id = SAND
+				elif yt > snow_y + 4.0:
+					id = STONE
+				else:
+					id = CLAY if clay else (DIRT_L if lighter else DIRT)
+			else:
+				var nv := _n3_at(i, jj, k) if (h - yt) < 40.0 else 0.0
+				id = STONE_L if nv > 0.3 else (STONE_W if nv < -0.28 else STONE)
+			buf[jj * NX + i] = id
+			dep += 1
+	_slices[k] = buf
+
+# =================================================================== P4 features (serial, member vox)
+func _vi(i: int, j: int, k: int) -> int:
+	return (k * NY + j) * NX + i
+
+func _get(i: int, j: int, k: int) -> int:
+	if i < 0 or j < 0 or k < 0 or i >= NX or j >= NY or k >= NZ:
+		return AIR
+	return vox[(k * NY + j) * NX + i]
+
+func _put(i: int, j: int, k: int, id: int, only_air := true) -> void:
+	if i < 0 or j < 0 or k < 0 or i >= NX or j >= NY or k >= NZ:
+		return
+	var p := (k * NY + j) * NX + i
+	if only_air and _occ(vox[p]):
+		return
+	vox[p] = id
+
+## Topmost solid block j of a column (-1 = none), scanning down from `from_j`.
+func _top(i: int, k: int, from_j: int) -> int:
+	var j := mini(from_j, NY - 1)
+	var base := k * NY * NX + i
+	while j >= 0:
+		if _occ(vox[base + j * NX]):
+			return j
+		j -= 1
+	return -1
+
+func _col_top(i: int, k: int) -> int:
+	var ci := k * NX + i
+	return _top(i, k, int(_H[ci] + _AMP[ci] - Y0) + 2)
+
+func _stamp_features() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777001
+	var nz := Noises.new()
+	_island_features(rng)
+	_ruins(rng)
+	_trees(rng, nz)
+	_cliff_falls(rng)
+	_plants(rng, nz)
+
+func _hmax(i: int, k: int) -> float:
+	return _HMAX[k * NX + i]
+
+# ---- trees
+func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
+	var cell := 5
+	for ck in range(0, NZ, cell):
+		for cx in range(0, NX, cell):
+			var i := cx + rng.randi_range(0, cell - 1)
+			var k := ck + rng.randi_range(0, cell - 1)
+			if i >= NX or k >= NZ or k < 18:
+				continue
+			var f := _FOR[k * NX + i]
+			var dens := smoothstep(-0.25, 0.3, f)
+			if rng.randf() > dens * 0.85 + 0.05:
+				continue
+			var j := _col_top(i, k)
+			if j < 0 or _get(i, j, k) != GRASS and _get(i, j, k) != SNOW_GRASS:
+				continue
+			var y := Y0 + j + 1.0
+			var room := _hmax(i, k) - y
+			var pine := y > -95.0 + f * 20.0 or _get(i, j, k) == SNOW_GRASS or rng.randf() < 0.25
+			if pine:
+				var ph := rng.randi_range(7, 12)
+				if room < ph + 1:
+					continue
+				_pine(i, j + 1, k, ph, rng)
+			elif rng.randf() < 0.1 and room > 14.0:
+				_big_oak(i, j + 1, k, rng)
+			else:
+				var oh := rng.randi_range(4, 6)
+				if room < oh + 3:
+					continue
+				_oak(i, j + 1, k, oh, rng)
+
+func _leaf(i: int, j: int, k: int, id: int) -> void:
+	_put(i, j, k, id, true)
+
+func _oak(i: int, j: int, k: int, h: int, rng: RandomNumberGenerator) -> void:
+	for y in h:
+		_put(i, j + y, k, LOG, false)
+	var tj := j + h
+	for dy in range(-2, 2):
+		var r := 2 if dy < 0 else 1
+		for dx in range(-r, r + 1):
+			for dk in range(-r, r + 1):
+				var corner := absi(dx) == r and absi(dk) == r
+				if corner and (dy == 1 or rng.randf() < 0.5):
+					continue
+				if dx == 0 and dk == 0 and dy < 0:
+					continue
+				_leaf(i + dx, tj + dy, k + dk, LEAVES)
+	_leaf(i, tj + 1, k, LEAVES)
+
+func _pine(i: int, j: int, k: int, h: int, rng: RandomNumberGenerator) -> void:
+	for y in h:
+		_put(i, j + y, k, PINE_LOG, false)
+	var start := 2 + rng.randi_range(0, 1)
+	for y in range(start, h + 1):
+		var t := float(h - y) / float(h - start)
+		var r := int(round(t * 2.6))
+		if (y - start) % 2 == 1:
+			r = maxi(r - 1, 0)
+		for dx in range(-r, r + 1):
+			for dk in range(-r, r + 1):
+				if absi(dx) + absi(dk) > r + (1 if r >= 2 else 0):
+					continue
+				if dx == 0 and dk == 0 and y < h:
+					continue
+				_leaf(i + dx, j + y, k + dk, PINE)
+	_leaf(i, j + h + 1, k, PINE)
+
+func _big_oak(i: int, j: int, k: int, rng: RandomNumberGenerator) -> void:
+	var h := rng.randi_range(8, 11)
+	for y in h:
+		for d in 4:
+			_put(i + d % 2, j + y, k + d / 2, LOG, false)
+	# roots
+	for d in [Vector2i(-1, 0), Vector2i(2, 1), Vector2i(0, 2), Vector2i(1, -1)]:
+		_put(i + d.x, j, k + d.y, LOG, false)
+	var blobs := [Vector3(0.5, h + 0.5, 0.5)]
+	for _b in 3:
+		blobs.append(Vector3(0.5 + rng.randf_range(-3.5, 3.5), h - rng.randf_range(1.0, 3.5), 0.5 + rng.randf_range(-2.5, 2.5)))
+	for bl: Vector3 in blobs:
+		var r := 3.6 if bl == blobs[0] else 2.6
+		var ri := int(ceil(r))
+		for dy in range(-ri, ri + 1):
+			for dx in range(-ri, ri + 1):
+				for dk in range(-ri, ri + 1):
+					var p := Vector3(dx, dy * 1.25, dk)
+					if p.length() <= r + rng.randf_range(-0.4, 0.3):
+						_leaf(i + int(floor(bl.x)) + dx, j + int(floor(bl.y)) + dy, k + int(floor(bl.z)) + dk, LEAVES)
+		# branch to the blob
+		var steps := 6
+		for s in steps:
+			var p := Vector3(0.5, h - 3.0, 0.5).lerp(bl, float(s) / steps)
+			_put(i + int(floor(p.x)), j + int(floor(p.y)), k + int(floor(p.z)), LOG, false)
+
+# ---- islands: ruins on top, waterfalls off the front edge
+func _island_features(rng: RandomNumberGenerator) -> void:
+	for isl in _islands:
+		var ci := int(isl[0] - X0)
+		var ck := int(isl[2])
+		if isl[7] > 0.5:
+			var ox := ci + rng.randi_range(-int(isl[3] * 0.3), int(isl[3] * 0.3))
+			var j := _top(ox, ck, NY - 1)
+			if j > 0:
+				_ruin_at(ox, j + 1, ck, rng.randi_range(0, 3), rng, 22.0)
+		if isl[6] > 0.5:
+			var fx := ci + rng.randi_range(-int(isl[3] * 0.35), int(isl[3] * 0.35))
+			# front edge: the smallest k with island blocks at this x
+			var kk := ck
+			while kk > 0 and _top(fx, kk - 1, int(isl[1] - Y0) + 3) > int(isl[1] - isl[5] - Y0) - 2:
+				kk -= 1
+			var jt := _top(fx, kk, int(isl[1] - Y0) + 3)
+			if jt < 0:
+				continue
+			for w in 2:
+				# channel through the island top, then the falling column in front of the edge
+				for dk in range(0, 4):
+					_put(fx + w, jt, kk + dk, WATER, false)
+				var jb := _top(fx + w, kk - 1, jt - 1)
+				for j in range(maxi(jb + 1, 0), jt + 1):
+					_put(fx + w, j, kk - 1, WATER, true)
+		# a few trees on the island
+		for _t in int(isl[3] * 0.4):
+			var ti := ci + rng.randi_range(-int(isl[3] * 0.6), int(isl[3] * 0.6))
+			var tk := ck + rng.randi_range(-int(isl[4] * 0.5), int(isl[4] * 0.5))
+			var j := _top(ti, tk, int(isl[1] - Y0) + 3)
+			if j < 0 or _get(ti, j, tk) != GRASS:
+				continue
+			if rng.randf() < 0.5:
+				_oak(ti, j + 1, tk, rng.randi_range(4, 5), rng)
+			else:
+				_pine(ti, j + 1, tk, rng.randi_range(6, 9), rng)
+
+# ---- ruins scattered on flat ground
+func _ruins(rng: RandomNumberGenerator) -> void:
+	var placed := 0
+	var tries := 0
+	while placed < 46 and tries < 3000:
+		tries += 1
+		var i := rng.randi_range(4, NX - 5)
+		var k := rng.randi_range(26, NZ - 6)
+		var ci := k * NX + i
+		if _AMP[ci] > 0.5:
+			continue
+		var h := _H[ci]
+		var flat := true
+		for o in [Vector2i(-3, 0), Vector2i(3, 0), Vector2i(0, -3), Vector2i(0, 3)]:
+			if absf(_H[(k + o.y) * NX + i + o.x] - h) > 1.6:
+				flat = false
+		if not flat or h <= WATER_Y + 1:
+			continue
+		var j := _col_top(i, k)
+		if j < 0 or _get(i, j, k) != GRASS:
+			continue
+		if _ruin_at(i, j + 1, k, rng.randi_range(0, 3), rng, _hmax(i, k) - (Y0 + j + 1.0)):
+			placed += 1
+
+## type 0 = pillar group, 1 = arch, 2 = broken wall, 3 = shrine plinth with columns. Returns false if no room.
+func _ruin_at(i: int, j: int, k: int, type: int, rng: RandomNumberGenerator, room: float) -> bool:
+	if room < 6.0:
+		return false
+	var hmax := int(minf(room - 1.0, 12.0))
+	match type:
+		0:
+			for p in rng.randi_range(1, 3):
+				var pi := i + rng.randi_range(-4, 4)
+				var pk := k + rng.randi_range(-2, 2)
+				var pj := _top(pi, pk, j + 3) + 1
+				var ph := rng.randi_range(3, hmax)
+				for y in ph:
+					_put(pi, pj + y, pk, RUIN, false)
+				_put(pi, pj + ph, pk, RUIN_MOSS if rng.randf() < 0.6 else RUIN, false)
+				# plinth
+				for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+					if rng.randf() < 0.7:
+						_put(pi + d.x, pj, pk + d.y, RUIN, false)
+				# fallen drum
+				if rng.randf() < 0.5:
+					_put(pi + rng.randi_range(2, 3), pj, pk + rng.randi_range(-1, 1), RUIN_MOSS, false)
+		1:
+			var span := rng.randi_range(3, 5)
+			var ph := clampi(rng.randi_range(5, 8), 4, hmax - 1)
+			var broken := rng.randf() < 0.5
+			for side in [-1, 1]:
+				var px := i + side * (span / 2 + 1)
+				var pj := _top(px, k, j + 3) + 1
+				var top := j + ph
+				for y in range(pj, top):
+					_put(px, y, k, RUIN, false)
+					if y - pj < 2:
+						_put(px, y, k + 1, RUIN, false)
+			for dx in range(-(span / 2 + 1), span / 2 + 2):
+				if broken and dx > span / 4:
+					continue
+				_put(i + dx, j + ph, k, RUIN_MOSS if rng.randf() < 0.35 else RUIN, false)
+				if absi(dx) >= span / 2:
+					_put(i + dx, j + ph - 1, k, RUIN, false)
+		2:
+			var ln := rng.randi_range(6, 12)
+			var wh := clampi(rng.randi_range(3, 6), 2, hmax)
+			var x0 := i - ln / 2
+			for dx in ln:
+				var cj := _top(x0 + dx, k, j + 3) + 1
+				var ch := wh - int(absf(sin(dx * 1.7 + rng.randf() * 3.0)) * wh * 0.8)
+				for y in ch:
+					if y == wh / 2 and dx % 4 == 2:
+						continue   # window
+					_put(x0 + dx, cj + y, k, RUIN, false)
+				if ch > 0:
+					_put(x0 + dx, cj + ch - 1, k, RUIN_MOSS if rng.randf() < 0.5 else RUIN, false)
+		3:
+			for dx in range(-3, 4):
+				for dk in range(-2, 3):
+					_put(i + dx, j, k + dk, RUIN, false)
+			var ch := clampi(rng.randi_range(4, 7), 3, hmax - 1)
+			for c in [Vector2i(-3, -2), Vector2i(3, -2), Vector2i(-3, 2), Vector2i(3, 2)]:
+				var cc: Vector2i = c
+				var hh := ch - (rng.randi_range(0, ch - 1) if rng.randf() < 0.4 else 0)
+				for y in range(1, hh + 1):
+					_put(i + cc.x, j + y, k + cc.y, RUIN, false)
+	return true
+
+# ---- waterfalls down cliffs that face the camera
+func _cliff_falls(rng: RandomNumberGenerator) -> void:
+	var made := 0
+	var tries := 0
+	while made < 9 and tries < 4000:
+		tries += 1
+		var i := rng.randi_range(2, NX - 4)
+		var k := rng.randi_range(34, NZ - 8)
+		var ci := k * NX + i
+		var h := _H[ci]
+		# the ground in front (toward the camera) drops by a cliff
+		var kf := k - 1
+		while kf > 20 and _H[kf * NX + i] > h - 2.0:
+			kf -= 1
+		if h - _H[kf * NX + i] < 9.0 or _AMP[ci] > 0.5:
+			continue
+		var jt := _col_top(i, k)
+		if jt < 0 or _get(i, jt, k) != GRASS:
+			continue
+		for w in 2:
+			for dk in range(0, 6):
+				var jj := _col_top(i + w, k + dk)
+				if jj == jt:
+					_put(i + w, jj, k + dk, WATER, false)
+			for kk in range(kf + 1, k):
+				# the water pours over the edge rows
+				var jj := _col_top(i + w, kk)
+				if jj >= jt - 1:
+					_put(i + w, jt, kk, WATER, false)
+			var jb := _col_top(i + w, kf)
+			for j in range(jb + 1, jt + 1):
+				_put(i + w, j, kf, WATER, true)
+			_put(i + w, jb, kf, WATER, false)
+		made += 1
+
+# ---- tall grass, flowers, ferns, bushes
+func _plants(rng: RandomNumberGenerator, nz: Noises) -> void:
+	for k in range(12, PLANT_K):
+		for i in NX:
+			var j := _col_top(i, k)
+			if j < 0 or j >= NY - 2 or _get(i, j, k) != GRASS or _get(i, j + 1, k) != AIR:
+				continue
+			var fl := nz.biome.get_noise_2d(i * 0.9, k * 0.9)
+			var r := rng.randf()
+			var y := Y0 + j + 1.0
+			if y + 1.0 > _hmax(i, k):
+				continue
+			if r < 0.018 and y + 2.0 <= _hmax(i, k):
+				_put(i, j + 1, k, LEAVES, false)
+				if rng.randf() < 0.3:
+					_put(i + 1, j + 1, k, LEAVES, false)
+			elif r < 0.06 + maxf(fl, 0.0) * 0.12:
+				var c := rng.randf()
+				_put(i, j + 1, k, FLOWER_R if c < 0.4 else (FLOWER_Y if c < 0.75 else FLOWER_B), false)
+			elif r < 0.34:
+				_put(i, j + 1, k, FERN if _FOR[k * NX + i] > 0.15 and rng.randf() < 0.5 else TALLGRASS, false)
+
+# =================================================================== P5 meshing
+func _mesh_task(c: int) -> void:
+	if _abort:
+		return
+	var ncx := NX / CHX
+	var ncy := NY / CHY
+	var cxi := c % ncx
+	var cyi := (c / ncx) % ncy
+	var cki := c / (ncx * ncy)
+	var i0 := cxi * CHX
+	var j0 := cyi * CHY
+	var k0 := cki * CHK
+	var ob := Buf.new()
+	var wb := Buf.new()
+	var pb := Buf.new()
+	var sy := NX
+	var sk := NX * NY
+	for k in range(k0, k0 + CHK):
+		var zf := -float(Z0 + k)
+		for i in range(i0, i0 + CHX):
+			var x := float(X0 + i)
+			var run := [-1, -1, -1]      # opaque +x, -x, +z runs (start j)
+			var wrun := [-1, -1, -1]     # water runs
+			for j in range(j0, j0 + CHY + 1):
+				var inside := j < j0 + CHY
+				var id := vox[k * sk + j * sy + i] if inside else AIR
+				var s := inside and _occ(id)
+				var wt := inside and id == WATER
+				var ex := [false, false, false]
+				var wx := [false, false, false]
+				if s or wt:
+					var p := k * sk + j * sy + i
+					var npx := vox[p + 1] if i < NX - 1 else STONE
+					var nnx := vox[p - 1] if i > 0 else STONE
+					var nfz := vox[p - sk] if k > 0 else AIR
+					if s:
+						ex = [not _occ(npx), not _occ(nnx), not _occ(nfz)]
+						var up := vox[p + sy] if j < NY - 1 else AIR
+						var dn := vox[p - sy] if j > 0 else STONE
+						var y := float(Y0 + j)
+						if not _occ(up):
+							_quad(ob, Vector3(x, y + 1.0, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
+						if not _occ(dn):
+							_quad(ob, Vector3(x, y, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, -1, 0))
+					else:
+						wx = [npx == AIR or npx >= TALLGRASS, nnx == AIR or nnx >= TALLGRASS, nfz == AIR or nfz >= TALLGRASS]
+						var up := vox[p + sy] if j < NY - 1 else AIR
+						if up != WATER and not _occ(up):
+							_quad(wb, Vector3(x, Y0 + j + 0.88, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
+				elif inside and id >= TALLGRASS and k < PLANT_K:
+					_plant(pb, x, float(Y0 + j), zf, id, (i * 73856093) ^ (k * 19349663))
+				for d in 3:
+					_runs(ob, run, d, ex[d], j, x, zf)
+					_runs(wb, wrun, d, wx[d], j, x, zf)
+	_chunks[c] = [ob, wb, pb]
+
+func _runs(b: Buf, run: Array, d: int, on: bool, j: int, x: float, zf: float) -> void:
+	if on:
+		if run[d] < 0:
+			run[d] = j
+		return
+	if run[d] < 0:
+		return
+	var y0 := float(Y0 + int(run[d]))
+	var hh := float(j - int(run[d]))
+	run[d] = -1
+	match d:
+		0:
+			_quad(b, Vector3(x + 1.0, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(1, 0, 0))
+		1:
+			_quad(b, Vector3(x, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(-1, 0, 0))
+		2:
+			_quad(b, Vector3(x, y0, zf), Vector3(1, 0, 0), Vector3(0, hh, 0), Vector3(0, 0, 1))
+
+func _quad(b: Buf, o: Vector3, du: Vector3, dv: Vector3, n: Vector3) -> void:
+	var base := b.v.size()
+	b.v.append(o)
+	b.v.append(o + du)
+	b.v.append(o + du + dv)
+	b.v.append(o + dv)
+	for _q in 4:
+		b.n.append(n)
+	if du.cross(dv).dot(n) > 0.0:
+		b.idx.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
+	else:
+		b.idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+
+## Two crossed quads (double-sided in the shader). UV2 = (plant id, random 0..1).
+func _plant(b: Buf, x: float, y: float, zf: float, id: int, seed_v: int) -> void:
+	var rnd := float(absi(seed_v) % 1000) / 1000.0
+	var hgt := 0.9 if id == TALLGRASS else (1.0 if id == FERN else 0.8)
+	hgt *= 0.8 + 0.4 * rnd
+	var ins := 0.12
+	var diag := [[Vector3(x + ins, y, zf - ins), Vector3(x + 1.0 - ins, y, zf - 1.0 + ins)],
+		[Vector3(x + 1.0 - ins, y, zf - ins), Vector3(x + ins, y, zf - 1.0 + ins)]]
+	for dg: Array in diag:
+		var a: Vector3 = dg[0]
+		var e: Vector3 = dg[1]
+		var base := b.v.size()
+		b.v.append_array([a, e, e + Vector3(0, hgt, 0), a + Vector3(0, hgt, 0)])
+		for _q in 4:
+			b.n.append(Vector3(0, 1, 0))
+			b.uv2.append(Vector2(float(id), rnd))
+		b.uv.append_array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+		b.idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+
+# =================================================================== main thread: upload + fade
+func _on_generated() -> void:
+	if _thread:
+		_thread.wait_to_finish()
+		_thread = null
+	var t0 := Time.get_ticks_msec()
+	vol_tex = ImageTexture3D.new()
+	vol_tex.create(Image.FORMAT_R8, NX, NY, NZ, false, _images)
+	_images.clear()
+	_make_materials()
+	timings["voxel_upload_tex"] = Time.get_ticks_msec() - t0
+	_upload_i = 0
+	_uploading = true
+	set_process(true)
+
+func _make_materials() -> void:
+	material = ShaderMaterial.new()
+	material.shader = load("res://shaders/world/voxel_block.gdshader")
+	WorldPbr.bind(material, false, 1.0)
+	water_material = ShaderMaterial.new()
+	water_material.shader = load("res://shaders/world/voxel_water.gdshader")
+	plant_material = ShaderMaterial.new()
+	plant_material.shader = load("res://shaders/world/voxel_plant.gdshader")
+	var cols := PackedVector3Array()
+	cols.resize(N_SOLID)
+	var table := {
+		GRASS: _pal(35, Color8(69, 99, 19)), DIRT: _pal(45, Color8(114, 97, 75)), DIRT_L: _pal(47, Color8(142, 115, 79)),
+		CLAY: _pal(48, Color8(127, 79, 43)), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
+		STONE_L: _pal(86, Color8(134, 134, 134)), SAND: _pal(88, Color8(108, 79, 44)).lerp(Color8(196, 170, 120), 0.45),
+		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(90, 60, 36), 0.45),
+		LEAVES: _pal(14, Color8(66, 168, 54)), PINE: _pal(19, Color8(67, 131, 16)).lerp(Color8(24, 60, 30), 0.5),
+		RUIN: _pal(42, Color8(153, 153, 153)).lerp(_pal(9, Color8(110, 110, 110)), 0.5), RUIN_MOSS: Color8(96, 118, 62),
+		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(70, 48, 32), 0.5),
+	}
+	for id: int in table:
+		var c: Color = table[id]
+		c = c.srgb_to_linear()
+		cols[id] = Vector3(c.r, c.g, c.b)
+	var g2 := _pal(19, Color8(67, 131, 16)).srgb_to_linear()
+	var wa := _pal(54, Color8(126, 153, 246)).srgb_to_linear()
+	var wd := _pal(10, Color8(53, 82, 168)).srgb_to_linear()
+	for m: ShaderMaterial in [material, water_material, plant_material]:
+		m.set_shader_parameter("vol", vol_tex)
+		m.set_shader_parameter("vol_origin", Vector3(X0, Y0, Z0))
+		m.set_shader_parameter("vol_size", Vector3i(NX, NY, NZ))
+		m.set_shader_parameter("sun_dir", sun_dir)
+		m.set_shader_parameter("fade", 0.0)
+	material.set_shader_parameter("blk_col", cols)
+	material.set_shader_parameter("grass_b", Vector3(g2.r, g2.g, g2.b))
+	water_material.set_shader_parameter("water_a", Vector3(wa.r, wa.g, wa.b))
+	water_material.set_shader_parameter("water_d", Vector3(wd.r, wd.g, wd.b))
+	plant_material.set_shader_parameter("grass_col", cols[GRASS])
+	plant_material.set_shader_parameter("grass_b", Vector3(g2.r, g2.g, g2.b))
+
+func _process(delta: float) -> void:
+	if _uploading:
+		var t0 := Time.get_ticks_usec()
+		var n := 0
+		while _upload_i < _chunks.size() and n < UPLOADS_PER_FRAME:
+			_upload_chunk(_upload_i)
+			_upload_i += 1
+			n += 1
+		timings["voxel_upload_us"] = int(timings.get("voxel_upload_us", 0)) + Time.get_ticks_usec() - t0
+		if _upload_i >= _chunks.size():
+			_uploading = false
+			_chunks.clear()
+			_fade_t = 0.0
+			is_ready = true
+			print("WorldVoxel ready: %d faces, %d islands %s" % [face_count, _islands.size(), str(timings)])
+			finished.emit()
+		return
+	if _fade_t >= 0.0:
+		_fade_t += delta
+		var f := smoothstep(0.0, 1.0, _fade_t / FADE_TIME)
+		for m: ShaderMaterial in [material, water_material, plant_material]:
+			m.set_shader_parameter("fade", f)
+		if _fade_t >= FADE_TIME:
+			_fade_t = -1.0
+			set_process(false)
+
+## Tests: skip the fade.
+func finish_fade() -> void:
+	_fade_t = FADE_TIME - 0.001
+
+func _upload_chunk(c: int) -> void:
+	var parts: Array = _chunks[c]
+	if parts.is_empty():
+		return
+	var ncx := NX / CHX
+	var ncy := NY / CHY
+	var cki := c / (ncx * ncy)
+	var mats: Array[ShaderMaterial] = [material, water_material, plant_material]
+	for p in 3:
+		var b: Buf = parts[p]
+		if b.v.is_empty():
+			continue
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = b.v
+		arr[Mesh.ARRAY_NORMAL] = b.n
+		if not b.uv.is_empty():
+			arr[Mesh.ARRAY_TEX_UV] = b.uv
+			arr[Mesh.ARRAY_TEX_UV2] = b.uv2
+		arr[Mesh.ARRAY_INDEX] = b.idx
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mi := MeshInstance3D.new()
+		mi.mesh = m
+		mi.material_override = mats[p]
+		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if (p == 0 and cki * CHK < SHADOW_K) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.name = "Vox%d_%d" % [c, p]
+		add_child(mi)
+		if p == 0:
+			face_count += b.idx.size() / 6
+
+# =================================================================== queries (tests / other modules)
+## Block id at a world position (AIR outside the volume).
+func block_at(p: Vector3) -> int:
+	if vox.is_empty():
+		return AIR
+	return _get(int(floor(p.x - X0)), int(floor(p.y - Y0)), int(floor(-p.z - Z0)))
+
+## Surface height of the voxel terrain at world (x, z) (NAN outside the volume / before the build).
+func height_at(x: float, z: float) -> float:
+	var i := int(floor(x - X0))
+	var k := int(floor(-z - Z0))
+	if _H.is_empty() or i < 0 or i >= NX or k < 0 or k >= NZ:
+		return NAN
+	return _H[k * NX + i]

@@ -13,6 +13,8 @@ signal zone_changed(zone: StringName)
 const ZONE_HYSTERESIS := 0.4
 ## Tests: false skips the depth continuation (before/after shots).
 static var depth_enabled := true
+## Optional smooth skin over natural depth masses (WorldDepth.smooth_skin); default OFF (blocky).
+static var depth_smooth_skin := false
 
 var level: EELevel
 var sim: Object  # EESim (untyped so the world builds without the physics module)
@@ -126,6 +128,7 @@ func _step_depth() -> void:
 		return
 	var t := Time.get_ticks_msec()
 	depth = WorldDepth.new()
+	depth.smooth_skin = depth_smooth_skin
 	_add(depth, "Depth")
 	depth.build(terrain)
 	if depth.face_count == 0 or depth.depth.size() != level.width * level.height:
