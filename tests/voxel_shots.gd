@@ -5,7 +5,8 @@ const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS := {"spawn": Vector2i(2, 56), "grove": Vector2i(40, 40), "falls": Vector2i(150, 165),
 	"spire_top": Vector2i(200, 30), "keep": Vector2i(300, 70), "shrine": Vector2i(390, 78),
 	"spiregap": Vector2i(222, 70), "valley": Vector2i(160, 120), "bottom": Vector2i(200, 192), "sky": Vector2i(120, 20),
-	"grove_top": Vector2i(40, 30), "logo": Vector2i(320, 45), "west_edge": Vector2i(10, 30), "east_low": Vector2i(380, 120)}
+	"grove_top": Vector2i(40, 30), "logo": Vector2i(320, 45), "west_edge": Vector2i(10, 30), "east_low": Vector2i(380, 120),
+	"edge_l": Vector2i(10, 100), "under": Vector2i(200, 195), "edge_r": Vector2i(390, 100)}
 var game
 
 func _ready() -> void:
@@ -43,6 +44,14 @@ func _ready() -> void:
 			(c as CanvasLayer).visible = false
 	var base := "base" in OS.get_cmdline_user_args()
 	var perf := "perf" in OS.get_cmdline_user_args()
+	var tag := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("zoom="):
+			game.rig.target_zoom = float(a.substr(5)); game.rig.zoom = float(a.substr(5))
+			tag = "_z" + a.substr(5)
+		if a == "novox":
+			vx.visible = false
+			tag += "_novox"
 	if perf:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
@@ -65,7 +74,7 @@ func _ready() -> void:
 			print("PERF %s: gpu %.2f ms with voxels, %.2f without (+%.2f), cpu frame %.2f" % [n, on.x, off.x, on.x - off.x, on.y])
 			continue
 		var img := get_viewport().get_texture().get_image()
-		img.save_png("user://voxel_%s.png" % n)
+		img.save_png("user://voxel_%s%s.png" % [n, tag])
 		print("SHOT voxel_%s" % n)
 		_sky_luma(img, n, wv)
 		if base:

@@ -55,6 +55,9 @@ void fragment() {
 	if (in_forest_hollow(w_pos, CAMERA_POSITION_WORLD)) {
 		discard;
 	}
+	if (w_pos.y < -201.0) {
+		discard;   // nothing of the landscape below the level's bottom edge (the cloud sea shows there)
+	}
 	vec3 gn = normalize(w_nrm);
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 sd = normalize(sun_dir);

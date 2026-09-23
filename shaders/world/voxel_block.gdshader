@@ -83,6 +83,14 @@ void fragment() {
 	if (in_forest_hollow(w_pos, CAMERA_POSITION_WORLD)) {
 		discard;
 	}
+	// under the level the keel dissolves (dithered) so the sky's cloud sea shows below the world, as without
+	// voxels; only the first rows under the level's bottom edge stay as its rock edge
+	if (wp.y < -201.0) {
+		float kd = smoothstep(-201.0, -207.0, wp.y);
+		if (kd > 0.999 || kd > pbr_hash(FRAGCOORD.xy * 0.73 + 0.5)) {
+			discard;
+		}
+	}
 	vec3 gn = normalize(w_nrm);
 	ivec3 nc = ivec3(int(round(gn.x)), int(round(gn.y)), -int(round(gn.z)));   // cell-space normal
 	ivec3 bc = to_cell(wp - gn * 0.25);
@@ -251,6 +259,10 @@ void fragment() {
 		albedo *= 0.45;   // undersides: shadowed rock (as the level's volumes)
 		ao *= 0.8;
 	}
+	// the keel under the level and the land's cut cliffs: darker toward the bottom (a rock mass seen from
+	// above), and melting into the sky / cloud sea below y -215 (sky's cloud tops ~ -222)
+	float low = smoothstep(-185.0, -215.0, wp.y);
+	albedo *= mix(1.0, 0.55, low);
 	// --- aerial haze toward the sky of the same direction
 	vec3 sd = normalize(sun_dir);
 	float f = vista_fog_f(wp, CAMERA_POSITION_WORLD, fog_density, 0.0);
@@ -266,7 +278,8 @@ void fragment() {
 		vec3 pred = albedo * mix(1.0, block_ao, 0.75) * (k_sun * ndl * vec3(1.0, 0.86, 0.66) + k_amb * (0.6 + 0.4 * n.y));
 		float pl = dot(pred, lum_w);
 		float sl = dot(skyc, lum_w);
-		float target = min_rel * sl * (0.8 + 0.2 * rk);
+		// (no readability floor under the level: no gameplay air there, the keel may read as dark rock)
+		float target = min_rel * sl * (0.8 + 0.2 * rk) * (1.0 - smoothstep(-199.0, -204.0, wp.y));
 		float lit_l = mix(pl, sl, f);
 		if (lit_l < target) {
 			// near: lift with more haze (reads as air). Far: lift with the block's OWN hue (a touch of sky
@@ -279,6 +292,7 @@ void fragment() {
 			lift = hue * max(target - mix(pl, sl, f), 0.0) * far_w;
 		}
 	}
+	f = max(f, smoothstep(-200.5, -217.0, wp.y));
 	f = mix(1.0, f, fade);
 	ALBEDO = albedo * mix(1.0, block_ao, 0.75) * (1.0 - f);
 	ROUGHNESS = rough;

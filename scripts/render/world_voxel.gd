@@ -456,9 +456,23 @@ func _row_task(k: int) -> void:
 		var t := _keel_t(-z, absf(u))
 		var ky := -196.0 - dk * pow(t, 1.15)
 		var s01 := nz.under.get_noise_2d(x, z) * 0.5 + 0.5
-		var b := ky - 4.0 - pow(s01, 3.0) * 16.0 - absf(nz.detail.get_noise_2d(x * 3.1, z * 3.1)) * 2.5
+		# a few broad, tapered hanging lobes instead of a curtain of thin columns (smooth, low-frequency)
+		var lobe := smoothstep(0.55, 0.95, s01)
+		# (the first rows under the level stay a clean edge: per-column steps there read as vertical stripes)
+		var lobe_k := smoothstep(30.0, 70.0, d)
+		var b := ky - 4.0 - (lobe * lobe * 12.0 + absf(nz.detail.get_noise_2d(x * 0.6, z * 0.6)) * 1.5) * lobe_k
 		b = maxf(b, float(Y0) + 0.5)
-		if v < b + 2.0 and d > 30.0:
+		# beyond the level's x edges the land sets back the further out it is (no face right beside the level,
+		# which the zoomed-out overview saw as a flat wall); an irregular cliff line
+		var outx := maxf(-x, x - float(W))
+		var setback := 0.0 if outx <= 0.0 else 3.0 + outx * 0.9 + nz.hill.get_noise_2d(x * 0.8, 77.0) * 4.0
+		if outx > 0.0:
+			# ... and stays low near the level: a hillside rising away, never a wall beside the level edge
+			h = minf(h, -205.0 + maxf(d - setback - outx * 0.3, 0.0) * 1.3)
+		if d < setback or (outx > 0.0 and h < b + 2.0):
+			h = -INF
+			b = INF
+		elif v < b + 2.0 and d > 30.0:
 			h = -INF   # beyond the rim: open air down to the cloud sea
 			b = INF
 		else:
