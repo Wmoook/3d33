@@ -21,7 +21,7 @@ const FAR_Z := -835.0            # camera.far is 900 and the camera sits at z <=
 const UNDER_Y := -420.0         # island undersides / the world far below, hidden under the cloud sea
 const PEAK_FLOOR_Y := -330.0     # base of the far ranges (under the clouds)
 const CLOUD_BASE := -236.0       # cloud sea below the level's lower edge (level spans y -200..0)
-const CLOUD_NEAR_Z := -30.0
+const CLOUD_NEAR_Z := -12.0
 
 var sun_dir := Vector3(-0.30, 0.67, 0.68)
 var noise_tex: ImageTexture
@@ -816,8 +816,10 @@ func _make_home_keel() -> void:
 			var depth := 190.0 * pow(maxf(1.0 - pow(absf(u), 1.8), 0.0), 0.7) * (0.8 + 0.4 * (fn.get_noise_1d(x * 0.3) * 0.5 + 0.5)) + 8.0
 			var rib := fn.get_noise_2d(x * 1.6, t * 18.0)
 			var y := -196.0 - depth * pow(t, 1.15) * (1.0 + 0.15 * fn.get_noise_2d(x * 0.8, 300.0 + t * 6.0))
-			var z := -5.0 - pow(t, 1.6) * 70.0 - rib * 5.0 * t - absf(u) * t * 30.0
-			var col := Color(0.44, 0.35, 0.26, 0.0).lerp(Color(0.34, 0.32, 0.33, 0.0), smoothstep(0.08, 0.45, t)).darkened(0.2 * t)
+			# the keel recedes steeply back under the island (about 1.5 units back per unit of drop), so
+			# the frame bottom shows its shadowed face falling away and then the cloud sea beyond it
+			var z := -4.0 - pow(t, 0.8) * 300.0 - rib * 7.0 * sqrt(t) - absf(u) * t * 40.0
+			var col := Color(0.34, 0.28, 0.22, 0.0).lerp(Color(0.27, 0.26, 0.28, 0.0), smoothstep(0.03, 0.3, t)).darkened(0.25 * t)
 			st.set_color(col)
 			st.add_vertex(Vector3(x, y, z))
 	for j in NT:
@@ -840,10 +842,10 @@ func _make_home_keel() -> void:
 	rng.seed = 4242
 	var roots := SurfaceTool.new()
 	roots.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for k in 110:
+	for k in 60:
 		var rx := rng.randf_range(-60.0, 460.0)
-		var rl := rng.randf_range(4.0, 22.0)
-		_box(roots, Vector3(rx, -197.0 - rl * 0.5, -4.6), Vector3(rng.randf_range(0.4, 1.2), rl, 0.5), Color(0.24, 0.2, 0.15, 0.0) if rng.randf() < 0.6 else VINE)
+		var rl := rng.randf_range(2.5, 9.0)
+		_box(roots, Vector3(rx, -199.0 - rl * 0.5, -5.5 - rng.randf() * 4.0), Vector3(rng.randf_range(0.15, 0.4), rl, 0.3), Color(0.16, 0.13, 0.1, 0.0) if rng.randf() < 0.75 else VINE)
 	roots.generate_normals()
 	var rm := MeshInstance3D.new()
 	rm.mesh = roots.commit()

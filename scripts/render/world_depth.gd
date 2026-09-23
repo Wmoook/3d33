@@ -140,7 +140,7 @@ func depth_top_y(x: float, z: float) -> float:
 	var d := Z_FRONT - z
 	if d < 0.0:
 		return NAN
-	if d >= SKIN_D0 and _skin_row[xi] >= 0:
+	if _skin_row[xi] >= 0 and d >= _skin_d0[xi] and not is_nan(skin_at(x, d)):
 		return skin_at(x, d)
 	for r in _records[xi]:
 		if r[1] >= d:
@@ -158,7 +158,7 @@ func depth_mat(x: float, z: float) -> int:
 	var d := Z_FRONT - z
 	if d < 0.0:
 		return -1
-	if d >= SKIN_D0 and _skin_row[xi] >= 0:
+	if _skin_row[xi] >= 0 and d >= _skin_d0[xi] and not is_nan(skin_at(x, d)):
 		var si := _skin_row[xi] * W + xi
 		return terrain.mat_ids[si] if terrain.solid[si] else -1
 	for r in _records[xi]:
@@ -175,7 +175,7 @@ func depth_seam() -> Dictionary:
 	for x in W:
 		hs[x] = NAN
 		cs[x] = Color(0, 0, 0, 0)
-		if _skin_row[x] >= 0:
+		if _skin_row[x] >= 0 and not is_nan(skin_at(x + 0.5, E_FULL)):
 			var sy := _skin_row[x]
 			hs[x] = skin_at(x + 0.5, E_FULL)
 			cs[x] = terrain.fgcol_img.get_pixel(x, sy) if terrain.solid[sy * W + x] else terrain.bgcol_img.get_pixel(x, sy)
@@ -197,6 +197,8 @@ func _make_material() -> void:
 			"pbr_tex", "pbr_level", "pbr_strength", "pbr_canopy_tex", "pbr_level_size"]:
 		material.set_shader_parameter(k, tm.get_shader_parameter(k))
 	material.set_shader_parameter("haze_z", Vector2(HAZE_Z0, HAZE_Z1))
+	var dimg := Image.create_from_data(W, H, false, Image.FORMAT_RF, depth.to_byte_array())
+	material.set_shader_parameter("depth_tex", ImageTexture.create_from_image(dimg))
 
 func _cover(i: int) -> Vector2:
 	# depth interval [d0, d1] covered by tile i (d = Z_FRONT - z)
@@ -421,100 +423,144 @@ func _quad(b: Bucket, p: Array, out: Vector3, uv: Vector2, kind: float) -> void:
 		b.uv2.append(Vector2(1.0, kind))
 
 # ---------------------------------------------------------------- smooth skin over the far ground
-const SKIN_D0 := 4.0            # the first tiles behind the slab stay tile-matched to the silhouette
-const SKIN_R := 10              # samples (0.5 tile) of the erode + blur window: rolling, never above the front
-const SKIN_MIN_RUN := 3         # the ground run under a skin column must be at least this tall
-const SKIN_DS := [4.0, 5.0, 6.0, 7.0, 8.0, 9.5, 11.0, 12.5, 14.0, 16.0, 18.5, 21.0, 23.0, 24.8]
-var _skin_row := PackedInt32Array()   # per column: row of the topmost full-depth tile under the skin (-1 none)
+const SKIN_D0 := 4.0            # ground: the first tiles behind the slab stay tile-matched to the silhouette
+const SKIN_ERO := 3             # samples (0.5 tile) of the x erosion: rounds steps, never rises above them
+const SKIN_BLUR := 4            # samples of the x blur
+const SKIN_DS := [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.5, 11.0, 12.5, 14.0, 16.0, 18.5, 21.0, 23.0, 24.8]
+var _skin_row := PackedInt32Array()   # per column: top row of the natural run under the skin (-1 none)
+var _skin_d0 := PackedFloat32Array()  # per column: depth where the skin takes over from the voxels
 var _skin := PackedFloat32Array()     # (2W+1) x SKIN_DS.size() heights (world y), NAN = none
 var _skin_nx := 0
 
-## Beyond SKIN_D0 the ground bodies' tile-stepped tops are replaced by one smooth heightfield skin: at d 4
-## it equals the stepped front tops exactly; by d ~11 it has eased into an eroded + blurred profile of them
-## (so it only ever sinks, never rises above the front silhouette), plus the far roll of dy_at(). It never
-## sinks below the bottom of the ground run it covers, and the voxel tiles under it are clipped to it.
+## Natural masses (earth, grass, foliage, stone, crag... and the ground bodies) get one smooth heightfield
+## skin over their topmost run: the stepped depth profile (the top of the highest tile reaching each depth)
+## is eroded + blurred along x and blurred along the depth, so peaks become rounded mountains and lawns
+## rolling hillsides; ruins keep their masonry blocks. The first d0 tiles stay tile-matched to the silhouette
+## (4 for ground, less for small masses). The skin never rises above the stepped profile (so never above the
+## front silhouette), never sinks below the run it covers, and the voxel tiles under it are clipped to it.
 func _compute_skin() -> void:
+	var nd: int = SKIN_DS.size()
 	_skin_row.resize(W)
 	_skin_row.fill(-1)
+	_skin_d0.resize(W)
 	var run_bot := PackedInt32Array(); run_bot.resize(W)
 	for x in W:
 		for y in H:
 			var i := y * W + x
-			if depth[i] >= E_FULL - 0.01:
-				var yb := y
-				while yb + 1 < H and depth[(yb + 1) * W + x] >= E_FULL - 0.01:
-					yb += 1
-				if yb - y + 1 >= SKIN_MIN_RUN or yb == H - 1:
-					_skin_row[x] = y
-					run_bot[x] = yb
-				break
-	_skin_nx = 2 * W + 1
-	var nd: int = SKIN_DS.size()
-	var front := PackedFloat32Array(); front.resize(_skin_nx)
-	var floor_y := PackedFloat32Array(); floor_y.resize(_skin_nx)
-	for k in _skin_nx:
-		# even samples sit on column boundaries (both neighbours), odd ones at column centres
-		var cols: Array = [k / 2 - 1, k / 2] if k % 2 == 0 else [k / 2]
-		var best := NAN
-		var fl := NAN
-		for c in cols:
-			if c < 0 or c >= W or _skin_row[c] < 0:
+			if depth[i] <= 0.0:
 				continue
-			var t := -float(_skin_row[c])
-			if is_nan(best) or t > best:
-				best = t
-				fl = -float(run_bot[c])
-		front[k] = best
-		floor_y[k] = fl
-	var ero := PackedFloat32Array(); ero.resize(_skin_nx)
-	for k in _skin_nx:
-		if is_nan(front[k]):
-			ero[k] = NAN
+			if terrain.solid[i] and not _natural(terrain.mat_ids[i]):
+				break   # masonry on top: the column keeps its blocks
+			var yb := y
+			while yb + 1 < H:
+				var j := (yb + 1) * W + x
+				if depth[j] <= 0.0 or (terrain.solid[j] and not _natural(terrain.mat_ids[j])):
+					break
+				yb += 1
+			_skin_row[x] = y
+			run_bot[x] = yb
+			var e_top := depth[i]
+			_skin_d0[x] = SKIN_D0 if e_top >= E_FULL - 0.01 else clampf(0.4 * e_top, 1.0, SKIN_D0)
+			break
+	# stepped profile per column and depth
+	var raw := PackedFloat32Array(); raw.resize(W * nd)
+	for x in W:
+		for j in nd:
+			raw[x * nd + j] = NAN
+		if _skin_row[x] < 0:
 			continue
-		var m := front[k]
-		for q in range(maxi(0, k - SKIN_R), mini(_skin_nx, k + SKIN_R + 1)):
-			if not is_nan(front[q]):
-				m = minf(m, front[q])
-		ero[k] = m
-	var back := PackedFloat32Array(); back.resize(_skin_nx)
+		for j in nd:
+			var d: float = SKIN_DS[j]
+			for y in range(_skin_row[x], run_bot[x] + 1):
+				if depth[y * W + x] >= d - 0.001:
+					raw[x * nd + j] = -float(y)
+					break
+	_skin_nx = 2 * W + 1
+	var prof := PackedFloat32Array(); prof.resize(_skin_nx * nd)
+	var floor_y := PackedFloat32Array(); floor_y.resize(_skin_nx)
+	var d0s := PackedFloat32Array(); d0s.resize(_skin_nx)
 	for k in _skin_nx:
-		if is_nan(ero[k]):
-			back[k] = NAN
-			continue
-		var sum := 0.0
-		var cnt := 0
-		for q in range(maxi(0, k - SKIN_R), mini(_skin_nx, k + SKIN_R + 1)):
-			if not is_nan(ero[q]):
-				sum += ero[q]
-				cnt += 1
-		back[k] = minf(maxf(sum / cnt, floor_y[k] + 1.0), front[k])
+		var cols: Array = [k / 2 - 1, k / 2] if k % 2 == 0 else [k / 2]
+		floor_y[k] = NAN
+		d0s[k] = SKIN_D0
+		for j in nd:
+			var best := NAN
+			for c in cols:
+				if c < 0 or c >= W:
+					continue
+				var v := raw[c * nd + j]
+				if not is_nan(v) and (is_nan(best) or v > best):
+					best = v
+					if j == 0:
+						floor_y[k] = -float(run_bot[c])
+						d0s[k] = _skin_d0[c]
+			prof[k * nd + j] = best
+	# erode + blur along x (valid samples only), then blur along the depth
+	var ero := PackedFloat32Array(); ero.resize(_skin_nx * nd)
+	for j in nd:
+		for k in _skin_nx:
+			var v := prof[k * nd + j]
+			if is_nan(v):
+				ero[k * nd + j] = NAN
+				continue
+			for q in range(maxi(0, k - SKIN_ERO), mini(_skin_nx, k + SKIN_ERO + 1)):
+				var u := prof[q * nd + j]
+				if not is_nan(u):
+					v = minf(v, u)
+			ero[k * nd + j] = v
+	var smx := PackedFloat32Array(); smx.resize(_skin_nx * nd)
+	for j in nd:
+		for k in _skin_nx:
+			if is_nan(ero[k * nd + j]):
+				smx[k * nd + j] = NAN
+				continue
+			var sum := 0.0
+			var cnt := 0
+			for q in range(maxi(0, k - SKIN_BLUR), mini(_skin_nx, k + SKIN_BLUR + 1)):
+				var u := ero[q * nd + j]
+				if not is_nan(u):
+					sum += u
+					cnt += 1
+			smx[k * nd + j] = sum / cnt
 	_skin.resize(_skin_nx * nd)
 	for k in _skin_nx:
 		for j in nd:
-			var d: float = SKIN_DS[j]
-			if is_nan(front[k]):
+			var v := smx[k * nd + j]
+			if is_nan(v):
 				_skin[k * nd + j] = NAN
 				continue
-			var w := smoothstep(SKIN_D0, 11.0, d)
-			_skin[k * nd + j] = maxf(lerpf(front[k], back[k], w) + dy_at(k * 0.5, d), floor_y[k] + 0.5)
-	if OS.get_environment("DEPTH_DEBUG") != "":
-		for x in range(20, 80, 4):
-			var k := 2 * x + 1
-			print("SKIN x=%d row=%d front=%.1f back=%.1f s4=%.1f s11=%.1f s24=%.1f" % [x, _skin_row[x], front[k], back[k], _skin[k * nd], _skin[k * nd + 6], _skin[k * nd + nd - 1]])
-	# clip the ground voxels to the skin: each tile ends where the skin first passes below its top
+			var sum := v * 2.0
+			var cnt := 2.0
+			for dj in [-1, 1]:
+				var jj: int = j + dj
+				if jj >= 0 and jj < nd and not is_nan(smx[k * nd + jj]):
+					sum += smx[k * nd + jj]
+					cnt += 1.0
+			var smooth := minf(sum / cnt, prof[k * nd + j])
+			var d: float = SKIN_DS[j]
+			var w := smoothstep(d0s[k], d0s[k] + 4.0, d)
+			var h := lerpf(prof[k * nd + j], smooth, w) + dy_at(k * 0.5, d)
+			if not is_nan(floor_y[k]):
+				h = maxf(h, floor_y[k] + 0.5)
+			_skin[k * nd + j] = h
+	# clip the natural voxels to the skin: each tile ends where the skin first passes below its top
 	for x in W:
 		if _skin_row[x] < 0:
 			continue
-		var j := 0
 		for y in range(_skin_row[x], run_bot[x] + 1):
 			var i := y * W + x
 			if y == _skin_row[x]:
-				depth[i] = SKIN_D0
+				depth[i] = minf(depth[i], _skin_d0[x])
 				continue
 			var top := -float(y)
-			while j < nd and _skin_min(x, j) >= top - 0.02:
-				j += 1
-			var cut: float = E_FULL if j >= nd else maxf(SKIN_D0, SKIN_DS[maxi(j - 1, 0)])
+			var cut := depth[i]
+			for j in nd:
+				var dj: float = SKIN_DS[j]
+				if dj < _skin_d0[x] or dj > depth[i]:
+					continue
+				if _skin_min(x, j) < top - 0.02:
+					cut = maxf(_skin_d0[x], SKIN_DS[maxi(j - 1, 0)])
+					break
 			depth[i] = minf(depth[i], cut)
 	# records follow the clipped depths
 	for x in W:
@@ -572,7 +618,9 @@ func _build_skin() -> void:
 			var za: float = Z_FRONT - SKIN_DS[j]
 			var zb: float = Z_FRONT - SKIN_DS[j + 1]
 			var col := clampi(int(xa + 0.25), 0, W - 1)
-			var uv := Vector2(col + 0.5, maxi(_skin_row[col], 0) + 0.5)
+			if _skin_row[col] < 0 or SKIN_DS[j] < _skin_d0[col] - 0.01:
+				continue   # the voxels are the surface in front of d0
+			var uv := Vector2(col + 0.5, _skin_row[col] + 0.5)
 			var p := [Vector3(xa, h00, za), Vector3(xb, h10, za), Vector3(xb, h11, zb), Vector3(xa, h01, zb)]
 			var ns := [_skin_normal(k, j), _skin_normal(k + 1, j), _skin_normal(k + 1, j + 1), _skin_normal(k, j + 1)]
 			# winding: Godot front faces are clockwise seen from outside (above)

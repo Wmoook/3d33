@@ -12,6 +12,7 @@ uniform vec2 level_size = vec2(400.0, 200.0);
 uniform sampler2D detail_nrm2 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D detail_hgt : filter_linear_mipmap, repeat_enable;
 uniform vec2 haze_z = vec2(-2.0, -26.0);
+uniform sampler2D depth_tex : filter_nearest, repeat_disable;   // R32F per tile: extrusion depth E (0 = none)
 uniform vec3 haze_color : source_color = vec3(0.74, 0.82, 0.92);
 uniform float haze_amt = 0.42;
 uniform float haze_emit = 0.9;
@@ -32,6 +33,42 @@ float h21(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
 	p3 += dot(p3, p3.yzx + 33.33);
 	return fract((p3.x + p3.y) * p3.z);
+}
+
+bool covered(ivec2 t, float d) {
+	if (t.x < 0 || t.y < 0 || t.x >= int(level_size.x) || t.y >= int(level_size.y)) {
+		return false;
+	}
+	return texelFetch(depth_tex, t, 0).r >= d;
+}
+
+// Rounded edges: bend the normal outward near every CONVEX edge of the tile box (neighbours not covered at
+// this depth), so the extruded masses read as weathered rounded rock instead of sharp voxels.
+vec3 bevel(vec3 n, int side, ivec2 tc, vec3 wp, float d) {
+	float bw = 0.34;
+	float e = texelFetch(depth_tex, tc, 0).r;
+	float kb = 1.0 - smoothstep(0.0, bw, e - d);
+	vec3 o = vec3(0.0, 0.0, -1.0) * kb;   // back edge (the volume ends there)
+	float dt = -float(tc.y) - wp.y;        // distance below the tile's top edge
+	float dl = wp.x - float(tc.x);         // distance from the tile's left edge
+	if (side <= 1) {
+		int sx = side == 0 ? -1 : 1;
+		if (!covered(tc + ivec2(0, -1), d) && !covered(tc + ivec2(sx, -1), d)) {
+			o += vec3(0.0, 1.0, 0.0) * (1.0 - smoothstep(0.0, bw, dt));
+		}
+		if (!covered(tc + ivec2(0, 1), d) && !covered(tc + ivec2(sx, 1), d)) {
+			o += vec3(0.0, -1.0, 0.0) * (1.0 - smoothstep(0.0, bw, 1.0 - dt));
+		}
+	} else {
+		int sy = side == 2 ? -1 : 1;
+		if (!covered(tc + ivec2(-1, 0), d) && !covered(tc + ivec2(-1, sy), d)) {
+			o += vec3(-1.0, 0.0, 0.0) * (1.0 - smoothstep(0.0, bw, dl));
+		}
+		if (!covered(tc + ivec2(1, 0), d) && !covered(tc + ivec2(1, sy), d)) {
+			o += vec3(1.0, 0.0, 0.0) * (1.0 - smoothstep(0.0, bw, 1.0 - dl));
+		}
+	}
+	return normalize(n + o * 1.5);
 }
 
 float vnoise(vec2 p) {
@@ -118,6 +155,9 @@ void fragment() {
 		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
 		n = normalize(n + (U * tb.x + V * tb.y) * (mat == M_RUIN ? 0.35 : (leafy ? (horiz ? (lip ? 0.6 : 0.25) : 0.6) : 0.7)));
 		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
+	}
+	if (kind < 9.5) {
+		n = bevel(n, int(kind + 0.5), ivec2(floor(tile)), wp, d);
 	}
 	pbr_terrain(mat, wp, gn, vec2(wp.x, -wp.y), CAMERA_POSITION_WORLD, albedo, n, rough, ao);
 	// patchy large-scale tone so the hillsides don't read as one flat colour
