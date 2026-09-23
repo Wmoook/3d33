@@ -178,7 +178,8 @@ def analyse(d, meta, keep):
     pale = sky_leak
     S = read_frame(os.path.join(raw, base + "_s.bin"), iw, ih, fmt) if meta.get("sentinel") else None
     if S is not None:
-        sent = (np.minimum(S[..., 0], S[..., 2]) - S[..., 1]) > 0.4   # >= ~half the pixel is background
+        # pure sentinel only: behind glass it comes out pink (g ~0.4-0.5), a real hole is (1, 0, 1)
+        sent = (S[..., 0] > 0.8) & (S[..., 2] > 0.8) & (S[..., 1] < 0.2)
         sky_leak = sent & valid & (cls != 1) & ~edge & ~T["blue_mat"][ty, tx]
         lab, n = ndimage.label(sky_leak, structure=np.ones((3, 3)))
         if n:
@@ -318,6 +319,10 @@ def report(d, results):
             tl = sorted(r[k + "_tiles"].items(), key=lambda kv: -kv[1])[:5]
             r["worst"][k] = [[int(i) % W, int(i) // W, v] for i, v in tl]
     slim = [{k: v for k, v in r.items() if not k.endswith("_tiles")} for r in results]
+    # per-capture tile scores ("x,y": per-mille), for "which capture sees this cluster" breakdowns
+    per = {r["base"]: {k: {"%d,%d" % (int(i) % W, int(i) // W): v for i, v in r[k + "_tiles"].items()} for k in CATS}
+           for r in results}
+    json.dump(per, open(os.path.join(d, "capture_tiles.json"), "w"))
     json.dump({"totals": tot, "clusters": cl, "captures": slim}, open(os.path.join(d, "report.json"), "w"), indent=1)
     np.save(os.path.join(d, "heat.npy"), np.stack([glob[k] for k in CATS]))
     heat = np.zeros((H, W, 3), np.float32)

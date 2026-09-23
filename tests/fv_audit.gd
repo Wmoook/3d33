@@ -8,12 +8,12 @@ extends Node
 ## projection go to user://<out>/raw/, then tests/fv_audit_report.py analyses them (run automatically unless
 ## analyse=0) and writes user://<out>/<spot>_z<zoom>.png marked images + report.txt / report.json.
 ## Run: bash tools_run_test.sh res://tests/fv_audit.tscn [-- spots=grid|list zoom=30,60 only=a,b step=22
-##          hide=forest,voxel,depth out=audit settle=0.45 q=3 analyse=1 flicker=1 grid60=2 keep=0 shift_px=0.45 freeze=1 warmup=4]
+##          hide=forest,voxel,depth out=audit settle=0.45 q=3 analyse=1 flicker=1 grid60=2 keep=0 shift_px=0.45 freeze=1 warmup=15]
 ##   only= spot names (named spots or grid names g_<x>_<y>) or tile rects "rect:x0_y0_x1_y1" (grid spots inside)
 ##   hide= WorldView members (forest, voxel, depth, depth_green, decor, grass, foliage, vista, backdrop, keels,
 ##         trials, doors, lights) or node names anywhere in the game, hidden before capturing (isolation)
 ##   novoxel / nodepth: build without the voxel landscape / the depth volume (like world_game_shot)
-##   painted=531,540,541,542: bg ids that count as sky on fg-0 air (world renders them as sky)
+##   painted=531,540,...: bg ids that count as sky on fg-0 air (default none: world no longer renders painted bg as sky)
 const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS_FV := [
 	["spawn", Vector2i(2, 56)],
@@ -77,7 +77,7 @@ func _ready() -> void:
 	_apply_hide()
 	# warm-up: world systems keep fading in for a few seconds after boot (the first capture of a short run was
 	# measurably less settled than the same capture later in a long run)
-	await _wait(float(args.get("warmup", "4")))
+	await _wait(float(args.get("warmup", "15")))
 	if args.has("tileinfo"):
 		# tileinfo=x0_y0_x1_y1: dump the terrain classes of a rect (for fixers), then exit
 		_tileinfo(str(args.tileinfo))
@@ -351,7 +351,12 @@ func _tileinfo(r: String) -> void:
 		for x in range(int(v[0]), int(v[2]) + 1):
 			var i := y * W + x
 			var dw: PackedByteArray = wv.depth.get("win") if wv.depth and wv.depth.get("win") is PackedByteArray else PackedByteArray()
-			print("  depth.win %d" % (dw[i] if dw.size() > i else -1))
+			var pane := 0
+			if wv.depth and wv.depth.get("windows") is Array:
+				for w: Variant in (wv.depth.get("windows") as Array):
+					if w is Dictionary and (w as Dictionary).get("tiles") is PackedInt32Array and ((w as Dictionary)["tiles"] as PackedInt32Array).has(i):
+						pane = 1
+			print("  depth.win %d  glass pane %d" % [dw[i] if dw.size() > i else -1, pane])
 			print("TILE (%d,%d) fg %d bg %d solid %d sky %d backwall %d pocket %d mat %d window %d wall_code %d enclosed_sky_bg %d art_door %d" % [
 				x, y, wv.level.fg[i], wv.level.bg[i], t.solid[i], t.sky[i], t.backwall[i], t.pocket[i], t.mat_ids[i],
 				t.window[i] if t.window.size() > i else -1, t.wall_code[i] if t.wall_code.size() > i else -1,
@@ -367,7 +372,7 @@ func _save_tiles(path: String) -> void:
 	var H := t.H
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	var painted := {}
-	for v: String in str(args.get("painted", "531,540,541,542")).split(",", false):
+	for v: String in str(args.get("painted", "")).split(",", false):
 		painted[int(v)] = true
 	var glyph := PackedByteArray()
 	glyph.resize(W * H)
@@ -392,7 +397,17 @@ func _save_tiles(path: String) -> void:
 	# world_depth's own window openings (painted sky windows + rhythmic lancets) carry glass panes
 	var dwin := PackedByteArray()
 	if wv.depth and wv.depth.get("win") is PackedByteArray:
-		dwin = wv.depth.get("win")
+		dwin = (wv.depth.get("win") as PackedByteArray).duplicate()
+	# + every tile that actually carries a glass pane (world_depth.windows can outlive later win[] pruning)
+	if wv.depth and wv.depth.get("windows") is Array and dwin.size() == W * H:
+		for w: Variant in (wv.depth.get("windows") as Array):
+			if w is Dictionary and (w as Dictionary).get("tiles") is PackedInt32Array:
+				for ti: int in ((w as Dictionary)["tiles"] as PackedInt32Array):
+					if ti >= 0 and ti < W * H:
+						dwin[ti] = 1
+	# world's own window test (depth-room openings, lancets, painted windows, glass-pane tiles) when available
+	var use_api: bool = wv.depth != null and wv.depth.has_method("is_window")
+	print("AUDIT window mask: %s" % ("world_depth.is_window() + fallbacks" if use_api else "fallbacks only"))
 	for y in H:
 		for x in W:
 			var i := y * W + x
@@ -405,7 +420,8 @@ func _save_tiles(path: String) -> void:
 				pb = 8
 			# painted windows: window tiles, and sky-painted bg patches inside structures (enclosed_sky_bg), which
 			# world renders as glass panes with the sky behind them
-			var win := 2 if (t.window.size() == W * H and t.window[i] > 0) or (dwin.size() == W * H and dwin[i] > 0) or 				(t.enclosed_sky_bg.size() == W * H and t.enclosed_sky_bg[i] > 0) else 0
+			var win_api := use_api and bool(wv.depth.call("is_window", Vector2i(x, y)))
+			var win := 2 if win_api or (t.window.size() == W * H and t.window[i] > 0) or (dwin.size() == W * H and dwin[i] > 0) or 				(t.enclosed_sky_bg.size() == W * H and t.enclosed_sky_bg[i] > 0) else 0
 			img.set_pixel(x, y, Color8(cls, int(t.mat_ids[i]), glyph[i] | win | wet[i] | pb, 255))
 	img.save_png(path)
 
