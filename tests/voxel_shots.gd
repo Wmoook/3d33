@@ -36,6 +36,15 @@ func _ready() -> void:
 		await get_tree().process_frame
 	print("VOXEL ready after %d ms (in game)" % (Time.get_ticks_msec() - t0))
 	vx.finish_fade()
+	var hud := "nohud" in OS.get_cmdline_user_args() or true
+	if hud:
+		for c in game.find_children("*", "CanvasLayer", true, false):
+			(c as CanvasLayer).visible = false
+	var base := "base" in OS.get_cmdline_user_args()
+	var perf := "perf" in OS.get_cmdline_user_args()
+	if perf:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	for n in SPOTS:
 		if not only.is_empty() and not only.has(n):
 			continue
@@ -47,11 +56,79 @@ func _ready() -> void:
 			await get_tree().physics_frame
 		await _wait(2.5)
 		await RenderingServer.frame_post_draw
-		get_viewport().get_texture().get_image().save_png("user://voxel_%s.png" % n)
+		if perf:
+			var on := await _gpu(60)
+			vx.visible = false
+			var off := await _gpu(60)
+			vx.visible = true
+			print("PERF %s: gpu %.2f ms with voxels, %.2f without (+%.2f), cpu frame %.2f" % [n, on.x, off.x, on.x - off.x, on.y])
+			continue
+		var img := get_viewport().get_texture().get_image()
+		img.save_png("user://voxel_%s.png" % n)
 		print("SHOT voxel_%s" % n)
+		_sky_luma(img, n, wv)
+		if base:
+			vx.visible = false
+			await _wait(0.3)
+			await RenderingServer.frame_post_draw
+			var img2 := get_viewport().get_texture().get_image()
+			img2.save_png("user://voxel_%s_base.png" % n)
+			_sky_luma(img2, n + "_base", wv)
+			vx.visible = true
 	get_tree().quit()
 
 func _wait(s: float) -> void:
 	var end := Time.get_ticks_msec() + int(s * 1000.0)
 	while Time.get_ticks_msec() < end:
 		await get_tree().process_frame
+
+## Same rule as world's tests/world_preview.gd: behind every sky air tile (2-tile margin from solids) the
+## picture must stay >= 60% of the local sky luminance (80th percentile over a 21x21 window).
+func _sky_luma(img: Image, nm: String, wv: WorldView) -> void:
+	var t := wv.terrain
+	var cam := get_viewport().get_camera_3d()
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var samples := {}
+	for ty in t.H:
+		for tx in t.W:
+			var i := ty * t.W + tx
+			if not t.sky[i] or t.solid[i]:
+				continue
+			var near_solid := false
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					if t.solid[clampi(ty + dy, 0, t.H - 1) * t.W + clampi(tx + dx, 0, t.W - 1)]:
+						near_solid = true
+			if near_solid:
+				continue
+			var w := Vector3(tx + 0.5, -ty - 0.5, 0.0)
+			if cam.is_position_behind(w):
+				continue
+			var sp := cam.unproject_position(w) / vp * vs
+			if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+				continue
+			samples[Vector2i(tx, ty)] = img.get_pixelv(Vector2i(sp)).get_luminance()
+	var bad := 0
+	for k: Vector2i in samples:
+		var vals := []
+		for dy in range(-10, 11, 2):
+			for dx in range(-10, 11, 2):
+				if samples.has(k + Vector2i(dx, dy)):
+					vals.append(samples[k + Vector2i(dx, dy)])
+		vals.sort()
+		var mx: float = vals[int(vals.size() * 0.8)] if vals.size() > 0 else 0.0
+		if samples[k] < mx * 0.6:
+			bad += 1
+	print("SKY LUMA %s: %d / %d sky tiles below 60%% of local sky %s" % [nm, bad, samples.size(), "OK" if bad * 100 <= samples.size() else "CHECK"])
+
+func _gpu(frames: int) -> Vector2:
+	var rid := get_viewport().get_viewport_rid()
+	for f in 10:
+		await get_tree().process_frame
+	var g := 0.0
+	var t0 := Time.get_ticks_usec()
+	for f in frames:
+		await get_tree().process_frame
+		g += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	return Vector2(g / frames, float(Time.get_ticks_usec() - t0) / frames / 1000.0)

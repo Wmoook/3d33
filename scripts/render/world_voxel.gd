@@ -25,32 +25,34 @@ extends Node3D
 
 signal finished
 
-const X0 := -72
-const NX := 544
-const Y0 := -240
-const NY := 280
+const X0 := -104
+const NX := 608
+const Y0 := -256
+const NY := 320
 const Z0 := 3
-const NZ := 88
-const BACK_Z := -91.0            # = -(Z0 + NZ): the vista (near_limit) starts here
+const NZ := 160
+const BACK_Z := -163.0           # = -(Z0 + NZ): the vista (near_limit) starts here
 const CHX := 32
 const CHY := 40
-const CHK := 22
+const CHK := 20
 const WATER_Y := -172            # lake / river surface (top of the water blocks), = WorldVista.FLOOR_Y
 const NEAR_K := 24               # voxel rows inside world's depth-extrusion range (z > -27)
 const G3 := 4                    # 3D noise lattice spacing
-const SHADOW_K := 44             # chunks starting in front of this row cast sun shadows
+const SHADOW_K := 60             # chunks starting in front of this row cast sun shadows
 const PLANT_K := 60              # plants only in front of this row (sub-pixel beyond)
-const UPLOADS_PER_FRAME := 14
+const UPLOADS_PER_FRAME := 24
 const FADE_TIME := 1.6
 
 enum { AIR, GRASS, DIRT, DIRT_L, CLAY, STONE, STONE_W, STONE_L, SAND, SNOW, SNOW_GRASS, LOG, LEAVES, PINE,
 	RUIN, RUIN_MOSS, GRAVEL, PINE_LOG, N_SOLID }
 const WATER := 64
-const TALLGRASS := 65
-const FLOWER_R := 66
-const FLOWER_Y := 67
-const FLOWER_B := 68
-const FERN := 69
+const WATER_MIST := 65           # the last blocks of a free fall: dissolving spray
+const TALLGRASS := 70            # >= TALLGRASS: plants (crossed quads)
+const FLOWER_R := 71
+const FLOWER_Y := 72
+const FLOWER_B := 73
+const FERN := 74
+const FALL_MAX := 26             # free-falling island waterfalls dissolve into mist after this many blocks
 
 ## Tests: false disables the landscape (WorldView checks it).
 static var enabled := true
@@ -95,7 +97,9 @@ var _abort := false
 var _upload_i := 0
 var _uploading := false
 var _fade_t := -1.0
-var _vista: Node3D
+var _vista: WorldVista
+var _shrine := Vector2(-10000.0, 0.0)   # level-specific keep-out (FV: the summit shrine), world x / y
+var _rim := PackedFloat32Array()   # vista island_edge (depth of the home island rim) per G3 x column
 
 class Noises:
 	var hill := FastNoiseLite.new()
@@ -171,20 +175,28 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 			var z := -(Z0 + k + 0.5)
 			for x in W:
 				_dtop[k * W + x] = depth.depth_top_y(x + 0.5, z)
+	_has_vista = vista != null
+	if not WorldPalette.is_odyssey():
+		_shrine = Vector2(WorldPalette.FV_SHRINE.x + 0.5, -float(WorldPalette.FV_SHRINE.y))
+	_load_palette(terrain.ref_dir)
+	timings["voxel_setup"] = Time.get_ticks_msec() - t0
+
+## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
+func _sample_vista() -> void:
 	_vgx = NX / G3 + 1
 	_vgk = NZ / G3 + 1
 	_vg.resize(_vgx * _vgk)
+	_rim.resize(_vgx)
 	_river.resize(NZ)
-	_has_vista = vista != null
+	for gi in _vgx:
+		_rim[gi] = _vista.island_edge(X0 + gi * G3 + 0.5) if _vista else 1000.0
 	for gk in _vgk:
 		var z := -(Z0 + gk * G3 + 0.5)
 		for gi in _vgx:
 			var x := X0 + gi * G3 + 0.5
-			_vg[gk * _vgx + gi] = vista.sample(x, z).x if vista else _fallback_base(x)
+			_vg[gk * _vgx + gi] = _vista.sample(x, z).x if _vista else _fallback_base(x)
 	for k in NZ:
-		_river[k] = vista.river_x(Z0 + k + 0.5) if vista else 148.0
-	_load_palette(terrain.ref_dir)
-	timings["voxel_setup"] = Time.get_ticks_msec() - t0
+		_river[k] = _vista.river_x(Z0 + k + 0.5) if _vista else 148.0
 
 func _fallback_base(x: float) -> float:
 	var lx := clampi(int(floorf(x)), 0, W - 1)
@@ -217,6 +229,8 @@ func _group(fn: Callable, n: int) -> void:
 
 func _run() -> void:
 	var t0 := Time.get_ticks_msec()
+	_sample_vista()
+	timings["voxel_vista_grid"] = Time.get_ticks_msec() - t0
 	# P1: column fields
 	_rows.resize(NZ)
 	_group(_row_task, NZ)
@@ -289,14 +303,19 @@ func _row_task(k: int) -> void:
 		for q in range(maxi(0, x - r), mini(W, x + r + 1)):
 			m = minf(m, _ab[q])
 		cl[x] = m
-	var rise := pow(maxf(d - 20.0, 0.0), 1.25) * 1.6
+	# above the local air bottom only well behind the plane, rising like a hillside (never a wall)
+	var rise := maxf(d - 30.0, 0.0) * 0.75
 	var riv := _river[k]
-	var env_h := smoothstep(18.0, 40.0, d) * (1.0 - smoothstep(80.0, 90.0, d))
-	var mtn_env := smoothstep(26.0, 48.0, d) * (1.0 - smoothstep(74.0, 89.0, d))
+	var shrine_x := _shrine.x
+	var shrine_y := _shrine.y
+	var env_h := smoothstep(18.0, 40.0, d) * (1.0 - smoothstep(NZ - 12.0, NZ - 2.0, d))
+	var mtn_env := smoothstep(34.0, 62.0, d) * (1.0 - smoothstep(NZ - 16.0, NZ - 2.0, d))
 	for i in NX:
 		var x := X0 + i + 0.5
 		var lx := clampi(int(floorf(x)), 0, W - 1)
 		var hmax := cl[lx] - 1.5 + rise
+		if shrine_x > -1000.0 and absf(x - shrine_x) < 9.0 + d * 0.45 and d < 110.0:
+			hmax = minf(hmax, shrine_y - 12.0 + maxf(d - 80.0, 0.0) * 1.2)   # the finale's light pillar stays open
 		var v := _vista_at(i, k)
 		var base := v
 		var sv := _seam[lx]
@@ -306,26 +325,35 @@ func _row_task(k: int) -> void:
 			base = lerpf(near, v, smoothstep(23.0, 70.0, d))
 		else:
 			valley = 1.0 - smoothstep(-160.0, -135.0, v)
+		var high := smoothstep(-150.0, -110.0, v)   # highlands (massif, plateau) carry the mountains
+		# distance to the home island's rim (the vista's cliff into the cloud sea): relief calms down there
+		var gx := clampi(int(float(i) / G3 + 0.5), 0, _vgx - 1)
+		var rim_k := smoothstep(6.0, 40.0, _rim[gx] - (d + Z0))
 		var h := base
-		h += nz.hill.get_noise_2d(x, z) * 6.0 * env_h
+		h += nz.hill.get_noise_2d(x, z) * 6.0 * env_h * rim_k
 		h += nz.detail.get_noise_2d(x, z) * 1.4 * env_h
-		var mask := smoothstep(-0.08, 0.32, nz.mask.get_noise_2d(x, z)) * mtn_env
+		var mask := smoothstep(-0.08, 0.32, nz.mask.get_noise_2d(x, z)) * mtn_env * rim_k
 		var rv := smoothstep(16.0, 52.0, absf(x - riv))
-		mask *= lerpf(1.0, rv, valley)
+		mask *= lerpf(1.0, rv, valley) * lerpf(0.45 * smoothstep(60.0, 80.0, d), 1.0, high)
 		var rg := nz.ridge.get_noise_2d(x, z) * 0.5 + 0.5
-		h += mask * (12.0 + 78.0 * rg * rg)
-		var cliffy := smoothstep(0.05, 0.4, nz.cliff.get_noise_2d(x, z)) * env_h
-		if cliffy > 0.0:
-			var tstep := 7.0
-			var q := h / tstep
-			var f := q - floorf(q)
-			h = lerpf(h, (floorf(q) + smoothstep(0.5, 0.8, f)) * tstep, cliffy)
+		h += mask * (8.0 + 42.0 * rg * rg)
 		# the river valley (continues the falls' pool) and the lake floor
 		if valley > 0.2:
 			var rd := absf(x - riv)
 			if rd < 6.0:
 				h = minf(h, lerpf(WATER_Y - 4.0, WATER_Y - 0.5, rd / 6.0))
+		# readability clamp with an irregular ceiling (hillsides, not a regular staircase), then cliffs
+		var hn := nz.hill.get_noise_2d(x * 1.7 + 311.0, z * 1.7) * 0.5 + 0.5
+		h = minf(h, hmax - hn * 5.0 * smoothstep(20.0, 40.0, d))
+		var cliffy := smoothstep(0.05, 0.4, nz.cliff.get_noise_2d(x, z)) * env_h
+		if cliffy > 0.0:
+			var tstep := 6.0
+			var q := h / tstep
+			var f := q - floorf(q)
+			h = lerpf(h, (floorf(q) + smoothstep(0.5, 0.8, f)) * tstep, cliffy)
 		h = minf(h, hmax)
+		# the back rows melt exactly into the vista's land (its first row is at BACK_Z)
+		h = lerpf(h, v + nz.detail.get_noise_2d(x, z) * 1.0, smoothstep(NZ - 14.0, NZ - 2.0, d))
 		if k < NEAR_K and x >= 0.0 and x < W:
 			var dt := _dtop[k * W + lx]
 			if not is_nan(dt):
@@ -338,7 +366,11 @@ func _row_task(k: int) -> void:
 		var s01 := nz.under.get_noise_2d(x, z) * 0.5 + 0.5
 		var b := ky - 4.0 - pow(s01, 3.0) * 16.0 - absf(nz.detail.get_noise_2d(x * 3.1, z * 3.1)) * 2.5
 		b = maxf(b, float(Y0) + 0.5)
-		h = maxf(h, b + 2.0)
+		if v < b + 2.0 and d > 30.0:
+			h = -INF   # beyond the rim: open air down to the cloud sea
+			b = INF
+		else:
+			h = maxf(h, b + 2.0)
 		var amp := (mask * 0.9 + cliffy * 0.6) * 7.0 * smoothstep(28.0, 40.0, d)
 		amp = clampf(minf(amp, hmax - h - 1.0), 0.0, 9.0)
 		hs[i] = h
@@ -381,27 +413,26 @@ func _place_islands() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242
 	var tries := 0
-	while _islands.size() < 20 and tries < 900:
+	while _islands.size() < 22 and tries < 2500:
 		tries += 1
-		var cx := rng.randf_range(95.0, 310.0) if rng.randf() < 0.55 else rng.randf_range(-55.0, 455.0)
-		var R := rng.randf_range(4.5, 13.0)
-		var Rz := R * rng.randf_range(0.55, 0.8)
-		var ck := rng.randf_range(30.0 + Rz, 84.0 - Rz)
-		var D := R * rng.randf_range(1.3, 1.9)
+		var cx := rng.randf_range(-70.0, 470.0)
+		var style := rng.randi_range(0, 2)
+		var R := rng.randf_range(5.0, 11.0) if _islands.size() > 5 else rng.randf_range(13.0, 19.0)
+		var Rz := R * rng.randf_range(0.55, 0.85)
+		var ck := rng.randf_range(maxf(40.0 + Rz * 0.5, 60.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
+		var D := R * rng.randf_range(1.3, 1.9) * (0.7 if style == 1 else (1.5 if style == 2 else 1.0))
 		var ground := -INF
-		var hmin := INF
 		for s in 9:
 			var px := int(cx - X0 + (s % 3 - 1) * R * 0.9)
 			var pk := int(ck + (s / 3 - 1) * Rz * 0.9)
 			if px < 0 or px >= NX or pk < 0 or pk >= NZ:
 				continue
 			ground = maxf(ground, _H[pk * NX + px] + _AMP[pk * NX + px])
-			hmin = minf(hmin, _HMAX[pk * NX + px])
 		var lo := ground + D + 9.0
-		var hi := minf(ground + D + 75.0, minf(24.0, hmin - 3.0))
+		var hi := minf(ground + D + 110.0, 16.0)
 		if lo > hi:
 			continue
-		var cy := rng.randf_range(lo, hi)
+		var cy := rng.randf_range(maxf(lo, -125.0), hi) if hi > -125.0 else rng.randf_range(lo, hi)
 		var ok := true
 		for o in _islands:
 			if absf(o[0] - cx) < (o[3] + R) * 1.15 and absf(o[2] - ck) < (o[4] + Rz) * 1.3 and absf(o[1] - cy) < o[5] + D + 6.0:
@@ -409,23 +440,32 @@ func _place_islands() -> void:
 				break
 		if not ok:
 			continue
-		var falls := 1.0 if (R > 7.0 and rng.randf() < 0.6) else 0.0
-		var ruin := 1.0 if rng.randf() < 0.6 else 0.0
-		_islands.append(PackedFloat32Array([cx, floorf(cy), ck, R, Rz, D, falls, ruin]))
+		var falls := 1.0 if (R > 8.0 and rng.randf() < 0.45) else 0.0
+		var ruin := 1.0 if rng.randf() < 0.55 else 0.0
+		# a second lobe so islands aren't all one round cone
+		var la := rng.randf_range(0.0, TAU)
+		var lr := rng.randf_range(0.4, 0.75) if rng.randf() < 0.7 else 0.0
+		_islands.append(PackedFloat32Array([cx, floorf(cy), ck, R, Rz, D, falls, ruin,
+			cos(la) * R * 0.75, sin(la) * Rz * 0.75, lr, float(style)]))
 
 ## Island top / bottom at a column, or Vector2(NAN, NAN).
 func _island_col(isl: PackedFloat32Array, x: float, k: float, nz: Noises) -> Vector2:
 	var qx := (x - isl[0]) / isl[3]
 	var qk := (k - isl[2]) / isl[4]
 	var q := qx * qx + qk * qk
+	if isl[10] > 0.0:
+		var lx := (x - isl[0] - isl[8]) / (isl[3] * isl[10])
+		var lk := (k - isl[2] - isl[9]) / (isl[4] * isl[10])
+		q = minf(q, lx * lx + lk * lk)
 	if q > 1.35:
 		return Vector2(NAN, NAN)
 	q += nz.detail.get_noise_2d(x * 1.4 + isl[0], k * 1.4) * 0.28
 	if q >= 1.0:
 		return Vector2(NAN, NAN)
-	var top := isl[1] + (1.0 - q) * 1.6 + nz.hill.get_noise_2d(x * 2.0, k * 2.0) * 0.9
+	var top := isl[1] + (1.0 - q) * (1.6 + isl[3] * 0.12) + nz.hill.get_noise_2d(x * 2.0, k * 2.0) * (0.9 + isl[3] * 0.08)
 	var s01 := nz.under.get_noise_2d(x * 1.3 + 50.0, k * 1.3) * 0.5 + 0.5
-	var bot := isl[1] - isl[5] * pow(1.0 - q, 0.62) * (0.7 + 0.6 * s01) - 1.0
+	var ex := 0.62 if isl[11] < 0.5 else (0.35 if isl[11] < 1.5 else 0.9)
+	var bot := isl[1] - isl[5] * pow(1.0 - q, ex) * (0.7 + 0.6 * s01) - 1.0
 	return Vector2(floorf(top) + 1.0, bot)
 
 # ------------------------------------------------------------------- P2 3D noise lattice
@@ -475,6 +515,15 @@ func _fill_task(k: int) -> void:
 		var hb := _H[ci + NX] if k < NZ - 1 else h
 		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
 		var snow_y := -34.0 + nz.biome.get_noise_2d(x, z) * 10.0
+		if h < b:
+			var any_isl := false
+			for isl: PackedFloat32Array in _islands:
+				if absf(x - isl[0]) < isl[3] * 1.2 and absf(kf - isl[2]) < isl[4] * 1.2:
+					any_isl = true
+			if not any_isl:
+				continue
+			h = float(Y0) - 10.0
+			b = float(Y0) - 11.0
 		var jhi := mini(NY - 1, int(floorf(h + amp - Y0)) + 1)
 		var jlo := maxi(0, int(floorf(b - Y0)))
 		col.fill(0)
@@ -500,7 +549,9 @@ func _fill_task(k: int) -> void:
 		# materials, top-down
 		var dep := 0
 		var dirt_n := 3 + int(absf(nz.detail.get_noise_2d(x * 2.0, z * 2.0)) * 3.0)
-		var clay := nz.biome.get_noise_2d(x * 3.0 + 99.0, z * 3.0) > 0.35
+		if slope > 2.0:
+			dirt_n = 0 if slope > 3.0 else 1
+		var clay := nz.biome.get_noise_2d(x * 3.0 + 99.0, z * 3.0) > 0.58
 		var lighter := nz.detail.get_noise_2d(x * 0.7 + 30.0, z * 0.7) > 0.25
 		for jj in range(NY - 1, -1, -1):
 			if col[jj] == 0:
@@ -516,22 +567,22 @@ func _fill_task(k: int) -> void:
 					id = SAND if (i * 7 + k * 13) % 5 != 0 else GRAVEL
 				elif yt <= WATER_Y + 1.5 and not isl_blk:
 					id = SAND
-				elif yt > snow_y:
+				elif yt > snow_y and not isl_blk:
 					id = SNOW if slope > 2.2 else SNOW_GRASS
 				elif slope > 2.6 and not isl_blk:
 					id = STONE
 				else:
 					id = GRASS
-			elif dep <= dirt_n:
+			elif dep <= (2 if isl_blk else dirt_n):
 				if yt <= WATER_Y + 1.5 and not isl_blk:
 					id = SAND
-				elif yt > snow_y + 4.0:
+				elif yt > snow_y + 4.0 and not isl_blk:
 					id = STONE
 				else:
 					id = CLAY if clay else (DIRT_L if lighter else DIRT)
 			else:
 				var nv := _n3_at(i, jj, k) if (h - yt) < 40.0 else 0.0
-				id = STONE_L if nv > 0.3 else (STONE_W if nv < -0.28 else STONE)
+				id = STONE_L if nv > 0.45 else (STONE_W if nv < -0.45 else STONE)
 			buf[jj * NX + i] = id
 			dep += 1
 	_slices[k] = buf
@@ -580,9 +631,14 @@ func _stamp_features() -> void:
 func _hmax(i: int, k: int) -> float:
 	return _HMAX[k * NX + i]
 
+## Ceiling for trees / ruins: a few blocks under the terrain clearance while still near the plane, so no
+## canopy or pillar pokes up behind open gameplay air.
+func _feat_max(i: int, k: int) -> float:
+	return _HMAX[k * NX + i] - 7.0 * (1.0 - smoothstep(38.0, 72.0, k + 0.5))
+
 # ---- trees
 func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
-	var cell := 5
+	var cell := 4
 	for ck in range(0, NZ, cell):
 		for cx in range(0, NX, cell):
 			var i := cx + rng.randi_range(0, cell - 1)
@@ -591,13 +647,13 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 				continue
 			var f := _FOR[k * NX + i]
 			var dens := smoothstep(-0.25, 0.3, f)
-			if rng.randf() > dens * 0.85 + 0.05:
+			if rng.randf() > dens * 0.95 + 0.04:
 				continue
 			var j := _col_top(i, k)
 			if j < 0 or _vget(i, j, k) != GRASS and _vget(i, j, k) != SNOW_GRASS:
 				continue
 			var y := Y0 + j + 1.0
-			var room := _hmax(i, k) - y
+			var room := _feat_max(i, k) - y
 			var pine := y > -95.0 + f * 20.0 or _vget(i, j, k) == SNOW_GRASS or rng.randf() < 0.25
 			if pine:
 				var ph := rng.randi_range(7, 12)
@@ -698,9 +754,9 @@ func _island_features(rng: RandomNumberGenerator) -> void:
 				# channel through the island top, then the falling column in front of the edge
 				for dk in range(0, 4):
 					_put(fx + w, jt, kk + dk, WATER, false)
-				var jb := _top(fx + w, kk - 1, jt - 1)
+				var jb := maxi(_top(fx + w, kk - 1, jt - 1), jt - FALL_MAX)
 				for j in range(maxi(jb + 1, 0), jt + 1):
-					_put(fx + w, j, kk - 1, WATER, true)
+					_put(fx + w, j, kk - 1, WATER_MIST if j < jb + 8 and jb == jt - FALL_MAX else WATER, true)
 		# a few trees on the island
 		for _t in int(isl[3] * 0.4):
 			var ti := ci + rng.randi_range(-int(isl[3] * 0.6), int(isl[3] * 0.6))
@@ -734,7 +790,7 @@ func _ruins(rng: RandomNumberGenerator) -> void:
 		var j := _col_top(i, k)
 		if j < 0 or _vget(i, j, k) != GRASS:
 			continue
-		if _ruin_at(i, j + 1, k, rng.randi_range(0, 3), rng, _hmax(i, k) - (Y0 + j + 1.0)):
+		if _ruin_at(i, j + 1, k, rng.randi_range(0, 3), rng, _feat_max(i, k) - (Y0 + j + 1.0)):
 			placed += 1
 
 ## type 0 = pillar group, 1 = arch, 2 = broken wall, 3 = shrine plinth with columns. Returns false if no room.
@@ -816,7 +872,8 @@ func _cliff_falls(rng: RandomNumberGenerator) -> void:
 		var kf := k - 1
 		while kf > 20 and _H[kf * NX + i] > h - 2.0:
 			kf -= 1
-		if h - _H[kf * NX + i] < 9.0 or _AMP[ci] > 0.5:
+		var drop := h - _H[kf * NX + i]
+		if drop < 7.0 or drop > 30.0 or _AMP[ci] > 0.5:
 			continue
 		var jt := _col_top(i, k)
 		if jt < 0 or _vget(i, jt, k) != GRASS:
@@ -849,7 +906,7 @@ func _plants(rng: RandomNumberGenerator, nz: Noises) -> void:
 			var y := Y0 + j + 1.0
 			if y + 1.0 > _hmax(i, k):
 				continue
-			if r < 0.018 and y + 2.0 <= _hmax(i, k):
+			if r < 0.018 and y + 2.0 <= _feat_max(i, k):
 				_put(i, j + 1, k, LEAVES, false)
 				if rng.randf() < 0.3:
 					_put(i + 1, j + 1, k, LEAVES, false)
@@ -910,11 +967,11 @@ func _mesh_task(c: int) -> void:
 							var dn := vox[p - sy] if j > 0 else STONE
 							if dn == 0 or dn > 63:
 								_quad(ob, Vector3(x, float(Y0 + j), zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, -1, 0))
-						elif id == WATER:
-							f0 = npx == 0 or npx > WATER
-							f1 = nnx == 0 or nnx > WATER
-							f2 = nfz == 0 or nfz > WATER
-							if up != WATER and (up == 0 or up > 63):
+						elif id < TALLGRASS:
+							f0 = npx == 0 or npx >= TALLGRASS
+							f1 = nnx == 0 or nnx >= TALLGRASS
+							f2 = nfz == 0 or nfz >= TALLGRASS
+							if up == 0 or up >= TALLGRASS:
 								_quad(wb, Vector3(x, Y0 + j + 0.88, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
 						elif k < PLANT_K:
 							_plant(pb, x, float(Y0 + j), zf, id, (i * 73856093) ^ (k * 19349663))
@@ -1019,12 +1076,12 @@ func _make_materials() -> void:
 	cols.resize(N_SOLID)
 	var table := {
 		GRASS: _pal(35, Color8(69, 99, 19)), DIRT: _pal(45, Color8(114, 97, 75)), DIRT_L: _pal(47, Color8(142, 115, 79)),
-		CLAY: _pal(48, Color8(127, 79, 43)), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
+		CLAY: _pal(48, Color8(127, 79, 43)).lerp(_pal(45, Color8(114, 97, 75)), 0.45), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
 		STONE_L: _pal(86, Color8(134, 134, 134)), SAND: _pal(88, Color8(108, 79, 44)).lerp(Color8(196, 170, 120), 0.45),
-		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(90, 60, 36), 0.45),
+		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(84, 58, 38), 0.65),
 		LEAVES: _pal(14, Color8(66, 168, 54)), PINE: _pal(19, Color8(67, 131, 16)).lerp(Color8(24, 60, 30), 0.5),
 		RUIN: _pal(42, Color8(153, 153, 153)).lerp(_pal(9, Color8(110, 110, 110)), 0.5), RUIN_MOSS: Color8(96, 118, 62),
-		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(70, 48, 32), 0.5),
+		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(62, 44, 30), 0.7),
 	}
 	for id: int in table:
 		var c: Color = table[id]

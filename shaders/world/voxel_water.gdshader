@@ -7,14 +7,14 @@ render_mode blend_mix, depth_draw_opaque, cull_back;
 #include "res://shaders/world/vista_common.gdshaderinc"
 
 uniform sampler3D vol : filter_nearest, repeat_disable;
-uniform vec3 vol_origin = vec3(-72.0, -240.0, 3.0);
-uniform ivec3 vol_size = ivec3(544, 280, 88);
+uniform vec3 vol_origin = vec3(-104.0, -256.0, 3.0);
+uniform ivec3 vol_size = ivec3(608, 320, 160);
 uniform vec3 water_a = vec3(0.21, 0.32, 0.92);
 uniform vec3 water_d = vec3(0.035, 0.085, 0.39);
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform float fog_density = 0.0011;
-uniform float haze_near = 0.10;
-uniform float haze_far = 0.46;
+uniform float haze_near = 0.08;
+uniform float haze_far = 0.40;
 uniform float fade = 1.0;
 
 varying vec3 w_pos;
@@ -84,17 +84,27 @@ void fragment() {
 		// falling sheet: bright streaks racing down, foam bands
 		float across = dot(wp, gn.x != 0.0 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0));
 		float s = vn(vec2(across * 4.0, wp.y * 0.35 + TIME * 2.4)) * 0.6 + vn(vec2(across * 9.0, wp.y * 0.8 + TIME * 3.6)) * 0.4;
-		col = mix(water_d * 1.4, water_a, s);
-		col = mix(col, vec3(0.9, 0.95, 1.0), smoothstep(0.62, 0.9, s) * 0.7);
+		col = mix(water_d * 1.6, water_a * 1.1, s);
+		col = mix(col, vec3(0.9, 0.95, 1.0), 0.22 + smoothstep(0.55, 0.9, s) * 0.6);
 		ivec3 c = to_cell(wp - gn * 0.3);
 		int below = vid(c - ivec3(0, 1, 0));
-		foam = (below != 64 && below != 0) ? smoothstep(0.6, 0.0, fract(wp.y)) : 0.0;
+		foam = (below > 0 && below < 64) ? smoothstep(0.6, 0.0, fract(wp.y)) : 0.0;
 		alpha = 0.9;
+		if (vid(c) == 65) {
+			// free fall dissolving into spray: count the mist blocks still below this one
+			float m = 0.0;
+			for (int q = 1; q <= 8; q++) {
+				m += vid(c - ivec3(0, q, 0)) == 65 ? 1.0 : 0.0;
+			}
+			float t = (m + fract(wp.y)) / 8.0;
+			col = mix(col, vec3(0.85, 0.9, 0.97), 0.5);
+			alpha *= smoothstep(0.0, 1.0, t) * (0.55 + 0.45 * s);
+		}
 	}
 	col = mix(col, vec3(0.92, 0.96, 1.0), foam * 0.75);
 	float f = vista_fog_f(wp, cam, fog_density, 0.0);
 	float dz = -wp.z - vol_origin.z;
-	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 88.0, dz)));
+	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
 	f = mix(1.0, f, fade);
 	vec3 lit = col * (V_SUN * (max(dot(n, sd), 0.0) * 0.5 + 0.3) + V_AMB * 0.5);
 	lit += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(sd * -1.0, n), -vd), 0.0), 90.0) * 2.0;

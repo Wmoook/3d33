@@ -10,14 +10,14 @@ render_mode depth_draw_opaque, cull_back;
 #include "res://shaders/world/vista_common.gdshaderinc"
 
 uniform sampler3D vol : filter_nearest, repeat_disable;
-uniform vec3 vol_origin = vec3(-72.0, -240.0, 3.0);
-uniform ivec3 vol_size = ivec3(544, 280, 88);
+uniform vec3 vol_origin = vec3(-104.0, -256.0, 3.0);
+uniform ivec3 vol_size = ivec3(608, 320, 160);
 uniform vec3 blk_col[18];
 uniform vec3 grass_b = vec3(0.06, 0.23, 0.005);
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform float fog_density = 0.0011;
-uniform float haze_near = 0.10;      // readability haze at the volume front ...
-uniform float haze_far = 0.46;       // ... and at its back (the vista's near haze takes over there)
+uniform float haze_near = 0.08;      // readability haze at the volume front ...
+uniform float haze_far = 0.40;       // ... and at its back (the vista's near haze takes over there)
 uniform float haze_gain = 1.0;
 uniform float fade = 1.0;            // build fade-in (0 = fully hazed)
 uniform float ao_strength = 0.62;
@@ -159,8 +159,9 @@ void fragment() {
 		tscale = 0.35;
 	}
 	// per-block jitter (every cube a slightly different shade, like hand-placed blocks)
-	albedo *= 0.9 + 0.2 * hb;
-	albedo *= mix(0.92, 1.06, big);
+	float far_k = 1.0 - smoothstep(40.0, 120.0, length(CAMERA_POSITION_WORLD - wp)) * 0.7;
+	albedo *= 1.0 + (hb - 0.5) * 0.16 * far_k;
+	albedo *= mix(0.94, 1.05, big);
 	// --- bevels on convex edges + faint seams on every block edge
 	vec3 n = gn;
 	float bw = 0.14;
@@ -174,7 +175,7 @@ void fragment() {
 	n = normalize(n + bend * 0.9);
 	float edge = min(min(u, 1.0 - u), min(v, 1.0 - v));
 	float seam = 1.0 - smoothstep(0.0, 0.03, edge);
-	albedo *= 1.0 - seam * 0.16 * (1.0 - convex);
+	albedo *= 1.0 - seam * 0.16 * (1.0 - convex) * far_k;
 	albedo *= 1.0 + convex * 0.1;   // worn, sunlit rims
 	// --- photoscan detail, sampled with a per-block offset so every block shows a different patch
 	float rough = 0.88;
@@ -195,7 +196,7 @@ void fragment() {
 	vec3 sd = normalize(sun_dir);
 	float f = vista_fog_f(wp, CAMERA_POSITION_WORLD, fog_density, 0.0);
 	float dz = -wp.z - vol_origin.z;
-	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 88.0, dz)));
+	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
 	f = mix(1.0, f, fade);
 	vec3 skyc = vista_sky(normalize(wp - CAMERA_POSITION_WORLD), sd);
 	ALBEDO = albedo * mix(1.0, block_ao, 0.75) * (1.0 - f);

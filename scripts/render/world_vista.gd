@@ -704,6 +704,8 @@ func _make_islands() -> void:
 	for d in FAR_ISLANDS:
 		var c := Vector3(d[0], d[1], d[2])
 		var R: float = d[3]
+		# never inside a foreground layer that owns the space in front of near_limit
+		c.z = minf(c.z, near_limit - 4.0 - R * 0.8)
 		_island(far, c, R, d[4], k)
 		_island_trees(rng, c, R, 0.4 if d[6] > 0.0 else 0.8)
 		if d[6] > 0.0:
@@ -917,7 +919,7 @@ func _make_block_pieces() -> void:
 	for pc in BLOCK_PIECES:
 		var art := WorldVistaBlocks.make(pc[0], 3 + k)
 		var sc: float = pc[4]
-		var z: float = pc[3]
+		var z: float = minf(pc[3], near_limit - 10.0)
 		if use_world_terrain:
 			# world's own terrain pipeline in backdrop mode: the pieces look exactly like the level's art.
 			# Built DEFERRED (after the level is playable, on a worker thread, one at a time) and faded in,
@@ -997,7 +999,7 @@ func _make_cumulus() -> void:
 
 func _make_cloud_sea() -> void:
 	var bmin := Vector3(-560.0, CLOUD_BASE - 8.0, FAR_Z)
-	var cnz := minf(CLOUD_NEAR_Z, near_limit)
+	var cnz := CLOUD_NEAR_Z   # always right behind the level: a foreground layer's solids occlude it by depth
 	var bmax := Vector3(960.0, CLOUD_BASE + 20.0, cnz)
 	var box := BoxMesh.new()
 	box.size = bmax - bmin

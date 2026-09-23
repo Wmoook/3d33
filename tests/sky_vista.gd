@@ -17,11 +17,6 @@ func _ready() -> void:
 	game.sim.set_god_mode(true)
 	var wv = game.world
 	var vista: WorldVista = wv.get_node_or_null("Vista")
-	if vista and wv.get("depth") and vista._seam_h.is_empty():
-		# world's build predates the seam patch: rebuild the vista with the depth seam
-		vista.name = "VistaOld"
-		vista.queue_free()
-		vista = null
 	if vista == null:
 		vista = WorldVista.new()
 		vista.name = "Vista"

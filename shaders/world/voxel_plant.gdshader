@@ -10,10 +10,10 @@ uniform vec3 grass_col = vec3(0.06, 0.13, 0.006);
 uniform vec3 grass_b = vec3(0.056, 0.23, 0.005);
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform float fog_density = 0.0011;
-uniform float haze_near = 0.10;
-uniform float haze_far = 0.46;
+uniform float haze_near = 0.08;
+uniform float haze_far = 0.40;
 uniform float fade = 1.0;
-uniform vec3 vol_origin = vec3(-72.0, -240.0, 3.0);
+uniform vec3 vol_origin = vec3(-104.0, -256.0, 3.0);
 
 varying vec3 w_pos;
 varying vec2 kind;
@@ -36,17 +36,17 @@ void fragment() {
 	vec2 uv = UV;
 	float a = 0.0;
 	vec3 col = mix(grass_col, grass_b, rnd) * mix(0.55, 1.15, uv.y);
-	if (id == 65 || id == 69) {
+	if (id == 70 || id == 74) {
 		// blades: 6 tapered strands with a lean
-		int nb = id == 65 ? 6 : 5;
+		int nb = id == 70 ? 6 : 5;
 		for (int b = 0; b < nb; b++) {
 			float fb = float(b);
 			float bx = 0.12 + 0.76 * h11(fb + rnd * 13.0);
 			float hh = mix(0.55, 1.0, h11(fb * 3.7 + rnd * 7.0));
 			float lean = (h11(fb * 1.9 + rnd) - 0.5) * 0.5;
 			float cx = bx + lean * uv.y * uv.y;
-			float w = (id == 65 ? 0.07 : 0.1) * (1.0 - uv.y / hh);
-			if (id == 69) {
+			float w = (id == 70 ? 0.07 : 0.1) * (1.0 - uv.y / hh);
+			if (id == 74) {
 				// fern frond: leaflets along the stem
 				w *= 0.6 + 0.8 * abs(sin(uv.y * 26.0));
 			}
@@ -54,7 +54,7 @@ void fragment() {
 				a = 1.0;
 			}
 		}
-		if (id == 69) {
+		if (id == 74) {
 			col *= vec3(0.7, 1.0, 0.75);
 		}
 	} else {
@@ -73,7 +73,7 @@ void fragment() {
 		float petal = 0.13 + 0.035 * cos(ang * 5.0);
 		if (r < petal) {
 			a = 1.0;
-			vec3 pc = id == 66 ? vec3(0.75, 0.04, 0.03) : (id == 67 ? vec3(0.95, 0.72, 0.05) : vec3(0.18, 0.3, 0.9));
+			vec3 pc = id == 71 ? vec3(0.75, 0.04, 0.03) : (id == 72 ? vec3(0.95, 0.72, 0.05) : vec3(0.18, 0.3, 0.9));
 			col = r < 0.045 ? vec3(0.9, 0.75, 0.2) : pc * (0.8 + 0.4 * (1.0 - r / petal));
 		}
 	}
@@ -84,7 +84,7 @@ void fragment() {
 	vec3 cam = CAMERA_POSITION_WORLD;
 	float f = vista_fog_f(w_pos, cam, fog_density, 0.0);
 	float dz = -w_pos.z - vol_origin.z;
-	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 88.0, dz)));
+	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
 	f = mix(1.0, f, fade);
 	ALBEDO = col * (1.0 - f);
 	ROUGHNESS = 0.8;
