@@ -1,0 +1,66 @@
+diff --git a/scripts/render/world_depth.gd b/scripts/render/world_depth.gd
+index fbb21de..e071f90 100644
+--- a/scripts/render/world_depth.gd
++++ b/scripts/render/world_depth.gd
+@@ -75,6 +75,12 @@ func build(t: WorldTerrain) -> void:
+ 	_make_material()
+ 	_build_mesh()
+ 	_build_room_extras()
++	if cave_layers_on and not WorldPalette.is_odyssey():
++		cave_layers = WorldCaveLayers.new()
++		cave_layers.name = "CaveLayers"
++		add_child(cave_layers)
++		cave_layers.build(self)
++		print("WorldCaveLayers ", cave_layers.stats)
+ 	if smooth_skin:
+ 		_build_skin()
+ 	terrain.material.set_shader_parameter("depth_cont", 1.0)
+@@ -610,6 +616,11 @@ func _skin_normal(k: int, j: int) -> Vector3:
+ const ROOM_R_MIN := 3.0
+ const ROOM_R_MAX := 6.0
+ const ROOM_WALL := 1.2          # thickness of a room's back wall block
++const CAVE_EXTRA := 7.0         # FV: extra recess of earth-cave back walls (WorldCaveLayers fills the space)
++const CAVE_MAX_R := 10.5        # ... capped: R + ROOM_WALL stays in front of the shear (d 12)
++## FV layered caves (sky): env CAVE_LAYERS_OFF=1 keeps the checkpoint's shallow caves (A/B).
++var cave_layers_on := OS.get_environment("CAVE_LAYERS_OFF") == ""
++var cave_layers: WorldCaveLayers
+ const RWIN_PITCH := 7           # rhythmic windows: one bay every this many columns ...
+ const RWIN_ROWS := 11           # ... and one storey every this many rows
+ var room := PackedInt32Array()      # per tile: room id + 1 (0 = not a room tile)
+@@ -704,6 +715,10 @@ func _make_rooms() -> void:
+ 		for i in comp:
+ 			room_r[i] = r
+ 			room_earth[i] = 1 if code[i] < 5 else 0
++			if code[i] < 5 and not WorldPalette.is_odyssey() and cave_layers_on:
++				# FV earth caves: deep space for WorldCaveLayers' rock masses (the back slab must end before the far
++				# ground shear starts at d = 12, or the sheared faces open slivers of sky)
++				room_r[i] = minf(r + CAVE_EXTRA, CAVE_MAX_R)
+ 			if code[i] >= 20 and ag:
+ 				win[i] = 1   # painted sky in a structure: a window only where the room can see out
+ 		if comp.size() >= 80 and ag:
+diff --git a/shaders/world/depth_volume.gdshader b/shaders/world/depth_volume.gdshader
+index 3e1a11e..556a082 100644
+--- a/shaders/world/depth_volume.gdshader
++++ b/shaders/world/depth_volume.gdshader
+@@ -310,6 +310,11 @@ void fragment() {
+ 			mat = bgc == 2 ? M_FOLIAGE : M_EARTH;
+ 		}
+ 		emit_x = bg_space_light(bp, level_size, bgc, albedo, ao);
++		if (earth_back && d > 8.0) {
++			// the deep cave back behind WorldCaveLayers' rock masses: much darker, so the masses stand out
++			albedo *= 0.45;
++			emit_x *= 0.4;
++		}
+ 	}
+ 	bool leafy = mat == M_GRASS || mat == M_FOLIAGE;
+ 	if (leafy && !horiz) {
+@@ -343,6 +348,9 @@ void fragment() {
+ 		ao *= mix(0.75, 1.0, smoothstep(0.0, 2.5, d));
+ 	}
+ 	float hz = smoothstep(haze_z.x, haze_z.y, wp.z) * haze_amt;
++	if (back || earth_back || inroom || prop) {
++		hz = 0.0;   // interiors are enclosed: no sky-blue aerial haze on deep cave / hall walls
++	}
+ 	if (inroom) {
+ 		// the room's receding side walls / floor / ceiling: AO into the back corner, interior light floor
+ 		ao *= mix(0.8, 1.0, smoothstep(nstart, nstart - 1.4, d));
