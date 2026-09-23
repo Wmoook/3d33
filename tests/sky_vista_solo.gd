@@ -4,7 +4,7 @@ extends Node3D
 const SPOTS := {
 	"spire_top": Vector2(200, 30), "spiregap": Vector2(222, 70), "falls": Vector2(150, 140),
 	"pool": Vector2(150, 165), "logo": Vector2(320, 45), "keep": Vector2(300, 70), "grove_top": Vector2(40, 30),
-	"wide": Vector2(200, 100),
+	"wide": Vector2(200, 100), "bottom": Vector2(160, 191.5), "bottom_r": Vector2(330, 191.5),
 }
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)

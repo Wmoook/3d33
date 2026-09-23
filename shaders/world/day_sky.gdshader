@@ -14,6 +14,7 @@ uniform vec3 cave_top = vec3(0.5, 0.55, 0.6);
 uniform vec3 cave_bottom = vec3(0.05, 0.05, 0.06);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform float has_noise = 0.0;
+uniform float cloud_base = -236.0;   // WorldVista's cloud sea base (world y)
 
 float cirrus(vec2 q) {
 	float a = texture(noise_tex, q * vec2(0.35, 1.0)).g;
@@ -44,6 +45,23 @@ void sky() {
 			float ci = cirrus(q);
 			float fade = smoothstep(0.015, 0.14, d.y);
 			c = mix(c, vec3(1.0, 0.99, 0.97), ci * fade * 0.55);
+		}
+		// below the horizon: the cloud sea continues to infinity (the vista's raymarched sea ends at z -830).
+		// Same field as vista_clouds (same texture, scales and wind), intersected with its top plane.
+		if (d.y < -0.0005 && has_noise > 0.5) {
+			float t = (POSITION.y - (cloud_base + 12.0)) / (-d.y);
+			if (t > 0.0) {
+				vec2 xz = POSITION.xz + d.xz * t;
+				vec2 w = vec2(TIME * 0.35, TIME * 0.12);
+				float a = texture(noise_tex, (xz + w) * 0.0034).r;
+				float b = texture(noise_tex, (xz + w * 1.6) * 0.0115 + vec2(0.37, 0.61)).g;
+				float f = clamp((a * 0.62 + b * 0.36 - 0.3) * 3.2, 0.0, 1.0);
+				vec3 gap = mix(V_LOW * 0.72, V_LOW, 0.5);
+				vec3 top = mix(vec3(0.74, 0.8, 0.92), vec3(1.02, 1.0, 0.96), smoothstep(0.2, 0.9, f));
+				vec3 sea = mix(gap, top, smoothstep(0.02, 0.3, f));
+				float haze = 1.0 - exp(-t * 0.0011);
+				c = mix(sea, c, clamp(haze * 0.85 + smoothstep(-0.02, 0.0, d.y), 0.0, 1.0));
+			}
 		}
 		COLOR = c * brightness;
 	}

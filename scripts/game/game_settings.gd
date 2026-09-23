@@ -15,7 +15,6 @@ var quality := 3        # 0..3
 var fullscreen := false
 var show_hints := true
 var show_collision := false
-var cinematic_camera := true   # day levels: dynamic horizon pitch + wider fov (off = EE straight-on)
 var level_id := "odyssey"   # last chosen level (LevelCatalog id)
 var high_contrast := false
 var tutorial := {}       # first-run hints already learned (id -> true)
@@ -35,7 +34,6 @@ func load_settings() -> void:
 	tutorial = cf.get_value("ui", "tutorial", tutorial)
 	show_collision = cf.get_value("video", "show_collision", show_collision)
 	level_id = cf.get_value("game", "level_id", level_id)
-	cinematic_camera = cf.get_value("video", "cinematic_camera", cinematic_camera)
 	high_contrast = cf.get_value("video", "high_contrast", high_contrast)
 
 func save_settings() -> void:
@@ -52,7 +50,6 @@ func save_settings() -> void:
 	cf.set_value("ui", "tutorial", tutorial)
 	cf.set_value("video", "show_collision", show_collision)
 	cf.set_value("game", "level_id", level_id)
-	cf.set_value("video", "cinematic_camera", cinematic_camera)
 	cf.set_value("video", "high_contrast", high_contrast)
 	cf.save(PATH)
 

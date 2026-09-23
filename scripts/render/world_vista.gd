@@ -60,6 +60,7 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 	t = Time.get_ticks_msec()
 	_make_islands()
 	_make_block_pieces()
+	_make_home_keel()
 	_make_trees()
 	_make_ruins()
 	_make_cumulus()
@@ -69,6 +70,7 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 		sky_mat.set_shader_parameter("sun_dir", sun_dir)
 		sky_mat.set_shader_parameter("noise_tex", noise_tex)
 		sky_mat.set_shader_parameter("has_noise", 1.0)
+		sky_mat.set_shader_parameter("cloud_base", CLOUD_BASE)
 	print("WorldVista built %s" % str(timings))
 
 ## Per frame (camera world position). The vista is world-anchored, so nothing moves; this only hides it
@@ -724,8 +726,70 @@ func _make_falls(falls: Array) -> void:
 		m.render_priority = -95
 		_mats.append(m)
 		mi.material_override = m
-		_setup_instance(mi, "VistaFalls%d" % k)
+		_setup_instance(mi, "VistaFalls%d" % get_child_count())
 		k += 1
+
+# ------------------------------------------------------------------ the home island's underside
+## Below the level's bottom edge (y -200) the home island's rocky keel falls away into the cloud sea:
+## a ribbed rock face just behind the level, receding and tapering as it descends, roots at its lip and
+## the level's water spilling off it as waterfalls.
+func _make_home_keel() -> void:
+	var fn := FastNoiseLite.new()
+	fn.seed = 717
+	fn.frequency = 0.03
+	fn.fractal_octaves = 4
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var x0 := -80.0
+	var x1 := 480.0
+	var dx := 3.0
+	var NX := int((x1 - x0) / dx) + 1
+	var NT := 26
+	for j in NT + 1:
+		var t := float(j) / NT
+		for i in NX:
+			var x := x0 + i * dx
+			var u := (x - 200.0) / 280.0
+			var depth := 190.0 * pow(maxf(1.0 - pow(absf(u), 1.8), 0.0), 0.7) * (0.8 + 0.4 * (fn.get_noise_1d(x * 0.3) * 0.5 + 0.5)) + 8.0
+			var rib := fn.get_noise_2d(x * 1.6, t * 18.0)
+			var y := -196.0 - depth * pow(t, 1.15) * (1.0 + 0.15 * fn.get_noise_2d(x * 0.8, 300.0 + t * 6.0))
+			var z := -5.0 - pow(t, 1.6) * 70.0 - rib * 5.0 * t - absf(u) * t * 30.0
+			var col := Color(0.44, 0.35, 0.26, 0.0).lerp(Color(0.34, 0.32, 0.33, 0.0), smoothstep(0.08, 0.45, t)).darkened(0.2 * t)
+			st.set_color(col)
+			st.add_vertex(Vector3(x, y, z))
+	for j in NT:
+		for i in NX - 1:
+			var a := j * NX + i
+			var b := a + NX
+			# rows go downward, the face looks toward +z
+			st.add_index(a); st.add_index(a + 1); st.add_index(b)
+			st.add_index(b); st.add_index(a + 1); st.add_index(b + 1)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := _mat("res://shaders/world/vista_prop.gdshader")
+	m.set_shader_parameter("kind", 2)
+	m.set_shader_parameter("fog_near", 0.1)
+	mi.material_override = m
+	_setup_instance(mi, "VistaHomeKeel")
+	# roots hanging from the lip, and the level's water spilling off the underside
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var roots := SurfaceTool.new()
+	roots.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 110:
+		var rx := rng.randf_range(-60.0, 460.0)
+		var rl := rng.randf_range(4.0, 22.0)
+		_box(roots, Vector3(rx, -197.0 - rl * 0.5, -4.6), Vector3(rng.randf_range(0.4, 1.2), rl, 0.5), Color(0.24, 0.2, 0.15, 0.0) if rng.randf() < 0.6 else VINE)
+	roots.generate_normals()
+	var rm := MeshInstance3D.new()
+	rm.mesh = roots.commit()
+	var rmat := _mat("res://shaders/world/vista_prop.gdshader")
+	rmat.set_shader_parameter("kind", 1)
+	rmat.set_shader_parameter("fog_near", 0.1)
+	rm.material_override = rmat
+	_setup_instance(rm, "VistaHomeRoots")
+	_make_falls([[Vector3(150.0, -197.0, -4.0), 6.0], [Vector3(358.0, -197.0, -4.0), 4.0], [Vector3(8.0, -197.0, -4.0), 3.5]])
 
 # ------------------------------------------------------------------ block-built scenery
 ## Distant pieces painted with the level's own blocks (WorldVistaBlocks): kind, map top-left world x/y, z,

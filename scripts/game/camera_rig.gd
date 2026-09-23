@@ -10,20 +10,7 @@ enum Mode { FOLLOW, CINEMATIC }
 
 signal cinematic_cut   # the flyover jumped (portal cut); the shell dips to black
 
-const FOV_V := 34.0                  # default vertical fov (degrees); moderate perspective = readable parallax
-## Dynamic horizon camera (day levels, "Cinematic camera" setting): the EE-exact follow of the focus point is
-## unchanged; the camera only ROTATES about that pivot by a slow, altitude-dependent pitch: high in the sky it
-## looks down (tops of land receding, cloud sea below), near the bottom it looks up, ~0 around the horizon line.
-## No velocity dependence; heavily smoothed (time constant HORIZON_TAU).
-const HORIZON_DOWN_DEG := 7.0
-const HORIZON_UP_DEG := 4.5
-const HORIZON_TAU := 2.5
-var fov_v := FOV_V
-var horizon_pitch_on := false
-var horizon_y := -100.0              # world y of the "eye level" line (pitch 0)
-var horizon_top := 0.0               # world y where the full look-down is reached
-var horizon_bottom := -200.0         # world y where the full look-up is reached
-var _alt_pitch := 0.0
+const FOV_V := 34.0                  # vertical fov (degrees); moderate perspective = readable parallax
 const BASE_PITCH := 0.0              # straight-on view like EE (was -5: looked down on the diorama)
 const MAX_YAW := 3.2                 # degrees of parallax tilt at full look-ahead
 const MAX_PITCH_TILT := 2.0
@@ -65,7 +52,7 @@ var _cine_last_i := -1
 func _ready() -> void:
 	cam = Camera3D.new()
 	cam.name = "Camera"
-	cam.fov = fov_v
+	cam.fov = FOV_V
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.near = 0.3
 	cam.far = 900.0
@@ -79,13 +66,13 @@ func _ready() -> void:
 func distance_for_zoom(z: float) -> float:
 	var vp := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1920, 1080)
 	var aspect := vp.x / maxf(vp.y, 1.0)
-	var tan_h := tan(deg_to_rad(fov_v) * 0.5) * aspect
+	var tan_h := tan(deg_to_rad(FOV_V) * 0.5) * aspect
 	return (z * 0.5) / tan_h
 
 ## Half extents of the visible region at z = 0 (tiles).
 func half_extents() -> Vector2:
 	var d := distance_for_zoom(zoom)
-	var tv := tan(deg_to_rad(fov_v) * 0.5)
+	var tv := tan(deg_to_rad(FOV_V) * 0.5)
 	var vp := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1920, 1080)
 	return Vector2(d * tv * vp.x / maxf(vp.y, 1.0), d * tv)
 
@@ -137,7 +124,6 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 	focus.z = 0.0
 	_tilt = Vector2.ZERO
 	trauma = 0.0
-	_update_horizon(delta)
 	_apply_transform(Vector2.ZERO)
 
 # ---------------------------------------------------------------- cinematic
@@ -195,33 +181,16 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 	var tilt := Vector2(clampf(d.x * 6.0, -1.0, 1.0) * MAX_YAW * 1.4, clampf(-d.y * 6.0, -1.0, 1.0) * MAX_PITCH_TILT)
 	_tilt = _tilt.lerp(tilt, 1.0 - exp(-1.2 * delta))
 	trauma = maxf(0.0, trauma - delta)
-	_update_horizon(delta)
 	_apply_transform(_tilt + Vector2(sin(_t * 0.21) * 0.6, sin(_t * 0.17) * 0.4))
 
 # ---------------------------------------------------------------- internals
-## Set the vertical fov at runtime (visible WIDTH stays the same: distance_for_zoom uses fov_v).
-func set_fov(v: float) -> void:
-	fov_v = v
-	if cam:
-		cam.fov = v
-
-func _update_horizon(delta: float) -> void:
-	var target := 0.0
-	if horizon_pitch_on:
-		var y := focus.y
-		if y > horizon_y:
-			target = -HORIZON_DOWN_DEG * clampf((y - horizon_y) / maxf(horizon_top - horizon_y, 1.0), 0.0, 1.0)
-		else:
-			target = HORIZON_UP_DEG * clampf((horizon_y - y) / maxf(horizon_y - horizon_bottom, 1.0), 0.0, 1.0)
-	_alt_pitch = lerpf(_alt_pitch, target, 1.0 - exp(-delta / HORIZON_TAU))
-
 func _apply_transform(tilt: Vector2) -> void:
 	if cam == null:
 		return
 	var d := distance_for_zoom(zoom)
 	var sh := trauma * trauma
 	var shake_rot := Vector3(_noise.get_noise_2d(_t * 40.0, 0.0), _noise.get_noise_2d(0.0, _t * 40.0), _noise.get_noise_2d(_t * 40.0, 100.0)) * sh
-	var pitch := deg_to_rad(BASE_PITCH + tilt.y + shake_rot.x * 1.4 + _alt_pitch)
+	var pitch := deg_to_rad(BASE_PITCH + tilt.y + shake_rot.x * 1.4)
 	var yaw := deg_to_rad(tilt.x + shake_rot.y * 1.4)
 	var roll := deg_to_rad(shake_rot.z * 2.0)
 	var basis := Basis.from_euler(Vector3(pitch, yaw, roll), EULER_ORDER_YXZ)
