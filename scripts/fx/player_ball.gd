@@ -156,6 +156,7 @@ func _ready() -> void:
 	_aura_mat = ShaderMaterial.new()
 	_aura_mat.shader = AURA_SHADER
 	_aura_mat.set_shader_parameter("ball_r", RADIUS / 4.2 * 1.02)
+	_aura_mat.render_priority = 99   # drawn over the world (depth test off in god_aura), under the god-mode ball
 	_aura.material_override = _aura_mat
 	_aura.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_aura.position = Vector3(0, 0, -0.05)
@@ -174,6 +175,7 @@ func _ready() -> void:
 
 ## Underwater the world's water mass sits in front of the ball, so a see-through copy (depth test off,
 ## cool-tinted) is drawn on top while the ball's centre tile is lake water. ActorsView sets `underwater`.
+## God mode uses the same copy, untinted and opaque: the flying ball is always in front of every block.
 var underwater := false
 var _xray: MeshInstance3D
 var _xray_k := 0.0
@@ -184,11 +186,12 @@ static func _xray_shader() -> Shader:
 		var code := BALL_SHADER.code
 		code = code.replace("render_mode blend_mix, depth_draw_opaque,", "render_mode blend_mix, depth_test_disabled, depth_draw_never,")
 		code = code.replace("uniform float dissolve = 0.0;", "uniform float dissolve = 0.0;
-uniform float xray_alpha = 0.0;")
-		code = code.replace("	ALBEDO = col;", "	col = mix(col, col * vec3(0.72, 0.88, 1.0), 0.45);
+uniform float xray_alpha = 0.0;
+uniform float xray_tint = 1.0;")
+		code = code.replace("	ALBEDO = col;", "	col = mix(col, col * vec3(0.72, 0.88, 1.0), 0.45 * xray_tint);
 	ALBEDO = col;")
 		code = code.replace("	EMISSION = emis;", "	float edge = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = emis + vec3(0.45, 0.75, 1.0) * edge * 0.8 + col * 0.12;
+	EMISSION = emis + (vec3(0.45, 0.75, 1.0) * edge * 0.8 + col * 0.12) * xray_tint;
 	ALPHA = xray_alpha;")
 		_xray_sh = Shader.new()
 		_xray_sh.code = code
@@ -197,7 +200,8 @@ uniform float xray_alpha = 0.0;")
 func _update_xray(delta: float) -> void:
 	if ghost:
 		return
-	_xray_k = move_toward(_xray_k, 1.0 if underwater and not _dying else 0.0, delta * 6.0)
+	var front := _god > 0.5 and not _dying
+	_xray_k = move_toward(_xray_k, 1.0 if (underwater or front) and not _dying else 0.0, delta * (30.0 if front else 6.0))
 	if _xray_k <= 0.001:
 		if _xray:
 			_xray.visible = false
@@ -216,7 +220,8 @@ func _update_xray(delta: float) -> void:
 	var xm := _xray.material_override as ShaderMaterial
 	for k in ["look", "eye_open", "squeeze", "happy", "wide", "dead", "grin", "gasp", "pattern_angle"]:
 		xm.set_shader_parameter(k, _mat.get_shader_parameter(k))
-	xm.set_shader_parameter("xray_alpha", 0.9 * _xray_k)
+	xm.set_shader_parameter("xray_alpha", (1.0 if front else 0.9) * _xray_k)
+	xm.set_shader_parameter("xray_tint", 0.0 if front and not underwater else 1.0)
 
 func set_shadows(on: bool) -> void:
 	shadows_default = on
