@@ -48,6 +48,8 @@ var _seam_z := -26.0
 ## build() to its back depth (e.g. -90): the vista then starts behind it (no home-island top, midground
 ## islands or low cloud banks in front of it, no depth seam) and only keeps its far layers.
 var near_limit := NEAR_Z
+## false: skip the home island's keel/roots/falls under the level (a foreground layer brings its own).
+var keel_enabled := true
 var _vcount := {}                   # SurfaceTool instance id -> vertices added (indexed islands)
 var _ruin_sites: Array = []          # [x, ground_y, z, height, width] ruins standing on island tops
 
@@ -69,7 +71,8 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 	t = Time.get_ticks_msec()
 	_make_islands()
 	_make_block_pieces()
-	_make_home_keel()
+	if keel_enabled:
+		_make_home_keel()
 	_make_trees()
 	_make_ruins()
 	_make_cumulus()
