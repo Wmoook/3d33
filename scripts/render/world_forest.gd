@@ -221,6 +221,10 @@ static func hollow_image(terrain: WorldTerrain) -> Image:
 				b[i] = 255
 				continue
 			if not terrain.solid[i]:
+				# open air right under the hollow (a shaft / cave mouth dropping out of the forest floor): rays
+				# through it look back up into the forest, so the backstop must cover it too
+				if y > 0 and m[i - W] and not stone_room(terrain, i):
+					b[i] = 255
 				continue
 			for dy in range(-1, 2):
 				for dx in range(-1, 2):

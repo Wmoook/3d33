@@ -202,7 +202,12 @@ void fragment() {
 		// ---- the room's back wall: warm dressed stone, pilasters, string courses, blind arches, moss ----
 		vec2 p = vec2(wp.x, -wp.y);
 		// warm stone kept well below the glyphs (~25-35% on screen), deepening into the recess
-		vec3 stone = mix(c.rgb * 0.8, vec3(0.2, 0.17, 0.135), 0.55);
+		// painted sky / cloud bg left in a wall (dropped window specks, notches) must not turn the stone pale:
+		// cap the painted value and pull it toward grey stone
+		vec3 pc = c.rgb;
+		float pl = dot(pc, vec3(0.3, 0.55, 0.15));
+		pc = mix(pc, vec3(pl), smoothstep(0.12, 0.35, pl) * 0.8) * min(1.0, 0.14 / max(pl, 0.001));
+		vec3 stone = mix(pc * 0.8, vec3(0.2, 0.17, 0.135), 0.55);
 		vec2 wq = p + vec2(vnoise(p * 0.5), vnoise(p * 0.5 + 3.0)) * 0.2;
 		float row = floor(wq.y * 2.0);
 		vec2 bq = vec2(wq.x * 0.75 + h21(vec2(row, 1.7)) * 3.0, wq.y * 2.0);
@@ -343,6 +348,11 @@ void fragment() {
 		EMISSION += vec3(0.35, 0.8, 0.55) * gl * (0.6 + 0.4 * sin(TIME * 1.3 + gi.x * 3.1));
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	if (back || earth_back || inroom || prop) {
+		// interiors (rooms, caves, corridors) never fall to black: a soft ambient floor in the surface's own tone
+		vec3 tone = normalize(max(ALBEDO, vec3(0.001))) * 0.577;
+		EMISSION = max(EMISSION, tone * 0.035 + vec3(0.006, 0.005, 0.004));
+	}
 	if (!FRONT_FACING) {
 		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
 		// side face. Before, back faces were culled and those slits showed the sky as bright vertical lines.

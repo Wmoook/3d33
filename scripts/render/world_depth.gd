@@ -69,6 +69,9 @@ func build(t: WorldTerrain) -> void:
 		_compute_skin()
 	timings["depth_field"] = Time.get_ticks_msec() - t0
 	t0 = Time.get_ticks_msec()
+	if _code_changed:
+		terrain.material.set_shader_parameter("window_tex", ImageTexture.create_from_image(
+			Image.create_from_data(W, H, false, Image.FORMAT_L8, terrain.wall_code)))
 	_make_material()
 	_build_mesh()
 	_build_room_extras()
@@ -247,8 +250,13 @@ func _build_mesh() -> void:
 					nc = _cover(ny * W + nx)
 				elif nx < 0 or nx >= W or ny >= H:
 					continue   # the level border: the margin mass continues there
+				var clip := INF
+				if nx >= 0 and ny >= 0 and nx < W and ny < H and room[ny * W + nx] != 0 and room[i] == 0:
+					clip = room_r[ny * W + nx] + ROOM_WALL   # behind a room's back-wall slab: open (the view out of windows)
 				for piece in _pieces(c, nc):
-					_face(buckets, x, y, side, piece.x, piece.y, solid_t)
+					if piece.x >= clip - 0.01:
+						continue
+					_face(buckets, x, y, side, piece.x, minf(piece.y, clip), solid_t)
 	_build_room_backs(buckets)
 	_build_cave_props(buckets)
 	for key in buckets:
@@ -594,6 +602,8 @@ const RWIN_PITCH := 7           # rhythmic windows: one bay every this many colu
 const RWIN_ROWS := 11           # ... and one storey every this many rows
 var room := PackedInt32Array()      # per tile: room id + 1 (0 = not a room tile)
 var room_r := PackedFloat32Array()
+const ROOM_OPEN_MAX := 60      # stone components smaller than this that touch open sky stay shallow walls
+var _code_changed := false
 var room_earth := PackedByteArray()   # per tile: 1 = earth cave (dirt back wall, no windows)  # per tile: the room's back-wall depth (d)
 var win := PackedByteArray()        # per tile: 1 = window opening (painted sky window or a rhythmic one)
 var windows: Array = []             # [{rect: Rect2i, r: float, stained: bool}]
@@ -642,6 +652,20 @@ func _make_rooms() -> void:
 				if room[j] == 0 and is_room.call(j):
 					room[j] = rid
 					comp.append(j)
+		# a small stone notch open to the sky (battlement gaps, roofless bays) is not a room: it keeps the
+		# slab's shallow recessed wall (never a deep stub with sky beside it)
+		var sky_edges := 0
+		for i in comp:
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j >= 0 and j < n and terrain.sky[j] and not terrain.solid[j]:
+					sky_edges += 1
+		if sky_edges > 0 and comp.size() < ROOM_OPEN_MAX and code[start] >= 5:
+			for i in comp:
+				room[i] = 0
+				code[i] = 0
+			_code_changed = true
+			continue
 		var r := clampf(2.4 + sqrt(float(comp.size())) * 0.12, ROOM_R_MIN, ROOM_R_MAX)
 		var ag := _above_ground(comp)
 		for i in comp:
@@ -652,6 +676,7 @@ func _make_rooms() -> void:
 		if comp.size() >= 80 and ag:
 			_rhythm_windows(comp, rid)
 	_drop_tiny_windows()
+	_drop_open_windows()
 	# depths: room tiles cover [R, R + wall]; windows are holes; neighbouring solids reach past the back wall
 	for i in n:
 		if room[i] == 0:
@@ -777,6 +802,22 @@ func _prop_box(b: Bucket, xa: float, xb: float, ya: float, yb: float, za: float,
 			b.n.append(out)
 			b.uv.append(uv)
 			b.uv2.append(Vector2(1.0, kind))
+
+## A painted window with open sky within 4 tiles above it (a battlement notch, a roofless bay) is not a window
+## in a wall: a hole there reads as a gap beside a floating stub. It stays wall.
+func _drop_open_windows() -> void:
+	for i in W * H:
+		if win[i] != 1:
+			continue
+		var x := i % W
+		var y := i / W
+		for d in range(1, 5):
+			if y - d < 0:
+				break
+			var j := (y - d) * W + x
+			if terrain.sky[j] and not terrain.solid[j]:
+				win[i] = 0
+				break
 
 func _touches_room(x: int, y: int) -> bool:
 	for dy in range(-1, 2):

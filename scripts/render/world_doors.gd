@@ -211,3 +211,5 @@ func set_mask_mode(on: bool) -> void:
 	for r in regions:
 		for k in ["solid_mat", "ghost_mat"]:
 			(r[k] as ShaderMaterial).set_shader_parameter("mask_mode", on)
+		if r["back"]:
+			((r["back"] as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("mask_mode", on)

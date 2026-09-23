@@ -10,6 +10,14 @@ uniform bool mask_mode = false;       // solidity check: pure white where the do
 uniform sampler2D door_code : filter_nearest, repeat_disable;   // per-tile door code * 20 (R8)
 uniform int my_code = 0;
 
+// true on tiles that are not this door id at all (open air, keys, other doors): the smooth shared SDF
+// bulges a little past the door's tiles, and nothing of a door may cover an open tile
+bool not_mine(vec2 p) {
+	ivec2 tp = clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1);
+	int c = int(texelFetch(door_code, tp, 0).r * 255.0 / 20.0 + 0.5);
+	return c != my_code;
+}
+
 // true where this fragment belongs to ANOTHER door id (a neighbouring region sharing the SDF)
 bool foreign_door(vec2 p) {
 	ivec2 tp = clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1);

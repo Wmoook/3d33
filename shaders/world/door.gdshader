@@ -24,7 +24,8 @@ void fragment() {
 	vec3 wp = w_pos;
 	vec2 p = vec2(wp.x, -wp.y);
 	float sf = door_sd(p);
-	if (sf < -0.07 || foreign_door(p)) discard;
+	// tile-exact: the smoothed field bulges into neighbouring open tiles, which must never look solid
+	if (sf < -0.07 || not_mine(p)) discard;
 	if (mask_mode) {
 		ALBEDO = vec3(0.0);
 		SPECULAR = 0.0;

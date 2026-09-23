@@ -249,7 +249,9 @@ func _save_tiles(path: String) -> void:
 		for x in W:
 			var i := y * W + x
 			var cls := 2 if t.solid[i] else (1 if t.sky[i] else 0)
-			var win := 2 if t.window.size() == W * H and t.window[i] > 0 else 0
+			# painted windows: window tiles, and sky-painted bg patches inside structures (enclosed_sky_bg), which
+			# world renders as glass panes with the sky behind them
+			var win := 2 if (t.window.size() == W * H and t.window[i] > 0) or 				(t.enclosed_sky_bg.size() == W * H and t.enclosed_sky_bg[i] > 0) else 0
 			img.set_pixel(x, y, Color8(cls, int(t.mat_ids[i]), glyph[i] | win | wet[i], 255))
 	img.save_png(path)
 

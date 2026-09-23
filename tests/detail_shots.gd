@@ -19,6 +19,7 @@ const SPOTS_FV := [
 	["walkstart", Vector2(14, 56)],
 	["walk8", Vector2(8, 56)],
 	["user7", Vector2(11, 56)],
+	["cave43", Vector2(43, 64)],
 	["far_grove", Vector2(35, 50)],
 	["far_keep", Vector2(320, 100)],
 	["far_east", Vector2(385, 100)],
@@ -92,11 +93,10 @@ func _ready() -> void:
 		_build_depth_stub(wv)
 	if args.has("hide"):
 		for nm: String in str(args.hide).split(","):
-			var nd: Node = wv.get_node_or_null(nm)
-			if nd == null:
-				nd = game.find_child(nm, true, false)
-			if nd is Node3D:
-				(nd as Node3D).visible = false
+			var nds: Array = [wv.get_node_or_null(nm)] if wv.get_node_or_null(nm) else game.find_children(nm, "", true, false)
+			for nd in nds:
+				if nd is Node3D:
+					(nd as Node3D).visible = false
 	if args.has("tileinfo"):
 		var v := str(args.tileinfo).split(",")
 		var ti := int(v[1]) * wv.terrain.W + int(v[0])
