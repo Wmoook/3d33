@@ -5,6 +5,7 @@ render_mode depth_draw_opaque, cull_disabled;   // inner faces close every slit 
 // the depth so faces don't streak), detail from the shared PBR library, and aerial haze with depth.
 
 #include "res://shaders/world/pbr_detail.gdshaderinc"
+#include "res://shaders/world/bg_space.gdshaderinc"   // FV: regional bg tone / class (WorldBgSpace)
 
 uniform sampler2D fgcol_tex : source_color, filter_nearest, repeat_disable;
 uniform sampler2D bgcol_tex : source_color, filter_nearest, repeat_disable;
@@ -181,12 +182,19 @@ void fragment() {
 	} else if (mat == -1 && !back) {
 		albedo *= 0.8;   // interior walls: the painted back-wall colour, a little shaded
 	}
+	// FV: back walls take the REGION's tone (WorldBgSpace), not the per-tile painted bg (dither = checkerboard)
+	vec3 creg = c.rgb;
+	int bgc = 0;
+	if (bg_space_on > 0.5 && (back || earth_back)) {
+		creg = bg_space_tone(vec2(wp.x, -wp.y), level_size);
+		bgc = bg_space_class(vec2(wp.x, -wp.y), level_size);
+	}
 	if (earth_back) {
 		// ---- earth cave back wall: packed dirt in the painted colour, strata, damp, pebbles, roots, darkness ----
 		vec2 p = vec2(wp.x, -wp.y);
-		float lum_c = dot(c.rgb, vec3(0.3, 0.55, 0.15));
+		float lum_c = dot(creg, vec3(0.3, 0.55, 0.15));
 		vec3 dirt = mix(vec3(0.13, 0.085, 0.045), vec3(0.19, 0.13, 0.07), vnoise(p * 0.35));
-		albedo = mix(dirt * (0.6 + lum_c * 2.5), c.rgb * 0.7, 0.3);
+		albedo = mix(dirt * (0.6 + lum_c * 2.5), creg * 0.7, 0.3);
 		float sy = p.y * 1.3 + vnoise(p * vec2(0.12, 0.4)) * 1.6;
 		albedo *= mix(0.75, 1.06, smoothstep(0.2, 0.8, fract(sy)));
 		albedo *= 1.0 - smoothstep(0.55, 0.85, vnoise(p * 0.22 + 9.0)) * 0.3;
@@ -220,7 +228,7 @@ void fragment() {
 		// warm stone kept well below the glyphs (~25-35% on screen), deepening into the recess
 		// painted sky / cloud bg left in a wall (dropped window specks, notches) must not turn the stone pale:
 		// cap the painted value and pull it toward grey stone
-		vec3 pc = c.rgb;
+		vec3 pc = creg;
 		float pl = dot(pc, vec3(0.3, 0.55, 0.15));
 		// a whole room painted in sky / cloud bg (Lower Sanctum: all 531) has no stone colour of its own at all:
 		// cool, bright paint is replaced outright by the warm grey ashlar every other hall uses
@@ -288,6 +296,21 @@ void fragment() {
 		rough = 0.88;
 		// interior light floor: the hall is never a black hole (the slab shades it)
 		emit_x = albedo * 0.1;
+	}
+	// FV: earth / undergrowth / water grotto / deep alcove regions get their own continuous class material,
+	// and every back wall gets the interior light field (spill from openings, gloom in the depths)
+	if (bg_space_on > 0.5 && (back || earth_back) && bgc != 0) {
+		vec2 bp = vec2(wp.x, -wp.y);
+		if (earth_back && (bgc == 1 || bgc == 2 || bgc == 5 || bgc == 6)) {   // stone halls keep their masonry
+			vec3 bn;
+			float bao;
+			albedo = bg_space_shade(bp, level_size, vec3(0.0, 0.0, 1.0), bn, bao);
+			n = bn;
+			ao *= bao;
+			mat = bgc == 2 ? M_FOLIAGE : M_EARTH;
+			albedo = bg_space_ledges(bp, depth_tex, level_size, albedo);
+		}
+		emit_x = bg_space_light(bp, level_size, bgc, albedo, ao);
 	}
 	bool leafy = mat == M_GRASS || mat == M_FOLIAGE;
 	if (leafy && !horiz) {
@@ -425,18 +448,18 @@ void fragment() {
 		vec3 tone = normalize(max(ALBEDO, vec3(0.001))) * 0.577;
 		EMISSION = max(EMISSION, tone * 0.035 + vec3(0.006, 0.005, 0.004));
 	}
-	EMISSION += ALBEDO * (0.25 * spill + 0.45 * crown_in);   // the shaft mouth's spilled forest light (crown faces: lit leaves)
+	EMISSION += ALBEDO * (0.25 * spill + 0.2 * crown_in);   // the shaft mouth's spilled forest light (crown faces: lit leaves)
 	if (!FRONT_FACING) {
 		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
 		// side face. Before, back faces were culled and those slits showed the sky as bright vertical lines.
 		// shaded as the rock's own deep shadow (never exact black: seen through slots it read as a black hole)
 		// (a wide one - the cap over the first cave's shaft mouth, seen from the forest floor above - read as a
 		// black slab: shade it as the surface's own darkened tone, lit by the spill, not a near-black c x 0.2)
-		ALBEDO = max(ALBEDO * 0.55, c.rgb * 0.2);
+		ALBEDO = max(ALBEDO * 0.75, c.rgb * 0.2);
 		ROUGHNESS = 1.0;
 		SPECULAR = 0.0;
 		AO = 0.6;
-		EMISSION = max(c.rgb * 0.1, ALBEDO * (0.3 + 0.3 * spill));
+		EMISSION = max(c.rgb * 0.1, ALBEDO * (0.45 + 0.3 * spill));
 		NORMAL = -NORMAL;
 	}
 }

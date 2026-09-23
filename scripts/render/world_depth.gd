@@ -253,7 +253,7 @@ func _build_mesh() -> void:
 					continue   # the level border: the margin mass continues there (deep rooms / ground close it themselves)
 				var clip := INF
 				if nx >= 0 and ny >= 0 and nx < W and ny < H and room[ny * W + nx] != 0 and room[i] == 0:
-					clip = room_r[ny * W + nx] + ROOM_WALL   # behind a room's back-wall slab: open (the view out of windows)
+					clip = maxf(room_r[ny * W + nx] + ROOM_WALL, depth[ny * W + nx])   # behind a room's back-wall slab: open (the view out of windows)
 				for piece in _pieces(c, nc):
 					if piece.x >= clip - 0.01:
 						continue
@@ -731,7 +731,20 @@ func _make_rooms() -> void:
 					continue
 				var j := ny * W + nx
 				if room[j] == 0 and (terrain.solid[j] or mass[j]):
-					depth[j] = maxf(depth[j], r + ROOM_WALL)   # every neighbouring mass closes the room's sides
+					depth[j] = maxf(depth[j], maxf(r + ROOM_WALL, depth[i]))   # every neighbouring mass closes the room's sides
+	if not WorldPalette.is_odyssey():
+		# FV: a shallower room tile next to a deeper one reaches at least to the deeper tile's back wall, so
+		# the step between rooms of different depth is closed (no sky between an earth cave and a stone room)
+		for i in n:
+			if room[i] == 0 or win[i]:
+				continue
+			var xi := i % W
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j < 0 or j >= n or (o == -1 and xi == 0) or (o == 1 and xi == W - 1):
+					continue
+				if room[j] != 0 and not win[j] and room_r[j] > depth[i]:
+					depth[i] = room_r[j] + 0.05
 	# window list for glass panes / shafts (one per connected window patch)
 	var seen := PackedByteArray(); seen.resize(n)
 	for start in n:

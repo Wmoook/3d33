@@ -1,7 +1,6 @@
 extends Node
-## Overview haze check: grove / Twin Spire / falls at zoom 30, 60, 100, 150 -> user://zoom_<spot>_<z>.png
+## Where are the depth back walls? Zoom-100 grid over FV with BG_DEBUG (back walls = magenta).
 const GameScript := preload("res://scripts/game/game.gd")
-var SPOTS := {"grove": Vector2(40, 50), "twin": Vector2(248, 90), "falls": Vector2(150, 145)}
 var game
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
@@ -11,26 +10,20 @@ func _ready() -> void:
 	await game.ready_to_play
 	game.input_provider = func(_t: int) -> Dictionary: return {}
 	game.sim.set_god_mode(true)
-	await _wait(8.0)
-	var zs := [30.0, 60.0, 100.0, 150.0]
-	if OS.get_cmdline_user_args().has("edges"):
-		SPOTS = {"e_left": Vector2(10, 100), "e_right": Vector2(390, 100), "e_bl": Vector2(40, 195), "e_bc": Vector2(200, 195), "e_br": Vector2(360, 195), "e_tl": Vector2(20, 10), "e_tr": Vector2(380, 10)}
-		zs = [150.0]
-	for n in SPOTS:
-		for z in zs:
-			game.rig.target_zoom = z
-			game.rig.zoom = z
-			var t: Vector2 = SPOTS[n]
+	game.rig.target_zoom = 100.0
+	game.rig.zoom = 100.0
+	await _wait(6.0)
+	for ty in [50, 110, 170]:
+		for tx in [50, 150, 250, 350]:
 			for i in 25:
-				game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
+				game.sim.px = tx * 16.0; game.sim.py = ty * 16.0
 				game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 				await get_tree().physics_frame
-			await _wait(1.0)
+			await _wait(0.8)
 			await RenderingServer.frame_post_draw
 			var im := get_viewport().get_texture().get_image()
 			im.resize(im.get_width() / 4, im.get_height() / 4)
-			im.save_png("user://zoom_%s_%d.png" % [n, int(z)])
-	print("zooms done")
+			im.save_png("user://bgdbg_%d_%d.png" % [tx, ty])
 	get_tree().quit()
 func _wait(s: float) -> void:
 	var end := Time.get_ticks_msec() + int(s * 1000.0)

@@ -23,13 +23,28 @@ func _ready() -> void:
 	await _wait(1.5)
 	await _shot("base")
 	var wv = game.world
-	for nm in ["Vista", "Backdrop", "Keels", "Voxel", "Depth", "Decor", "Foliage", "Grass"]:
+	for nm in ["Vista", "Backdrop", "Keels", "Voxel", "Depth", "Decor", "Foliage", "Grass", "Forest", "DepthGreen"]:
 		var n: Node3D = wv.get_node_or_null(nm)
 		if n == null:
 			continue
 		n.visible = false
 		await _shot("no" + nm.to_lower())
 		n.visible = true
+	if a.has("fog"):
+		var env: Environment = wv.get_environment()
+		var fv: Node3D = wv.atmosphere.fog_volume
+		fv.visible = false
+		await _shot("nozonefog")
+		fv.visible = true
+		env.volumetric_fog_enabled = false
+		await _shot("novolfog")
+		env.volumetric_fog_enabled = true
+		var ca = get_viewport().get_camera_3d().attributes
+		if ca:
+			ca.set("dof_blur_far_enabled", false)
+			await _shot("nodof")
+		wv.atmosphere.post_layer.visible = false
+		await _shot("nopost")
 	get_tree().quit()
 func _shot(tag: String) -> void:
 	await _wait(0.5)

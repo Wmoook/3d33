@@ -83,8 +83,26 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 		sky_mat.set_shader_parameter("noise_tex", noise_tex)
 		sky_mat.set_shader_parameter("has_noise", 1.0)
 		sky_mat.set_shader_parameter("cloud_base", CLOUD_BASE)
+	_bind_bg_space()
 	print("WorldVista built %s" % str(timings))
 	_build_pieces_deferred()
+
+## FV background overhaul: hand WorldBgSpace's map to WorldDepth's back-wall material (interim, until
+## world_depth.gd binds it itself). Harmless if already bound.
+func _bind_bg_space() -> void:
+	var wv := get_parent()
+	var depth = wv.get("depth") if wv else null
+	var terrain = wv.get("terrain") if wv else null
+	if depth == null or terrain == null or WorldPalette.is_odyssey():
+		return
+	var m: ShaderMaterial = depth.get("material")
+	var win = depth.get("win")
+	if win is PackedByteArray and (win as PackedByteArray).size() == terrain.W * terrain.H:
+		WorldBgSpace.add_openings(terrain, win)   # the rooms' own windows light them too
+	if m:
+		m.set_shader_parameter("bg_space_tex", WorldBgSpace.texture(terrain))
+		m.set_shader_parameter("bg_space_aux", WorldBgSpace.aux_texture(terrain))
+		m.set_shader_parameter("bg_space_on", 0.0 if OS.get_environment("BG_SPACE_OFF") != "" else 1.0)   # (env: A/B tests)
 
 ## Per frame (camera world position). The vista is world-anchored, so nothing moves; this only hides it
 ## when no sky can be visible (sky_visibility 0 = deep underground), which also skips the cloud march.

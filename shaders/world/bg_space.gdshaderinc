@@ -58,7 +58,7 @@ vec3 bg_space_shade(vec2 p, vec2 level_sz, vec3 n_in, out vec3 n_out, out float 
 	vec3 alb = tone;
 	vec3 n = n_in;
 	ao = 1.0;
-	if (c == 1) {
+	if (c == 1 || c == 6) {
 		// earth cave: horizontal strata that wander, packed soil with pebbles, root threads, damp dark
 		float wob = bgs_fbm(vec2(p.x * 0.08, p.y * 0.3)) * 2.2;
 		float sy = p.y * 1.1 + wob;
@@ -73,14 +73,18 @@ vec3 bg_space_shade(vec2 p, vec2 level_sz, vec3 n_in, out vec3 n_out, out float 
 		float root = smoothstep(0.93, 0.99, bgs_n(vec2(p.x * 2.6 + bgs_fbm(p * 0.5) * 3.0, p.y * 0.35)));
 		alb = mix(alb, tone * 0.45, root * 0.7);
 		n = normalize(n + vec3((grain - 0.5) * 0.3, (band < 0.12 ? 0.6 : (band > 0.85 ? -0.4 : 0.0)), 0.0));
+		if (c == 6) {
+			alb *= 0.6;   // deep alcove: the same rock, in shadow (never a black hole)
+		}
 	} else if (c == 2) {
 		// forest undergrowth: layered dark leaf masses over trunk silhouettes, deep green gloom
 		float leaves = bgs_fbm(p * 0.9 + vec2(0.0, bgs_n(p * 0.2) * 2.0));
 		float clumps = smoothstep(0.42, 0.62, leaves);
 		float trunkx = abs(fract(p.x / 5.3 + bgs_n(vec2(p.y * 0.05, 1.0)) * 0.4) - 0.5);
 		float trunk = 1.0 - smoothstep(0.05, 0.09, trunkx);
-		vec3 dark = tone * 0.45;
-		alb = mix(dark, tone * 1.15, clumps);
+		vec3 leaf = mix(vec3(0.05, 0.11, 0.035), tone * 3.0, 0.4);   // the painted greens are very dark: lift
+		vec3 dark = leaf * 0.55;
+		alb = mix(dark, leaf * 1.15, clumps);
 		alb = mix(alb, vec3(0.12, 0.08, 0.05) * 0.8, trunk * (1.0 - clumps) * 0.8);
 		n = normalize(n + vec3((leaves - 0.5) * 0.8, (bgs_fbm(p * 0.9 + 0.3) - 0.5) * 0.8, 0.0));
 		ao = mix(0.6, 1.0, clumps);
@@ -111,7 +115,7 @@ vec3 bg_space_shade(vec2 p, vec2 level_sz, vec3 n_in, out vec3 n_out, out float 
 		alb = tone * 0.35 * mix(0.8, 1.15, bgs_fbm(p * 1.5));
 	}
 	// the painter's darker areas go into shadow
-	ao *= mix(1.0, 0.55, dp);
+	ao *= mix(1.0, 0.7, dp);
 	n_out = n;
 	return alb;
 }
@@ -131,8 +135,10 @@ vec3 bg_space_light(vec2 p, vec2 level_sz, int cls, inout vec3 albedo, inout flo
 	float corner = mix(0.4, 1.0, smoothstep(0.0, 2.5, d.x));
 	float wob = bgs_fbm(p * 0.15);
 	vec3 gloom = albedo * 0.45 + (cls == 2 ? vec3(0.012, 0.03, 0.016) : (cls == 5 ? vec3(0.008, 0.02, 0.035) : vec3(0.02, 0.014, 0.01)));
-	float fog = (1.0 - spill) * mix(0.25, 0.5, wob) * (cls == 6 ? 1.4 : 1.0);
-	albedo = mix(albedo, gloom, clamp(fog, 0.0, 0.6));
+	// gloom only deep inside (>= ~5 tiles from any opening): narrow shafts and cave mouths stay readable
+	float deepin = smoothstep(4.0, 12.0, d.y);
+	float fog = deepin * mix(0.25, 0.5, wob) * (cls == 6 ? 1.4 : 1.0);
+	albedo = mix(albedo, gloom, clamp(fog, 0.0, 0.5));
 	ao *= corner;
 	vec3 day = vec3(1.0, 0.86, 0.62);
 	return albedo * day * spill * 0.8 + day * spill * spill * 0.03;

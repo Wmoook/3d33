@@ -181,7 +181,7 @@ static func for_terrain(terrain: WorldTerrain) -> WorldBgSpace:
 		var open := PackedByteArray()
 		open.resize(terrain.W * terrain.H)
 		for i in open.size():
-			open[i] = 1 if (terrain.sky[i] and not terrain.solid[i]) or (terrain.window.size() == open.size() and terrain.window[i] > 0) else 0
+			open[i] = 1 if _is_opening(terrain, i) else 0
 		_cache.build_light(terrain.solid, open)
 		_cache_level = terrain.level
 		_cache_tex = ImageTexture.create_from_image(_cache.image())
@@ -194,9 +194,21 @@ static func add_openings(terrain: WorldTerrain, extra: PackedByteArray) -> void:
 	var open := PackedByteArray()
 	open.resize(terrain.W * terrain.H)
 	for i in open.size():
-		open[i] = 1 if (terrain.sky[i] and not terrain.solid[i]) or (terrain.window.size() == open.size() and terrain.window[i] > 0) or extra[i] > 0 else 0
+		open[i] = 1 if _is_opening(terrain, i) or extra[i] > 0 else 0
 	bs.build_light(terrain.solid, open)
 	_cache_aux.update(bs.aux_image())
+
+static var _hollow := PackedByteArray()
+## Light enters interiors from open sky, painted windows and the lit forest hollows (a cave mouth that opens
+## into the grove's hollow is lit from it, never a black pit).
+static func _is_opening(terrain: WorldTerrain, i: int) -> bool:
+	if terrain.solid[i]:
+		return false
+	if terrain.sky[i] or (terrain.window.size() == terrain.sky.size() and terrain.window[i] > 0):
+		return true
+	if _hollow.size() != terrain.sky.size():
+		_hollow = WorldForest.hollow_mask(terrain)
+	return _hollow.size() == terrain.sky.size() and _hollow[i] == 1
 
 ## bg_space_aux (RG8): distance to solid / to open sky (see build_light).
 static func aux_texture(terrain: WorldTerrain) -> ImageTexture:

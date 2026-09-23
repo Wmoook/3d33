@@ -21,7 +21,7 @@ func _ready() -> void:
 		i += 4
 	await _wait(8.0)
 	var wv = game.world
-	var layers := ["", "", "", "Vista", "Backdrop", "Keels", "Voxel", "Depth", "DepthGreen", "Forest", "Decor", "Foliage", "Grass", "Trials", ""]
+	var layers := ["", "", "", "Vista", "Backdrop", "Keels", "Voxel", "Depth", "DepthGreen", "Forest", "Decor", "Foliage", "Grass", "Trials", "Doors", "Lights", ""]
 	if OS.get_environment("SHIM_SUB") != "":
 		layers = [""]
 		for c in wv.get_node(OS.get_environment("SHIM_SUB")).get_children():
