@@ -723,6 +723,41 @@ func _open_sky_mask() -> PackedByteArray:
 			o[i] = 1
 			dist[i] = 0
 			q.append(i)
+	# open air continues through WIDE air (>= 20 of the 25 tiles around it are air) without a distance limit:
+	# the space under floating features (scroll, logo, islands, bridges) stays sky, while narrow corridors
+	# into underground halls stop the flood (the reach below then fades it out)
+	var wide := PackedByteArray(); wide.resize(n)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			if solid[i]:
+				continue
+			var c := 0
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					var nx := clampi(x + dx, 0, W - 1)
+					var ny := clampi(y + dy, 0, H - 1)
+					if not solid[ny * W + nx]:
+						c += 1
+			wide[i] = 1 if c >= 20 else 0
+	var wq := q.duplicate()
+	var wi := 0
+	while wi < wq.size():
+		var i := wq[wi]; wi += 1
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if o[j] or not wide[j]:
+				continue
+			o[j] = 1
+			dist[j] = 0
+			wq.append(j)
+			q.append(j)
 	var qi := 0
 	while qi < q.size():
 		var i := q[qi]; qi += 1
