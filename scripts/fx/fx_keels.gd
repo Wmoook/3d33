@@ -91,34 +91,36 @@ func _ramp(cols: Array, offs: Array) -> GradientTexture1D:
 func _dust() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.name = "KeelDust"
-	p.amount = 30
-	p.lifetime = 3.5
-	p.preprocess = 3.5
+	p.amount = 60
+	p.lifetime = 4.5
+	p.preprocess = 4.5
 	p.randomness = 0.6
 	p.emitting = false
 	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD
-	p.visibility_aabb = AABB(Vector3(-6, -8, -2), Vector3(12, 9, 4))
+	p.visibility_aabb = AABB(Vector3(-6, -9, -2), Vector3(12, 10, 4))
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	pm.emission_box_extents = Vector3(1.5, 0.05, 0.3)
 	pm.direction = Vector3(0, -1, 0)
 	pm.spread = 10.0
-	pm.initial_velocity_min = 0.1
-	pm.initial_velocity_max = 0.4
-	pm.gravity = Vector3(0.12, -0.35, 0)
+	pm.initial_velocity_min = 0.25
+	pm.initial_velocity_max = 0.6
+	pm.gravity = Vector3(0.05, -0.35, 0)   # a trail falling ~3-5 tiles before it fades
 	pm.turbulence_enabled = true
 	pm.turbulence_noise_strength = 0.6
 	pm.turbulence_noise_scale = 3.0
 	pm.turbulence_influence_min = 0.05
-	pm.turbulence_influence_max = 0.12
+	pm.turbulence_influence_max = 0.08
 	pm.scale_min = 0.5
 	pm.scale_max = 1.3
-	pm.color_ramp = _ramp([Color(0.62, 0.55, 0.45, 0.0), Color(0.58, 0.5, 0.4, 0.75), Color(0.7, 0.65, 0.58, 0.0)], [0.0, 0.15, 1.0])
+	pm.color_ramp = _ramp([Color(1.0, 0.9, 0.7, 0.0), Color(1.0, 0.9, 0.7, 0.9), Color(0.95, 0.88, 0.75, 0.5), Color(0.95, 0.9, 0.8, 0.0)], [0.0, 0.1, 0.6, 1.0])   # warm sunlit grit
 	p.process_material = pm
+	# additive glint so sunlit grit reads brighter than the pale sky (a mix sprite vanished against it)
 	var q := QuadMesh.new()
-	q.size = Vector2(0.13, 0.13)
+	q.size = Vector2(0.12, 0.12)
 	var m := ShaderMaterial.new()
-	m.shader = MIX_SHADER
+	m.shader = preload("res://shaders/fx/particle.gdshader")
+	m.set_shader_parameter("intensity", 2.2)
 	q.material = m
 	p.draw_pass_1 = q
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -181,19 +183,29 @@ func _process(delta: float) -> void:
 	_assign_t -= delta
 	if _assign_t > 0.0 or _sites.is_empty():
 		return
-	_assign_t = 0.5
+	_assign_t = 0.25
+	var cam := get_viewport().get_camera_3d()
 	var f := focus_override
 	if f.x == INF:
-		var cam := get_viewport().get_camera_3d()
 		if cam == null:
 			return
 		f = cam.global_position
+	# priority: keels actually on screen first, ordered by projected distance to the view centre;
+	# off-screen ones (by world distance) only fill leftover slots
+	var vp := get_viewport().get_visible_rect().size
+	var centre := vp * 0.5
 	var near: Array = []
 	for i in _sites.size():
 		var p: Vector3 = _sites[i].pos
 		var d := Vector2(p.x - f.x, p.y - f.y).length()
-		if d < NEAR:
-			near.append([d, i])
+		if d > NEAR + 10.0:
+			continue
+		var score := 10000.0 + d
+		if cam and not cam.is_position_behind(p):
+			var sp := cam.unproject_position(p + Vector3(0, -1.5, 0))   # the trickle below the tip
+			if sp.x > -40.0 and sp.y > -40.0 and sp.x < vp.x + 40.0 and sp.y < vp.y + 40.0:
+				score = sp.distance_to(centre)
+		near.append([score, i])
 	near.sort_custom(func(a, b): return a[0] < b[0])
 	var want := {}
 	for k in mini(near.size(), POOL):

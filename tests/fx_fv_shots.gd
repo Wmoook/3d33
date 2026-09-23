@@ -112,6 +112,11 @@ func _ready() -> void:
 				if sl.site >= 0:
 					used.append(game.actors.keels._sites[sl.site].pos)
 			print("keel slots ", used)
+			var b3: Vector3 = game.actors.player.global_position
+			var all: Array = game.actors.keels._sites.duplicate()
+			all.sort_custom(func(a, c): return Vector2(a.pos.x - b3.x, a.pos.y - b3.y).length() < Vector2(c.pos.x - b3.x, c.pos.y - b3.y).length())
+			print("nearest keels to ball ", b3, ": ", all.slice(0, 6).map(func(e): return e.pos))
+			print("cam ", get_viewport().get_camera_3d().global_position, " focus ", game.actors.keels.focus_override)
 		if s[0] == "scroll_noink":
 			for n in game.actors.blocks.find_children("InkLetters", "", false, false):
 				n.visible = false

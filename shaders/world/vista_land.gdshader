@@ -8,8 +8,8 @@ render_mode unshaded, fog_disabled, cull_back, shadows_disabled;
 
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
-uniform float fog_density = 0.0012;
-uniform float fog_near = 0.26;
+uniform float fog_density = 0.0011;
+uniform float fog_near = 0.2;
 uniform float snow_line = -70.0;
 uniform float water_y = -172.0;
 
@@ -50,7 +50,7 @@ void fragment() {
 	float big = tn(q * 0.004, 1);
 	float mid = tn(q * 0.013, 2);
 	// ---- base albedo ----
-	vec3 meadow = mix(vec3(0.34, 0.47, 0.20), vec3(0.47, 0.54, 0.26), big);
+	vec3 meadow = mix(vec3(0.30, 0.48, 0.17), vec3(0.44, 0.56, 0.22), big);
 	vec3 wood = mix(vec3(0.10, 0.22, 0.11), vec3(0.17, 0.30, 0.13), h0) * (0.8 + 0.4 * mid);
 	vec3 rock = mix(vec3(0.44, 0.42, 0.40), vec3(0.56, 0.54, 0.52), mid);
 	vec3 mrock = mix(vec3(0.24, 0.26, 0.33), vec3(0.44, 0.44, 0.50), h0 * 0.6 + mid * 0.4);

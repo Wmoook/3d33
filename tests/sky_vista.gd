@@ -23,6 +23,10 @@ func _ready() -> void:
 		wv.add_child(vista)
 		vista.build(wv.level, wv.lights.moon.transform.basis.z, wv.atmosphere.sky_mat)
 	var only := OS.get_cmdline_user_args()
+	if "diag" in only:
+		await _diag(wv)
+		get_tree().quit()
+		return
 	for n in SPOTS:
 		if only.size() > 0 and not (n in only):
 			continue
@@ -52,3 +56,36 @@ func _wait(s: float) -> void:
 	var end := Time.get_ticks_msec() + int(s * 1000.0)
 	while Time.get_ticks_msec() < end:
 		await get_tree().process_frame
+
+func _diag(wv) -> void:
+	for c in wv.get_children():
+		print("WV child ", c.name, " ", c.get_class(), " kids=", c.get_child_count())
+		for g in c.get_children():
+			if g is GeometryInstance3D:
+				var gi: GeometryInstance3D = g
+				var ab := gi.get_aabb() if gi is VisualInstance3D else AABB()
+				print("   ", g.name, " ", g.get_class(), " vis=", gi.visible, " aabb_z=", ab.position.z, "..", ab.end.z)
+	var t: Vector2i = SPOTS["falls"]
+	for i in 20:
+		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
+		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
+		await get_tree().physics_frame
+	await _wait(2.0)
+	var env: Environment = wv.get_environment()
+	print("env fog=", env.fog_enabled, " vfog=", env.volumetric_fog_enabled, " dens=", env.volumetric_fog_density, " expo=", env.tonemap_exposure, " sat=", env.adjustment_saturation, " glow=", env.glow_intensity)
+	await _shot("diag_base")
+	env.volumetric_fog_enabled = false
+	await _shot("diag_novfog")
+	env.fog_enabled = false
+	env.glow_enabled = false
+	await _shot("diag_noglow")
+	var ca = get_viewport().get_camera_3d().attributes
+	print("cam attrs ", ca)
+	if ca:
+		ca.set("dof_blur_far_enabled", false)
+	await _shot("diag_nodof")
+
+func _shot(n: String) -> void:
+	await _wait(0.6)
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("user://sky_vista_%s.png" % n)

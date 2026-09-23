@@ -27,18 +27,19 @@ func _ready() -> void:
 	game.input_provider = func(_t: int) -> Dictionary: return {}
 	var wv: WorldView = game.world
 	var mat: ShaderMaterial = wv.terrain.material
-	var sh_orig: Shader = mat.shader
 	var patcher = Shots.new()
-	patcher._patch_terrain(wv)
-	var sh_pbr: Shader = mat.shader
-	var grass := WorldGrass.new()
-	wv.add_child(grass)
-	grass.build(wv.level, wv.terrain)
-	var foliage := WorldFoliage.new()
-	wv.add_child(foliage)
-	foliage.build(wv.level, wv.terrain)
+	patcher._patch_terrain(wv)   # no-op once world's shader runs the library itself
 	patcher.free()
-	var decor_grass: Node3D = wv.decor.get_node_or_null("Grass") if wv.decor else null
+	var grass: WorldGrass = wv.get("grass")
+	var foliage: WorldFoliage = wv.get("foliage")
+	if grass == null:
+		grass = WorldGrass.new()
+		wv.add_child(grass)
+		grass.build(wv.level, wv.terrain)
+	if foliage == null:
+		foliage = WorldFoliage.new()
+		wv.add_child(foliage)
+		foliage.build(wv.level, wv.terrain)
 	game._ui.visible = false
 	game.sim.set_god_mode(true)
 	var vp := get_viewport().get_viewport_rid()
@@ -56,11 +57,9 @@ func _ready() -> void:
 		await _frames(60)
 		var res := {}
 		for mode in ["base", "pbr", "grass", "leaves"]:
-			mat.shader = sh_orig if mode == "base" else sh_pbr
+			mat.set_shader_parameter("pbr_strength", 0.0 if mode == "base" else 1.0)
 			grass.visible = mode == "grass" or mode == "leaves"
 			foliage.visible = mode == "leaves"
-			if decor_grass:
-				decor_grass.visible = not grass.visible
 			await _frames(20)
 			var acc := 0.0
 			var n := int(args.frames)
