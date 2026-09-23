@@ -218,10 +218,13 @@ void fragment() {
 	float win_frame = 0.0;
 	float struct_wall = 0.0;
 	float earth_wall = 0.0;
+	float bay_wall = 0.0;
 	if (layer == 1 && scroll_rect.x >= 0.0) {
 		float wraw = texelFetch(window_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
-		struct_wall = step(4.5, wraw);
-		earth_wall = step(1.0, wraw) * (1.0 - struct_wall);
+		// code 1 = a roofless stone bay open to the sky (WorldDepth): shallow masonry drawn by the slab itself
+		bay_wall = step(0.5, wraw) * (1.0 - step(1.5, wraw));
+		struct_wall = max(step(4.5, wraw), bay_wall);
+		earth_wall = step(1.5, wraw) * (1.0 - struct_wall);
 		float wd = (texture(window_tex, p / level_size).r * 255.0 - 6.0) / 34.0;
 		if (wraw > 20.0) {
 			float below = texelFetch(window_tex, clamp(ivec2(floor(p + vec2(0.0, 0.75))), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
@@ -709,8 +712,8 @@ void fragment() {
 	if (scroll_rect.x >= 0.0 && layer == 1) {
 		// back walls behind air must read recessed and non-solid: darker (<= ~55% of the fg value), flatter
 		// relief and light, strong AO toward the foreground edges, cooler, no highlights
-		albedo *= 0.5;
-		albedo = mix(albedo, albedo * vec3(0.85, 0.92, 1.08), 0.6 * (1.0 - earth_wall));
+		albedo *= mix(0.5, 0.85, bay_wall);   // a roofless bay's wall stands in the sun like the ruin around it
+		albedo = mix(albedo, albedo * vec3(0.85, 0.92, 1.08), 0.6 * (1.0 - earth_wall) * (1.0 - bay_wall));
 		n = normalize(mix(vec3(0.0, 0.0, 1.0), n, 0.35));
 		rough = 0.95;
 		spec = 0.12;
@@ -746,6 +749,12 @@ void fragment() {
 		float jl = 1.0 - smoothstep(0.03, 0.09, joint);
 		albedo *= mix(0.78, 1.15, hash12(bi + 7.0)) * (1.0 - jl * 0.6);
 		n = normalize(n + vec3(0.0, 0.0, 0.0) - vec3(sign(bf.x - 0.5), -sign(bf.y - 0.5), 0.0) * jl * 0.25);
+		if (bay_wall > 0.5) {
+			// roofless bay: warm sunlit masonry like the room back walls (dark painted stone lifted, as WorldDepth)
+			float bl = dot(albedo, vec3(0.3, 0.55, 0.15));
+			albedo = mix(albedo, vec3(bl) * vec3(1.25, 1.0, 0.72), 0.6);
+			albedo *= clamp(0.13 / max(bl, 0.001), 1.0, 4.0);
+		}
 	}
 	if (win_frame > 0.5) {
 		// weathered stone window frame / mullion, lit like the solid ruins, a little moss on the sill

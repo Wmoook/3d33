@@ -637,8 +637,29 @@ func _make_rooms() -> void:
 	# stone interiors (code >= 5, win over forest hollows) and earth tunnels (code 2, not inside a forest
 	# hollow) are both recessed rooms; one component spans both so neighbouring earth / stone share R
 	var hol := WorldForest.hollow_mask(terrain)
+	# roofless stone bays: wall tiles with open sky straight above them (through other such tiles) are not a
+	# room interior - recessed R deep they read as a hollow box with no front (user: Hollow Halls battlements
+	# at (80-93, 77-80)); they keep the slab's shallow recessed wall
+	var open_top := PackedByteArray()
+	open_top.resize(n)
+	var flood: PackedByteArray = terrain._sky_flood
+	if flood.size() == n:
+		for x in W:
+			var open := true
+			for y in H:
+				var i := y * W + x
+				if terrain.solid[i]:
+					open = false
+				elif terrain.sky[i] and flood[i]:
+					open = true
+				elif code[i] >= 5 and open:
+					open_top[i] = 1
+					code[i] = 1   # 1 = shallow masonry: the slab draws it (ashlar), not a room (terrain room_near > 1.5)
+					_code_changed = true
+				else:
+					open = false
 	var is_room := func(i: int) -> bool:
-		if terrain.solid[i]:
+		if terrain.solid[i] or open_top[i]:
 			return false
 		if code[i] >= 5:
 			return true
