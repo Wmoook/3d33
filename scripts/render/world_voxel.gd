@@ -223,9 +223,11 @@ func _keep_out_image(terrain: WorldTerrain, depth: WorldDepth) -> Image:
 	var b := PackedByteArray()
 	b.resize(W2 * terrain.H)
 	if not WorldPalette.is_odyssey():
-		var hm := WorldForest.hollow_mask(terrain)
-		for i in mini(hm.size(), b.size()):
-			if hm[i]:
+		# hollows (255) AND the room tiles bordering them (90, detail's room_border mask): rays entering such a
+		# room at its edge leave it sideways into the forest space behind the plane (detail's backstop to -62)
+		var hd := WorldForest.hollow_image(terrain, true).get_data()
+		for i in mini(hd.size(), b.size()):
+			if hd[i] > 63:
 				b[i] = 63
 	if depth and depth.room.size() == b.size():
 		var rooms := 0
