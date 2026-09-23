@@ -155,10 +155,12 @@ vec3 bg_space_light(vec2 p, vec2 level_sz, int cls, inout vec3 albedo, inout flo
 		float dk = bg_space_dist(q, level_sz).y;
 		fall = max(fall, exp(-dk / (1.2 + fk * 0.35)) * (1.0 - fk * 0.11));
 	}
-	float lit = clamp(max(spill, fall), 0.0, 1.0);
+	float lit = smoothstep(0.0, 1.0, clamp(max(spill, fall), 0.0, 1.0));
 	// value contrast: lit stretches brighter, the rest sinks (floor kept: never a black hole)
 	albedo *= mix(0.62, 1.3, lit);
 	albedo = mix(albedo, gloom, clamp(fog * (1.0 - lit), 0.0, 0.55));
 	ao *= corner;
-	return albedo * day * (spill * 0.7 + fall * 1.5) + day * fall * fall * 0.04;
+	// soft: the light never saturates the wall to a pale flat patch (capped relative to the albedo)
+	vec3 e = albedo * day * (spill * 0.6 + fall * 1.2) + day * fall * fall * 0.02;
+	return min(e, albedo * 1.1 + vec3(0.02));
 }

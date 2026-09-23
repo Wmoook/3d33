@@ -102,7 +102,7 @@ func _bind_bg_space() -> void:
 	if m:
 		m.set_shader_parameter("bg_space_tex", WorldBgSpace.texture(terrain))
 		m.set_shader_parameter("bg_space_aux", WorldBgSpace.aux_texture(terrain))
-		m.set_shader_parameter("bg_space_pools", 1.0 if OS.get_environment("BG_POOLS_ON") != "" else 0.0)   # light pools: off until tuned (env BG_POOLS_ON=1 for A/B)
+		m.set_shader_parameter("bg_space_pools", 0.0 if OS.get_environment("BG_POOLS_OFF") != "" else 1.0)   # light pools (env BG_POOLS_OFF=1 for A/B)
 		m.set_shader_parameter("bg_space_on", 0.0 if OS.get_environment("BG_SPACE_OFF") != "" else 1.0)   # (env: A/B tests)
 
 ## Per frame (camera world position). The vista is world-anchored, so nothing moves; this only hides it

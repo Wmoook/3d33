@@ -131,6 +131,22 @@ func build_light(solid: PackedByteArray, open_mask: PackedByteArray) -> void:
 	d_solid = _bfs(solid, 8)
 	d_open = _bfs(open_mask, 24)
 
+## 3x3 tent blur (separable).
+func _blur(f: PackedFloat32Array) -> PackedFloat32Array:
+	var t := PackedFloat32Array()
+	t.resize(W * H)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			t[i] = (f[y * W + maxi(x - 1, 0)] + 2.0 * f[i] + f[y * W + mini(x + 1, W - 1)]) * 0.25
+	var o := PackedFloat32Array()
+	o.resize(W * H)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			o[i] = (t[maxi(y - 1, 0) * W + x] + 2.0 * t[i] + t[mini(y + 1, H - 1) * W + x]) * 0.25
+	return o
+
 func _bfs(seed_mask: PackedByteArray, cap: int) -> PackedFloat32Array:
 	var n := W * H
 	var d := PackedFloat32Array()
@@ -161,11 +177,15 @@ func _bfs(seed_mask: PackedByteArray, cap: int) -> PackedFloat32Array:
 	return d
 
 func aux_image() -> Image:
+	# the BFS distances are tile-quantized (octagonal steps): blur them so light falls off softly, never in
+	# tile-shaped patches
+	var ds := _blur(_blur(d_solid))
+	var do_ := _blur(_blur(_blur(d_open)))
 	var buf := PackedByteArray()
 	buf.resize(W * H * 2)
 	for i in W * H:
-		buf[i * 2] = int(clampf(d_solid[i] / 8.0, 0.0, 1.0) * 255.0)
-		buf[i * 2 + 1] = int(clampf(d_open[i] / 24.0, 0.0, 1.0) * 255.0)
+		buf[i * 2] = int(clampf(ds[i] / 8.0, 0.0, 1.0) * 255.0)
+		buf[i * 2 + 1] = int(clampf(do_[i] / 24.0, 0.0, 1.0) * 255.0)
 	return Image.create_from_data(W, H, false, Image.FORMAT_RG8, buf)
 
 ## Shared per level: built once from the terrain's level (every module reads the same maps).
@@ -204,8 +224,9 @@ static var _hollow := PackedByteArray()
 static func _is_opening(terrain: WorldTerrain, i: int) -> bool:
 	if terrain.solid[i]:
 		return false
-	if terrain.sky[i] or (terrain.window.size() == terrain.sky.size() and terrain.window[i] > 0):
-		return true
+	if terrain.sky[i]:
+		return true   # (windows: only the ones WorldDepth really cuts, via add_openings - a painted-sky
+		# patch it dropped is solid wall, and lighting it made pale light patches with no opening)
 	if _hollow.size() != terrain.sky.size():
 		_hollow = WorldForest.hollow_mask(terrain)
 	return _hollow.size() == terrain.sky.size() and _hollow[i] == 1
