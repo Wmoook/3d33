@@ -22,6 +22,8 @@ func _ready() -> void:
 			key = a.substr(4)
 		elif a.begins_with("name="):
 			nm = a.substr(5)
+		elif a == "nodepth":
+			WorldView.depth_enabled = false
 	GameScript.boot_options = {"no_save": true, "quality": 3, "level": lvl_id}
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)

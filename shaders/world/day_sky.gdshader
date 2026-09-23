@@ -56,11 +56,14 @@ void sky() {
 				float a = texture(noise_tex, (xz + w) * 0.0034).r;
 				float b = texture(noise_tex, (xz + w * 1.6) * 0.0115 + vec2(0.37, 0.61)).g;
 				float f = clamp((a * 0.62 + b * 0.36 - 0.3) * 3.2, 0.0, 1.0);
-				vec3 gap = mix(V_LOW * 0.72, V_LOW, 0.5);
-				vec3 top = mix(vec3(0.74, 0.8, 0.92), vec3(1.02, 1.0, 0.96), smoothstep(0.2, 0.9, f));
+				// broad cloud shadows (higher decks passing over the sea) and blue-grey gaps down to the depths
+				float shade = smoothstep(0.35, 0.7, texture(noise_tex, (xz + w * 0.6) * 0.0009 + vec2(0.5, 0.2)).b);
+				vec3 gap = V_LOW * vec3(0.52, 0.6, 0.72);
+				vec3 top = mix(vec3(0.62, 0.7, 0.86), vec3(1.02, 1.0, 0.96), smoothstep(0.2, 0.9, f));
+				top *= mix(1.0, 0.72, shade);
 				vec3 sea = mix(gap, top, smoothstep(0.02, 0.3, f));
-				float haze = 1.0 - exp(-t * 0.0011);
-				c = mix(sea, c, clamp(haze * 0.85 + smoothstep(-0.02, 0.0, d.y), 0.0, 1.0));
+				float haze = 1.0 - exp(-t * 0.0008);
+				c = mix(sea, c, clamp(haze * 0.75 + smoothstep(-0.02, 0.0, d.y), 0.0, 1.0));
 			}
 		}
 		COLOR = c * brightness;

@@ -19,7 +19,7 @@ uniform float down = 6.0;
 uniform float near_z = -215.0;     // clouds fade in behind this depth
 uniform float feather = 110.0;
 uniform float coverage = 0.5;
-uniform float fog_density = 0.0010;
+uniform float fog_density = 0.0008;
 uniform float fog_near = 0.12;
 
 varying vec3 v_wpos;
@@ -117,6 +117,9 @@ void fragment() {
 		// grey belly seen from below, darker where the cloud is thick
 		col = mix(vec3(0.80, 0.84, 0.92), vec3(0.50, 0.56, 0.68), smoothstep(0.1, 0.9, f));
 	}
+	// broad cloud shadows, matching the sky dome's continuation of the sea
+	float shade = smoothstep(0.35, 0.7, texture(noise_tex, (p.xz + vec2(TIME * 0.35, TIME * 0.12) * 0.6) * 0.0009 + vec2(0.5, 0.2)).b);
+	col *= mix(1.0, 0.72, shade);
 	float a = smoothstep(0.0, 0.12, f);
 	ALBEDO = vista_fog(col, p, cam, sd, fog_density, fog_near);
 	ALPHA = a;

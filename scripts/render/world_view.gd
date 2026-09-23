@@ -11,6 +11,8 @@ signal built
 signal zone_changed(zone: StringName)
 
 const ZONE_HYSTERESIS := 0.4
+## Tests: false skips the depth continuation (before/after shots).
+static var depth_enabled := true
 
 var level: EELevel
 var sim: Object  # EESim (untyped so the world builds without the physics module)
@@ -24,6 +26,8 @@ var zones: WorldZones
 var trials: WorldTrials
 var keels: WorldKeels
 var vista: WorldVista
+var depth: WorldDepth
+var depth_green: WorldDepthGreen
 var grass: WorldGrass
 var foliage: WorldFoliage
 var is_built := false
@@ -70,6 +74,7 @@ func _steps(lvl: EELevel) -> Array:
 		["Marking the trial chambers", _step_trials],
 		["Raising the far hills", _step_backdrop],
 		["Lifting the islands", _step_keels],
+		["Giving the world depth", _step_depth],
 		["Growing grass and roots", _step_decor],
 		["Lighting the fires", _step_lights],
 		["Breathing in the air", _step_atmosphere],
@@ -116,6 +121,15 @@ func _step_keels() -> void:
 	keels.build(level, terrain)
 	timings["keels"] = Time.get_ticks_msec() - t
 
+func _step_depth() -> void:
+	if not is_day() or not depth_enabled:
+		return
+	var t := Time.get_ticks_msec()
+	depth = WorldDepth.new()
+	_add(depth, "Depth")
+	depth.build(terrain)
+	timings["depth"] = Time.get_ticks_msec() - t
+
 func _step_backdrop() -> void:
 	var t := Time.get_ticks_msec()
 	backdrop = _add(WorldBackdrop.new(), "Backdrop")
@@ -131,6 +145,9 @@ func _step_decor() -> void:
 		grass.build(level, terrain)
 		foliage = _add(WorldFoliage.new(), "Foliage")
 		foliage.build(level, terrain)
+		if depth:
+			depth_green = _add(WorldDepthGreen.new(), "DepthGreen")
+			depth_green.build_depth(level, terrain, Callable(depth, "depth_top_y"), Callable(depth, "depth_mat"))
 	timings["decor"] = Time.get_ticks_msec() - t
 
 func _step_lights() -> void:
@@ -189,6 +206,8 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 		grass.update_focus(world_pos, delta)
 	if foliage:
 		foliage.update_focus(world_pos, delta)
+	if depth_green:
+		depth_green.update_focus(world_pos, delta)
 	backdrop.update_focus(world_pos, delta)
 	if vista:
 		var cam := get_viewport().get_camera_3d()
