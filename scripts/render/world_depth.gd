@@ -259,13 +259,13 @@ func _build_mesh() -> void:
 					_face(buckets, x, y, side, piece.x, minf(piece.y, clip), solid_t)
 				var opp: int = [1, 0, 3, 2][side]   # the closing faces are built from the neighbour, facing into the room
 				if room[i] != 0 and (nx < 0 or nx >= W or ny >= H):
-					_face(buckets, nx, ny, opp, 0.0, room_r[i], true)   # a room at the map border: closed side
+					_face(buckets, nx, ny, opp, 0.0, room_r[i], true, Vector2i(x, y))   # a room at the map border: closed side
 				elif room[i] != 0 and nx >= 0 and ny >= 0 and nx < W and ny < H:
 					var j := ny * W + nx
 					if room[j] == 0 and not terrain.solid[j] and not mass[j]:   # incl. open sky: the room's open edge is a wall behind the plane
 						# the room opens onto non-room, non-sky air (a forest hollow above a cave mouth): close
 						# the room's open side behind the plane so no ray slips between the two systems
-						_face(buckets, nx, ny, opp, 0.0, room_r[i], true)
+						_face(buckets, nx, ny, opp, 0.0, room_r[i], true, Vector2i(x, y))   # shaded as the room's own wall
 	_build_room_backs(buckets)
 	_build_cave_props(buckets)
 	for key in buckets:
@@ -304,7 +304,7 @@ func _pieces(c: Vector2, nc: Vector2) -> Array:
 		out.append(Vector2(s, c.y))
 	return out
 
-func _face(buckets: Dictionary, x: int, y: int, side: int, d0: float, d1: float, solid_t: bool) -> void:
+func _face(buckets: Dictionary, x: int, y: int, side: int, d0: float, d1: float, solid_t: bool, uv_tile := Vector2i(-1, -1)) -> void:
 	var key := Vector2i(x / CHUNK, y / CHUNK)
 	if not buckets.has(key):
 		buckets[key] = Bucket.new()
@@ -314,7 +314,7 @@ func _face(buckets: Dictionary, x: int, y: int, side: int, d0: float, d1: float,
 		if br > d0 + 0.05 and br < d1 - 0.05:
 			cuts.append(br)
 	cuts.append(d1)
-	var uv := Vector2(x + 0.5, y + 0.5)
+	var uv := Vector2(x + 0.5, y + 0.5) if uv_tile.x < 0 else Vector2(uv_tile) + Vector2(0.5, 0.5)
 	var uv2 := Vector2(1.0 if solid_t else 0.0, float(side))
 	for k in cuts.size() - 1:
 		var da: float = cuts[k]
@@ -993,3 +993,18 @@ func _add_mesh(b: Bucket, nm: String, shader: String) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.name = nm
 	add_child(mi)
+
+## True if the tile is a window opening of a depth room (painted-sky window or rhythmic lancet) or carries a
+## glass pane (for tests / audit masks).
+func is_window(tile: Vector2i) -> bool:
+	if tile.x < 0 or tile.y < 0 or tile.x >= W or tile.y >= H:
+		return false
+	var i := tile.y * W + tile.x
+	if win.size() == W * H and win[i] != 0:
+		return true
+	if terrain and terrain.wall_code.size() == W * H and terrain.wall_code[i] >= 20:
+		return true
+	for w in windows:
+		if (w["tiles"] as PackedInt32Array).has(i):
+			return true
+	return false

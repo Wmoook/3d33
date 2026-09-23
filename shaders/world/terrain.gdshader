@@ -844,7 +844,7 @@ void fragment() {
 	// subtle lighter lip on the solid's rim bevel, around every non-solid tile
 	if (layer != 0) {
 		float contact = 1.0 - smoothstep(0.07, 0.16, -s.x);
-		ao *= mix(1.0, 0.25, contact);
+		ao *= mix(1.0, scroll_rect.x >= 0.0 ? 0.55 : 0.25, contact);   // day: a soft contact shadow, not a black outline
 	} else {
 		float lip = smoothstep(0.02, 0.06, s.x) * (1.0 - smoothstep(0.06, 0.16, s.x)) * smoothstep(-0.3, 0.2, wp.z);
 		albedo *= 1.0 + lip * 0.45;
