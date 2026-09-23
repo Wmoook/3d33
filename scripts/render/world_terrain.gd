@@ -293,29 +293,31 @@ func sky_paint_image() -> Image:
 const FALL := 28.0
 
 func sky_depth_image() -> Image:
+	# R = grounded solid mass (floating art excluded); G = wide soft "backing shell" field (the mass dilated
+	# and blurred over ~8 tiles): cliff / ruin walls stepping back behind every structure
 	var buf := PackedByteArray()
-	buf.resize(W * H * 2)
+	buf.resize(W * H)
 	var logo := Rect2i(300, 14, 46, 29)
-	for x in W:
-		var since := 1e9
-		for y in H:
-			var i := y * W + x
-			var m := solid[i] == 1 and speck[i] == 0 and level.fg[i] != 87
-			var p := Vector2i(x, y)
-			if WorldPalette.FV_RECT_SCROLL.has_point(p) or logo.has_point(p):
-				m = false
-			if m:
-				since = 0.0
-			else:
-				since += 1.0
-			buf[i * 2] = 255 if m else 0
-			buf[i * 2 + 1] = int(clampf(1.0 - since / FALL, 0.0, 1.0) * 255.0)
-	var img := Image.create_from_data(W, H, false, Image.FORMAT_RG8, buf)
+	for i in W * H:
+		var p := Vector2i(i % W, i / W)
+		var m := solid[i] == 1 and level.fg[i] != 87 and not WorldPalette.FV_RECT_SCROLL.has_point(p) and not logo.has_point(p)
+		buf[i] = 255 if m else 0
+	var r := Image.create_from_data(W, H, false, Image.FORMAT_L8, buf)
+	var g := r.duplicate() as Image
+	g.resize(W / 8, H / 8, Image.INTERPOLATE_BILINEAR)
+	g.resize(W, H, Image.INTERPOLATE_CUBIC)
+	r.resize(W / 2, H / 2, Image.INTERPOLATE_BILINEAR)
+	r.resize(W, H, Image.INTERPOLATE_CUBIC)
+	var rd := r.get_data()
+	var gd := g.get_data()
+	var out := PackedByteArray()
+	out.resize(W * H * 2)
+	for i in W * H:
+		out[i * 2] = rd[i]
+		out[i * 2 + 1] = mini(255, int(gd[i] * 2.2))
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_RG8, out)
 	img.resize(W * 2, H * 2, Image.INTERPOLATE_BILINEAR)
-	var sm := img.duplicate() as Image
-	sm.resize(W / 2, H / 2, Image.INTERPOLATE_BILINEAR)
-	sm.resize(W * 2, H * 2, Image.INTERPOLATE_CUBIC)
-	return sm
+	return img
 
 ## Day levels: soft density masks of the painted sky features, R = clouds (flat pale components),
 ## G = distant mountain ranges (tall pale components). Upsampled 4x and blurred so no pixel steps remain.

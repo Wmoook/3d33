@@ -58,6 +58,8 @@ func _ready() -> void:
 		print("grass stats ", grass.stats)
 	if foliage:
 		print("foliage stats ", foliage.stats)
+	if args.has("probe"):
+		_probe(wv.terrain, args.probe)
 	if args.hud != "1" and game.get("_ui"):
 		game._ui.visible = false
 	game.sim.set_god_mode(true)
@@ -109,3 +111,35 @@ func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true, false, true).timeout
 	for i in int(s * 40.0):
 		await get_tree().process_frame
+
+## ASCII map of a rect "x0,y0,x1,y1": C canopy, g ground-grass top, f foliage, w wood, e earth, # other, . air
+func _probe(t: WorldTerrain, r: String) -> void:
+	var v := r.split(",")
+	var W := t.W
+	for y in range(int(v[1]), int(v[3])):
+		var line := "%3d " % y
+		for x in range(int(v[0]), int(v[2])):
+			var i := y * W + x
+			var ch := "."
+			if t.solid[i]:
+				var m: int = t.mat_ids[i]
+				if WorldGrass.is_leafy(m):
+					ch = "C" if WorldGrass.canopy_column(t, x, y, W, t.H) else "f"
+					if ch == "f" and not t.solid[i - W]:
+						ch = "g"
+				elif m == WorldPalette.M_WOOD:
+					ch = "w"
+				elif m == WorldPalette.M_EARTH:
+					ch = "e"
+				else:
+					ch = "#"
+			line += ch
+		print(line)
+	var hist := {}
+	for y in range(int(v[1]), int(v[3])):
+		for x in range(int(v[0]), int(v[2])):
+			var i := y * W + x
+			if t.solid[i]:
+				var k := "%d/m%d" % [t.level.fg[i], t.mat_ids[i]]
+				hist[k] = hist.get(k, 0) + 1
+	print("ids ", hist)

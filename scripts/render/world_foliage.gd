@@ -84,7 +84,7 @@ func update_focus(world_pos: Vector3, _delta: float) -> void:
 ## Tree canopy: M_FOLIAGE that is not a ground mantle (walking down the column ends in air or a trunk).
 static func _is_canopy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	var i := y * W + x
-	if not terrain.solid[i] or terrain.mat_ids[i] != WorldPalette.M_FOLIAGE:
+	if not terrain.solid[i] or not WorldGrass.is_leafy(terrain.mat_ids[i]):
 		return false
 	return WorldGrass.canopy_column(terrain, x, y, W, H)
 

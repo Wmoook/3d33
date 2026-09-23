@@ -742,7 +742,12 @@ var _portal_pulse := 0.0
 # ============================================================================ spawn beacon + trophy
 
 func _build_spawn() -> void:
-	for t in lvl.find_all(255):
+	for t0 in lvl.find_all(255):
+		# the beacon stands on the floor the ball lands on (the spawn tile itself may hang in the air)
+		var t := t0
+		if not odyssey:
+			while t.y + 1 < lvl.height and t.y - t0.y < 12 and FxOverlayMaps.is_open(lvl, t.x, t.y + 1):
+				t.y += 1
 		var root := Node3D.new()
 		root.name = "SpawnBeacon"
 		root.position = EECoords.tile_center(t.x, t.y)

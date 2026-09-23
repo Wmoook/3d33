@@ -207,7 +207,7 @@ void sky() {
 				float sunlit = mix(0.55, mix(0.25, 1.0, face), exp(-depthb * 0.07));
 				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
 				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 0.4 + pl.y * 0.2, pl.y * 0.3)));
-				vec3 rock = mix(vec3(0.1, 0.14, 0.28), vec3(0.3, 0.36, 0.55), sunlit) * (1.0 - gully * 0.25);
+				vec3 rock = mix(vec3(0.04, 0.06, 0.13), vec3(0.14, 0.18, 0.32), sunlit) * (1.0 - gully * 0.25);
 				vec3 sn = mix(vec3(0.55, 0.64, 0.86), vec3(1.0, 0.97, 0.93), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);
 				mcol = mix(mcol, horizon_haze, L == 0 ? 0.35 : 0.15);
@@ -258,24 +258,31 @@ void sky() {
 		}
 		// NEAR DEPTH: the level's own masses continue back into the backdrop - receding silhouettes at
 		// increasing depth, and rock falling away beneath every mass into mist
-		for (int S = 0; S < 3; S++) {
-			float D = S == 0 ? 3.0 : (S == 1 ? 9.0 : 22.0);
+		for (int S = 2; S >= 0; S--) {   // far to near
+			float D = S == 0 ? 3.0 : (S == 1 ? 8.0 : 18.0);
 			float tt = (cam2.z + D) / max(-d.z, 0.05);
 			vec2 hp = cam2.xy + d.xy * tt;
 			vec2 lp = vec2(hp.x, -hp.y) / level_size;
 			vec2 dm = texture(depth_mask, lp).rg;
 			float body = smoothstep(0.35, 0.6, dm.r);
-			float drop = pow(dm.g, 5.0) * (0.6 + 0.4 * fbm(hp * 0.25));   // cliffs fall away just below each mass
-			float a = body * (S == 0 ? 0.75 : (S == 1 ? 0.45 : 0.25));
-			vec3 dcol = mix(vec3(0.24, 0.28, 0.36), vec3(0.38, 0.44, 0.55), float(S) / 2.0);
-			dcol = mix(dcol, haze, float(S) * 0.25 + (1.0 - body) * 0.35 * (1.0 - dm.g));
-			// sunward rim on the receding copies
-			float rimv = smoothstep(0.35, 0.5, dm.r) - smoothstep(0.35, 0.5, texture(depth_mask, lp + vec2(0.01, 0.01)).r);
-			dcol += vec3(1.0, 0.85, 0.6) * max(rimv, 0.0) * 0.25;
-			c = mix(c, dcol, clamp(a, 0.0, 1.0) * inside_level(lp));
+			// backing shell: rock / ruin walls stepping back behind every structure, broken, fading to mist
+			float sh = S == 0 ? 0.0 : smoothstep(0.18 + 0.1 * float(S), 0.4 + 0.1 * float(S), dm.g + (fbm(hp * 0.12) - 0.5) * 0.3);
+			float cover = max(body, sh);
+			float a = cover * (S == 0 ? 0.7 : (S == 1 ? 0.95 : 0.8)) * inside_level(lp);
+			// shell material: weathered rock strata with moss, cooler and hazier with depth
+			float strata = sin(hp.y * 1.3 + fbm(hp * 0.2) * 3.0) * 0.5 + 0.5;
+			float moss = smoothstep(0.5, 0.8, fbm(hp * 0.3 + 4.0));
+			vec3 rockc = mix(vec3(0.07, 0.068, 0.065), vec3(0.15, 0.14, 0.125), strata);   // linear
+			rockc = mix(rockc, vec3(0.05, 0.1, 0.03), moss * 0.6);
+			// wet grotto cliff behind the waterfall
+			float wet = (1.0 - smoothstep(6.0, 20.0, abs(hp.x - 135.0))) * step(120.0, -hp.y) * step(-hp.y, 180.0);
+			rockc = mix(rockc, vec3(0.02, 0.045, 0.06), wet * 0.7);
+			float sunf = smoothstep(-0.2, 0.8, fbm(hp * 0.07));
+			rockc *= mix(0.7, 1.15, sunf);
+			vec3 dcol = mix(rockc, haze, S == 2 ? 0.45 : (S == 1 ? 0.22 : 0.1));
+			dcol = mix(dcol, haze, (1.0 - smoothstep(0.4, 0.8, dm.g)) * 0.3 * float(S > 0));
+			c = mix(c, dcol, clamp(a, 0.0, 1.0));
 		}
-		// outside the painting: only the gradient
-
 		float wisp = n2(vec2(w.x * 0.04 + TIME * 0.01, w.y * 0.1)) * n2(vec2(w.x * 0.09 - TIME * 0.006, w.y * 0.18 + 3.0));
 		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.25, 0.8, wisp) * 0.1);
 		float s = max(dot(d, sd), 0.0);

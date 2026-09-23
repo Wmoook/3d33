@@ -105,13 +105,16 @@ func update_focus(world_pos: Vector3, _delta: float) -> void:
 ## A top that is lawn: M_GRASS, or an M_FOLIAGE mantle lying on earth/stone (not a tree canopy).
 static func _is_ground_grass(terrain: WorldTerrain, lvl: EELevel, x: int, y: int, W: int, H: int) -> bool:
 	var m: int = terrain.mat_ids[y * W + x]
-	if m == WorldPalette.M_GRASS:
+	if m == WorldPalette.M_GRASS and WorldPalette.is_odyssey():
 		return true
-	if m != WorldPalette.M_FOLIAGE:
+	if m != WorldPalette.M_FOLIAGE and m != WorldPalette.M_GRASS:
 		return false
 	return not canopy_column(terrain, x, y, W, H)
 
-## Walking down the column from a foliage tile: a tree canopy ends in a real gap (>= 3 tiles of air: the
+static func is_leafy(m: int) -> bool:
+	return m == WorldPalette.M_FOLIAGE or m == WorldPalette.M_GRASS
+
+## Walking down the column from a leafy tile: a tree canopy ends in a real gap (>= 3 tiles of air: the
 ## space under the crown) or on a trunk (wood); a ground mantle ends on earth / stone, possibly across
 ## small holes (windows, pores). Shared with WorldFoliage.
 static func canopy_column(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
@@ -124,21 +127,36 @@ static func canopy_column(terrain: WorldTerrain, x: int, y: int, W: int, H: int)
 			return false
 		var j := yy * W + x
 		if not terrain.solid[j]:
-			air += 1
-			if air >= 3:
-				return true
+			# only real open space counts (not the pores / windows of a dithered mass)
+			if not terrain.pocket[j] and _open_row(terrain, x, yy, W):
+				air += 1
+				if air >= 3:
+					return true
 			continue
 		air = 0
 		var mj: int = terrain.mat_ids[j]
-		if mj == WorldPalette.M_FOLIAGE:
-			continue
+		if is_leafy(mj):
+			continue   # FV paints its crowns with a foliage/grass dither
 		# a trunk (wood, or a narrow earth column standing in open air) holds up a crown
-		return mj == WorldPalette.M_WOOD or _narrow_run(terrain, x, yy, W, 7)
+		if mj == WorldPalette.M_WOOD:
+			return true
+		return yy + 2 < H and _narrow_run(terrain, x, yy, W, 7) and _narrow_run(terrain, x, yy + 1, W, 7) and _narrow_run(terrain, x, yy + 2, W, 7)
 	return false
+
+## At least 4 of the 5 tiles centred on (x, y) in the row are air.
+static func _open_row(terrain: WorldTerrain, x: int, y: int, W: int) -> bool:
+	var n := 0
+	for dx in range(-2, 3):
+		var xx := clampi(x + dx, 0, W - 1)
+		if not terrain.solid[y * W + xx]:
+			n += 1
+	return n >= 4
 
 ## True if the solid run through (x, y) along the row is at most `maxw` wide with open air at both ends.
 static func _narrow_run(terrain: WorldTerrain, x: int, y: int, W: int, maxw: int) -> bool:
 	var l := x
+	if not terrain.solid[y * W + x]:
+		return false
 	while l > 0 and terrain.solid[y * W + l - 1] and x - l < maxw:
 		l -= 1
 	var r := x
@@ -146,7 +164,12 @@ static func _narrow_run(terrain: WorldTerrain, x: int, y: int, W: int, maxw: int
 		r += 1
 	if r - l + 1 > maxw:
 		return false
-	return l > 0 and r < W - 1 and not terrain.solid[y * W + l - 1] and not terrain.solid[y * W + r + 1]
+	if l <= 0 or r >= W - 1:
+		return false
+	var a := y * W + l - 1
+	var b := y * W + r + 1
+	# open air on both sides (not the pores of a dithered mass)
+	return not terrain.solid[a] and not terrain.solid[b] and not terrain.pocket[a] and not terrain.pocket[b]
 
 ## The terrain's rounded front bevel: how far below the tile top the surface is at depth z (> 0).
 static func _bevel_drop(z: float) -> float:

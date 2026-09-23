@@ -210,7 +210,7 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	vec2 fq = fract(q);
 	float patchv = mix(mix(pbr_hash(floor(q)), pbr_hash(floor(q) + vec2(1.0, 0.0)), smoothstep(0.0, 1.0, fq.x)),
 		mix(pbr_hash(floor(q) + vec2(0.0, 1.0)), pbr_hash(floor(q) + vec2(1.0, 1.0)), smoothstep(0.0, 1.0, fq.x)), smoothstep(0.0, 1.0, fq.y));
-	bool canopy = mat == PBR_M_FOLIAGE && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5;
+	bool canopy = (mat == PBR_M_FOLIAGE || mat == PBR_M_GRASS) && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5;
 	if (canopy) {
 		// tree crowns: dense leaf scan, big leaves, strong relief
 		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, near);

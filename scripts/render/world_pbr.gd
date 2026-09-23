@@ -33,6 +33,6 @@ static func canopy_mask(terrain: WorldTerrain) -> Image:
 	for y in H:
 		for x in W:
 			var i := y * W + x
-			if terrain.solid[i] and terrain.mat_ids[i] == WorldPalette.M_FOLIAGE and WorldGrass.canopy_column(terrain, x, y, W, H):
+			if terrain.solid[i] and WorldGrass.is_leafy(terrain.mat_ids[i]) and WorldGrass.canopy_column(terrain, x, y, W, H):
 				b[i] = 255
 	return Image.create_from_data(W, H, false, Image.FORMAT_R8, b)
