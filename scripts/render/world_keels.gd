@@ -69,6 +69,8 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 			continue   # a lone floating block with a dark spike under it reads as a hazard
 		if width > MAX_WIDTH:
 			continue   # big floating ruins: one keel fan would sweep across their play rooms; the depth volume's own underside carries them
+		if not _isolated(comp, terrain, dep, W, H):
+			continue   # a platform inside a tower room / beside a structure is not a sky island: no keel
 		# pale marble sculptures (the V-birds) get only a tiny weathered-stone stub
 		var marble := 0
 		for i in comp:
@@ -104,6 +106,26 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+
+const ISLAND_CLEAR := 4        # a keeled island has no other mass within this many tiles (sides and below)
+
+## True for a genuinely free-floating island: nothing else within ISLAND_CLEAR tiles left, right or below.
+static func _isolated(comp: PackedInt32Array, terrain: WorldTerrain, dep: WorldDepth, W: int, H: int) -> bool:
+	var own := {}
+	var x0 := W
+	var x1 := -1
+	var y0 := H
+	var y1 := -1
+	for i in comp:
+		own[i] = true
+		x0 = mini(x0, i % W); x1 = maxi(x1, i % W)
+		y0 = mini(y0, i / W); y1 = maxi(y1, i / W)
+	for y in range(y0, mini(H, y1 + ISLAND_CLEAR + 1)):
+		for x in range(maxi(0, x0 - ISLAND_CLEAR), mini(W, x1 + ISLAND_CLEAR + 1)):
+			var j := y * W + x
+			if not own.has(j) and _in_mass(j, terrain, dep):
+				return false
+	return true
 
 ## Connectivity uses the whole mass (solid + back walls + pockets) when the depth field is known, so wings,
 ## bridges and ledges attached to a tower through its back wall are NOT free-floating islands.

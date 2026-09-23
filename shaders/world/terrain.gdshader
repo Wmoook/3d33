@@ -670,7 +670,9 @@ void fragment() {
 	if (scroll_rect.x >= 0.0 && layer != 0) {
 		// interior air never reads as a black hole: the recessed wall keeps a soft ambient glow of its own
 		// colour (thin corridors / trial rooms sit in the slab's shadow and SSAO)
-		emit += albedo * 0.45 + vec3(0.010, 0.011, 0.014);
+		// (the painting's near-black bg blocks keep a dark but visible stone value)
+		albedo = max(albedo, vec3(0.035, 0.036, 0.042));
+		emit += albedo * 0.45 + vec3(0.018, 0.019, 0.024);
 	}
 	if (layer == 0) {
 		// soft rim of the bevel catches light; tiny cavity darkening at colour boundaries
