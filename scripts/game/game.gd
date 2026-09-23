@@ -307,6 +307,7 @@ func _boot() -> void:
 	_world_root.add_child(collision_overlay)
 	collision_overlay.setup(level, sim)
 	collision_overlay.visible = settings.show_collision
+	_apply_camera_style()
 	_apply_high_contrast()
 	minimap.full_opened.connect(func():
 		get_tree().paused = true
@@ -1139,7 +1140,22 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 				collision_overlay.mark_dirty()
 		"high_contrast":
 			_apply_high_contrast()
+		"cinematic_camera":
+			_apply_camera_style()
 	settings.save_settings()
+
+## Day levels + "Cinematic camera": altitude-driven horizon pitch and a wider vertical fov (same visible width).
+## Odyssey / night levels / setting off: the EE straight-on camera, exactly as before.
+const DAY_FOV := 40.0
+func _apply_camera_style() -> void:
+	var on := _is_day() and settings.cinematic_camera
+	rig.horizon_pitch_on = on
+	rig.set_fov(DAY_FOV if on else CameraRig.FOV_V)
+	if level:
+		var h := float(cfg.get("horizon_tile_y", level.height * 0.5))
+		rig.horizon_y = -h
+		rig.horizon_top = -float(cfg.get("horizon_full_down_tile_y", 25))   # full look-down reached this high
+		rig.horizon_bottom = -float(level.height)
 
 ## Accessibility: brighter/bigger gameplay glyphs (keys, arrows, dots) via ActorsView when it supports it.
 func _apply_high_contrast() -> void:

@@ -59,6 +59,7 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 	timings["vista_land"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
 	_make_islands()
+	_make_block_pieces()
 	_make_trees()
 	_make_ruins()
 	_make_cumulus()
@@ -579,7 +580,7 @@ const MID_ISLANDS := [
 const FAR_ISLANDS := [
 	[60.0, -150.0, -140.0, 24.0, 45.6, true, 0.0],
 	[335.0, -178.0, -165.0, 28.0, 53.2, true, 0.0],
-	[212.0, -62.0, -225.0, 20.0, 38.0, false, 70.0],
+	[150.0, -115.0, -240.0, 20.0, 38.0, false, 70.0],
 	[470.0, -42.0, -300.0, 34.0, 64.6, false, 95.0],
 	[140.0, -12.0, -390.0, 44.0, 83.6, true, 120.0],
 	[385.0, -122.0, -420.0, 52.0, 98.8, true, 0.0],
@@ -724,6 +725,45 @@ func _make_falls(falls: Array) -> void:
 		_mats.append(m)
 		mi.material_override = m
 		_setup_instance(mi, "VistaFalls%d" % k)
+		k += 1
+
+# ------------------------------------------------------------------ block-built scenery
+## Distant pieces painted with the level's own blocks (WorldVistaBlocks): kind, map top-left world x/y, z,
+## world units per tile. Composed to frame the typical views: strong silhouettes on the sides.
+const BLOCK_PIECES := [
+	[0, -40.0, 12.0, -120.0, 2.2],     # ruin island, beyond the grove / falls side
+	[1, 425.0, 45.0, -170.0, 2.0],     # the second great spire, beyond the scroll and the shrine
+	[2, 100.0, -95.0, -260.0, 2.4],    # aqueduct isle with its waterfall, low behind the spires
+	[3, 380.0, -10.0, -290.0, 3.0],    # a far keep beyond the shrine
+]
+var ref_dir := "res://assets/ee_ref_fv"
+
+func _make_block_pieces() -> void:
+	var colors := WorldVistaBlocks.load_colors(ref_dir)
+	var sh := load("res://shaders/world/vista_blocks.gdshader")
+	var k := 0
+	for pc in BLOCK_PIECES:
+		var art := WorldVistaBlocks.make(pc[0], 3 + k)
+		var tex := art.textures(colors)
+		var sc: float = pc[4]
+		var q := QuadMesh.new()
+		q.size = Vector2(art.w * sc, art.h * sc)
+		var mi := MeshInstance3D.new()
+		mi.mesh = q
+		mi.position = Vector3(pc[1] + art.w * sc * 0.5, pc[2] - art.h * sc * 0.5, pc[3])
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("sun_dir", sun_dir)
+		m.set_shader_parameter("noise_tex", noise_tex)
+		var ci: Image = tex[0]
+		m.set_shader_parameter("col_tex", ImageTexture.create_from_image(ci))
+		var cs := ci.duplicate()
+		m.set_shader_parameter("col_smooth", ImageTexture.create_from_image(cs))
+		m.set_shader_parameter("mask_tex", ImageTexture.create_from_image(tex[1]))
+		m.set_shader_parameter("map_size", Vector2(art.w, art.h))
+		_mats.append(m)
+		mi.material_override = m
+		_setup_instance(mi, "VistaBlocks%d" % k)
 		k += 1
 
 # ------------------------------------------------------------------ clouds

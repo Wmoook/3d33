@@ -213,6 +213,7 @@ func _make_post() -> void:
 	if day:
 		m.set_shader_parameter("vignette", 0.19)
 		m.set_shader_parameter("grain", 0.012)
+		m.set_shader_parameter("highlight_tint", Vector3.ONE)   # neutral: a warm highlight pulls the day sky grey-green
 	post_layer.add_child(rect)
 	add_child(post_layer)
 
