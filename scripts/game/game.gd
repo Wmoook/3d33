@@ -641,7 +641,8 @@ func _trial_complete() -> void:
 	var n := int(sim.coins)
 	var left := maxi(0, _coins_total - n)
 	var rem := ("1 trial remains" if left == 1 else "%d trials remain" % left) if left > 0 else "The way is open"
-	zone_card.show_zone("TRIAL %s COMPLETE" % roman(n), rem)
+	# the room's own number (matches its entry caption), not the count: trials can be done out of order
+	zone_card.show_zone("TRIAL %s COMPLETE" % roman(_trial_cur if _trial_cur > 0 else n), rem)
 	audio.play("trial", -3.0, 0.0)
 	var z := rig.target_zoom
 	rig.target_zoom = maxf(CameraRig.ZOOM_MIN, z * 0.88)

@@ -28,6 +28,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	trial_map.fill(0)
 	coins = lvl.find_all(100)
 	coins.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x if a.x != b.x else a.y < b.y)
+	_route_order()
 	for k in coins.size():
 		_flood(coins[k], k + 1, terrain)
 	for k in coins.size():
@@ -37,6 +38,26 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_flare.resize(coins.size())
 	_flare.fill(99.0)
 	_push_to_terrain()
+
+## Trial numbers follow the play order: the "gold coin n/16" waypoints of levels/config/<id>_route.json
+## (the coin-door-gated tour from spawn). Coins it doesn't list keep the x-sorted order after them.
+func _route_order() -> void:
+	var path := "res://levels/config/%s_route.json" % WorldPalette.level_id
+	if not FileAccess.file_exists(path):
+		return
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not (d is Dictionary) or not (d.get("waypoints") is Array):
+		return
+	var ordered: Array[Vector2i] = []
+	for w: Variant in d.waypoints:
+		if w is Dictionary and str(w.get("note", "")).begins_with("gold coin") and w.get("tile") is Array:
+			var c := Vector2i(int(w.tile[0]), int(w.tile[1]))
+			if coins.has(c) and not ordered.has(c):
+				ordered.append(c)
+	for c in coins:
+		if not ordered.has(c):
+			ordered.append(c)
+	coins = ordered
 
 ## Uploads rune atlas, per-tile trial map, centres and colours to the terrain material.
 func _push_to_terrain() -> void:
