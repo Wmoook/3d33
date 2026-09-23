@@ -276,7 +276,7 @@ static func hollow_image(terrain: WorldTerrain, room_border := false) -> Image:
 							var ny := y + dy
 							if nx >= 0 and ny >= 0 and nx < W and ny < H and m[ny * W + nx]:
 								b[i] = 90   # backstop only (forest_visible_deep): nothing may draw in front of the room
-				elif room_border and not terrain.solid[i]:
+				elif room_border and not terrain.solid[i] and not terrain.sky[i]:   # open sky stays sky
 					# other non-hollow air next to the hollow (pockets / code-2 slots world recesses): backstop too
 					for d: int in [-1, 1, -W, W]:
 						var j := i + d
