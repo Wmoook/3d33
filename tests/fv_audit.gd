@@ -365,7 +365,8 @@ func _tileinfo(r: String) -> void:
 ## Tile classes for the analyser: R = 0 air / 1 open sky / 2 solid, G = material id, B = bit 0 gameplay glyph
 ## (non-world fg id within 1 tile) | bit 1 painted window (glass art: pale panes, dark frames by design) | bit 2 painted water /
 ## waterfall stream (FxOverlayMaps: the falls' sheets are pale blue-white) | bit 3 painted-sky air (counted as sky;
-## world may frame it as a window, so black lines there are not counted), A = 255.
+## world may frame it as a window, so black lines there are not counted) | bit 4 window only by
+## world_depth.is_window() (lets the report say what the API mask removed), A = 255.
 func _save_tiles(path: String) -> void:
 	var t := wv.terrain
 	var W := t.W
@@ -422,7 +423,8 @@ func _save_tiles(path: String) -> void:
 			# world renders as glass panes with the sky behind them
 			var win_api := use_api and bool(wv.depth.call("is_window", Vector2i(x, y)))
 			var win := 2 if win_api or (t.window.size() == W * H and t.window[i] > 0) or (dwin.size() == W * H and dwin[i] > 0) or 				(t.enclosed_sky_bg.size() == W * H and t.enclosed_sky_bg[i] > 0) else 0
-			img.set_pixel(x, y, Color8(cls, int(t.mat_ids[i]), glyph[i] | win | wet[i] | pb, 255))
+			var api_only := 16 if win_api and not ((t.window.size() == W * H and t.window[i] > 0) or (dwin.size() == W * H and dwin[i] > 0) or (t.enclosed_sky_bg.size() == W * H and t.enclosed_sky_bg[i] > 0)) else 0
+			img.set_pixel(x, y, Color8(cls, int(t.mat_ids[i]), glyph[i] | win | wet[i] | pb | api_only, 255))
 	img.save_png(path)
 
 func _spot_list(zooms: Array[float]) -> Array[Dictionary]:

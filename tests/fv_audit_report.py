@@ -58,7 +58,9 @@ def load_tiles(d):
         glyph = (t[:, :, 2] & 1) > 0
         window = (t[:, :, 2] & 2) > 0
         # glass panes / frames overhang their opening tiles by up to a tile
+        win_fb = ndimage.binary_dilation(window & ~((t[:, :, 2] & 16) > 0), structure=np.ones((3, 3), bool))
         window = ndimage.binary_dilation(window, structure=np.ones((3, 3), bool))
+        api_masked = window & ~win_fb   # tiles only the is_window() API masks (report: what it removed)
         painted = (t[:, :, 2] & 8) > 0   # painted-sky air: sky, but world may frame it (window frames are not lines)
         sky = cls == 1
         near_sky = ndimage.binary_dilation(sky, structure=np.ones((3, 3), bool))
@@ -66,7 +68,7 @@ def load_tiles(d):
         blue_mat = ndimage.binary_dilation(blue_mat, structure=np.ones((3, 3), bool))
         wet = np.isin(mat, [4, 5]) | ((t[:, :, 2] & 4) > 0)
         wet = ndimage.binary_dilation(wet, structure=np.ones((5, 5), bool))   # + the splash / mist ring
-        _tiles = dict(cls=cls, mat=mat, glyph=glyph, near_sky=near_sky, blue_mat=blue_mat, sky=sky, window=window, wet=wet, painted=painted)
+        _tiles = dict(cls=cls, mat=mat, glyph=glyph, near_sky=near_sky, blue_mat=blue_mat, sky=sky, window=window, wet=wet, painted=painted, api_masked=api_masked)
     return _tiles
 
 
@@ -214,13 +216,18 @@ def analyse(d, meta, keep):
     vline = (vr >= long_) & (hr <= thin) & (side_min(0, k) > BLACK_SIDE)
     black = dark & (hline | vline) & valid
     black_air = black & (cls != 2) & ~T["painted"][ty, tx]
+    # what the is_window() mask removed: the same tests on the API-only window tiles
+    apim = T["api_masked"][ty, tx] & inside & ~glyph & ~ball
+    black_api_n = int((dark & (hline | vline) & apim & (cls != 2) & ~T["painted"][ty, tx]).sum())
+    sky_api_n = int((sent & apim & (cls != 1) & ~edge & ~T["blue_mat"][ty, tx]).sum()) if S is not None else 0
     black_solid_n = int((black & (cls == 2)).sum())
 
     # per-tile scores (per-mille of a tile's area) + details
     area = px_per_tile * px_per_tile
     tile_idx = (ty * W + tx)
     res = {"base": base, "name": meta["name"], "zoom": meta["zoom"], "tile": meta["tile"], "px_per_tile": px_per_tile,
-           "anim_px": anim_n, "black_solid_px": black_solid_n, "sky_edge_px": sky_edge_n}
+           "anim_px": anim_n, "black_solid_px": black_solid_n, "sky_edge_px": sky_edge_n,
+           "sky_api_px": sky_api_n, "black_api_px": black_api_n}
     masks = {"sky": sky_leak, "flicker": flick, "shimmer": shim, "black": black_air, "pale": pale}
     for k, m in masks.items():
         n = int(m.sum())
@@ -295,6 +302,8 @@ def report(d, results):
     tot["captures"] = len(results)
     tot["black_solid_px"] = sum(r["black_solid_px"] for r in results)
     tot["sky_edge_px"] = sum(r.get("sky_edge_px", 0) for r in results)
+    tot["sky_api_px"] = sum(r.get("sky_api_px", 0) for r in results)
+    tot["black_api_px"] = sum(r.get("black_api_px", 0) for r in results)
     cl = {}
     for k in CATS:
         cl[k] = clusters(glob[k], W, k)
@@ -336,6 +345,7 @@ def report(d, results):
     L.append("TOTALS  sky leak %(sky_px)d px on %(sky_tiles)d tiles (%(sky_clusters)d clusters) | flicker %(flicker_px)d px on "
              "%(flicker_tiles)d tiles (%(flicker_clusters)d) | shimmer %(shimmer_px)d px on %(shimmer_tiles)d tiles "
              "(%(shimmer_clusters)d) | black lines %(black_px)d px on %(black_tiles)d tiles (%(black_clusters)d)" % tot)
+    L.append("  removed by the world_depth.is_window() mask alone: sky %(sky_api_px)d px, black lines %(black_api_px)d px" % tot)
     L.append("  secondary: pale-colour sky test %(pale_px)d px on %(pale_tiles)d tiles (the pre-sentinel metric)" % tot)
     L.append("  (not counted: sky at sky-edges within bevel/parallax tolerance %(sky_edge_px)d px, black lines over "
              "solids %(black_solid_px)d px)" % tot)
