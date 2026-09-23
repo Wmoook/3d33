@@ -904,6 +904,12 @@ void fragment() {
 		ao = clamp(ao, 0.15, 1.0);
 		emit = max(emit, albedo * 0.04);   // just above black: cave mood stays within a few %
 	}
+	if (backdrop_mode > 0.5 && scroll_rect.x >= 0.0) {   // day levels only (Odyssey unchanged)
+		// far backdrop pieces are sub-pixel detail: no sharp sun glints (they sparkle / bloom as the camera moves)
+		rough = max(rough, 0.75);
+		spec = min(spec, 0.2);
+		metal = 0.0;
+	}
 	ALBEDO = albedo * ao * (1.0 - backdrop_haze);
 	ROUGHNESS = rough;
 	METALLIC = metal;
