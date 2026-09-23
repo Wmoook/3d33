@@ -177,6 +177,26 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 					out[i] = 1
 					r = r.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
 		grown.append(r)
+	# crown gaps: painted forest-bg air between / inside the crowns (bg 505/508/510/512...) is forest art, not
+	# sky: without this the open sky behind showed through each little gap in the canopy
+	for gi in grown.size():
+		var r: Rect2i = grown[gi]
+		var g := Rect2i(r.position.x - 6, r.position.y - 12, r.size.x + 12, r.size.y + 12).intersection(Rect2i(0, 0, W, H))
+		for y in range(maxi(g.position.y, 1), mini(g.end.y, H - 1)):
+			for x in range(maxi(g.position.x, 1), mini(g.end.x, W - 1)):
+				var i := y * W + x
+				if out[i] or terrain.solid[i] or stone_room(terrain, i) or not FOREST_BG.has(int(lvl.bg[i])):
+					continue
+				var near_crown := false
+				for dy in range(-2, 3):
+					for dx in range(-2, 3):
+						var j := (y + dy) * W + x + dx
+						if j >= 0 and j < W * H and (cm[j] or lvl.fg[j] == PINE_ID):
+							near_crown = true
+				if near_crown:
+					out[i] = 1
+					r = r.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
+		grown[gi] = r
 	terrain.set_meta(&"forest_hollow", out)
 	terrain.set_meta(&"forest_regions", grown)
 	return out

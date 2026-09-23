@@ -69,4 +69,8 @@ void fragment() {
 		col = mix(col, fog_far * 0.6, (1.0 - d) * 0.1 * (0.6 + 0.4 * sin(v_wp.x * 0.4 + TIME * 0.2)));
 	}
 	ALBEDO = mix(canopy_dark, col, 0.25 + 0.75 * vis);
+	if (forest_mask_at(v_wp, CAMERA_POSITION_WORLD) < 0.5) {
+		// room-border sliver: a mid-tone forest haze (not a black line, not sky)
+		ALBEDO = mix(fog_near, fog_far, 0.6) * 1.4;
+	}
 }
