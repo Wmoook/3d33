@@ -31,6 +31,7 @@ uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
 uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
 uniform float depth_cont = 0.0;
 uniform float bottom_cut = 0.0;
+uniform sampler2D window_tex : filter_linear, repeat_disable;   // day: distance into painted-sky windows (x40), 0 = none
 // backdrop instances (WorldTerrain.backdrop, sky's distant block-built islands): world = level_inv^-1 * tile space
 uniform mat4 level_inv = mat4(1.0);
 uniform float backdrop_mode = 0.0;
@@ -184,6 +185,25 @@ void fragment() {
 	if (layer == 1 && s.y < -0.07) { layer = 2; }
 	if (layer == 2 && fld.r > 0.5) {
 		discard; // open night sky: the Sky + backdrop show through
+	}
+	// windows in structure walls (painted sky inside a tower): a stone frame around a see-through opening
+	float win_frame = 0.0;
+	float struct_wall = 0.0;
+	if (layer == 1 && scroll_rect.x >= 0.0) {
+		float wraw = texelFetch(window_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
+		struct_wall = step(3.0, wraw);
+		float wd = (texture(window_tex, p / level_size).r * 255.0 - 6.0) / 34.0;
+		if (wraw > 20.0) {
+			float below = texelFetch(window_tex, clamp(ivec2(floor(p + vec2(0.0, 0.75))), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0;
+			float sill = 1.0 - step(20.0, below);
+			float fw = 0.34 + 0.22 * sill;
+			// wide openings get a stone mullion every 4 tiles (0.4 tile thick)
+			float mull = step(2.2, wd) * step(abs(fract((p.x + 0.5) / 4.0) - 0.5), 0.05);
+			if (wd > 0.5 + fw && mull < 0.5) {
+				discard;   // the opening: the tower's depth (jambs) and the sky beyond show through
+			}
+			win_frame = 1.0;
+		}
 	}
 	if (depth_cont > 0.5 && layer == 1 && texelFetch(info_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).a > 0.5) {
 		discard; // the thin wall skirt around masses against the sky: the depth volume continues there
@@ -666,6 +686,26 @@ void fragment() {
 		spec = 0.12;
 		ao *= mix(0.45, 1.0, smoothstep(-0.05, -1.4, s.x));
 		emit *= 0.3;
+	}
+	if (struct_wall > 0.5 && win_frame < 0.5) {
+		// a structure's interior wall: dressed ashlar courses in the painted stone colour, never flat
+		vec2 q = p + vec2(fbm2(p * 0.4), fbm2(p * 0.4 + 3.0)) * 0.25;
+		float row = floor(q.y * 0.8);
+		vec2 bq = vec2(q.x * 0.5 + hash12(vec2(row, 1.7)) * 3.0, q.y * 0.8);
+		vec2 bi = floor(bq);
+		vec2 bf = bq - bi;
+		float joint = min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y));
+		float jl = 1.0 - smoothstep(0.03, 0.09, joint);
+		albedo *= mix(0.78, 1.15, hash12(bi + 7.0)) * (1.0 - jl * 0.6);
+		n = normalize(n + vec3(0.0, 0.0, 0.0) - vec3(sign(bf.x - 0.5), -sign(bf.y - 0.5), 0.0) * jl * 0.25);
+	}
+	if (win_frame > 0.5) {
+		// weathered stone window frame / mullion, lit like the solid ruins, a little moss on the sill
+		albedo = vec3(0.3, 0.28, 0.25) * mix(0.8, 1.1, fbm2(p * 3.0) * 0.5 + 0.5);
+		albedo = mix(albedo, vec3(0.12, 0.2, 0.06), smoothstep(0.55, 0.85, fbm2(p * 1.7 + 4.0) * 0.5 + 0.5) * 0.5);
+		n = normalize(vec3(0.0, 0.0, 1.0) + (dn - gn) * 0.4);
+		rough = 0.85;
+		ao = 1.0;
 	}
 	if (scroll_rect.x >= 0.0 && layer != 0) {
 		// interior air never reads as a black hole: the recessed wall keeps a soft ambient glow of its own

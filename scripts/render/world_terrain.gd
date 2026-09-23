@@ -523,24 +523,67 @@ func _find_art_doors() -> void:
 ## 530 / 531 / 540) are interior walls in the painting (e.g. the Great Hall), not sky.
 var enclosed_sky_bg := PackedByteArray()
 
+## Day levels: which painted "sky" bg belongs to a STRUCTURE. 541-544 are the painter's grey/dark stone
+## interior walls (halloween2011 bgs) - walls, except a region lying outside every structure and bordered by
+## 531/540 sky paint (the open-sky mountain art). 530/531/540 stay sky, except inside a structure (walled
+## left + right and roofed over most of the region): there they become framed WINDOWS in the stone wall.
+## enclosed_sky_bg = 1 -> recessed wall; window = 1 -> a window opening in that wall.
+const STRUCT_SIDE := 24         # tiles: solid within this distance left AND right ...
+const STRUCT_ROOF := 30         # ... and a roof above -> the tile is inside a structure (open sky above = outside)
+const WINDOW_MAX := 600         # painted sky patches bigger than this are open sky, never a window
+const WINDOW_SIDE := 10         # a window patch is walled within this distance left and right ...
+const WINDOW_ROOF := 14         # ... and roofed within this distance
+var window := PackedByteArray()
+
+func _world_solid_at(x: int, y: int) -> bool:
+	if x < 0 or y < 0 or x >= W or y >= H:
+		return true
+	return WorldPalette.is_world_solid(level.fg[y * W + x])
+
+func _inside_structure(x: int, y: int, side: int = STRUCT_SIDE, roof: int = STRUCT_ROOF) -> bool:
+	var l := false
+	var r := false
+	var u := false
+	for k in range(1, side + 1):
+		if not l and _world_solid_at(x - k, y):
+			l = true
+		if not r and _world_solid_at(x + k, y):
+			r = true
+	for k in range(1, roof + 1):
+		if y - k >= 0 and WorldPalette.is_world_solid(level.fg[(y - k) * W + x]):
+			u = true
+			break
+	return l and r and u
+
+func _inside_fraction(comp: PackedInt32Array, side: int = STRUCT_SIDE, roof: int = STRUCT_ROOF) -> float:
+	var n := 0
+	for i in comp:
+		if _inside_structure(i % W, i / W, side, roof):
+			n += 1
+	return float(n) / maxf(1.0, comp.size())
+
 func _find_enclosed_sky_bg() -> void:
 	enclosed_sky_bg.resize(W * H)
 	enclosed_sky_bg.fill(0)
+	window.resize(W * H)
+	window.fill(0)
 	if not day:
 		return
-	var skyish := func(b: int) -> bool: return b == 0 or b == 530 or b == 531 or b == 540
-	var mount := func(i: int) -> bool:
-		var b: int = level.bg[i]
-		return (b == 541 or b == 542 or b == 543 or b == 544) and not WorldPalette.is_world_solid(level.fg[i])
+	var paint := func(b: int) -> bool: return b == 530 or b == 531 or b == 540
+	var stone := func(b: int) -> bool: return b == 541 or b == 542 or b == 543 or b == 544
 	var seen := PackedByteArray()
 	seen.resize(W * H)
 	for start in W * H:
-		if seen[start] or not mount.call(start):
+		var b0: int = level.bg[start]
+		if seen[start] or WorldPalette.is_world_solid(level.fg[start]) or not (paint.call(b0) or stone.call(b0)):
 			continue
+		var is_stone: bool = stone.call(b0)
 		var comp := PackedInt32Array([start])
 		seen[start] = 1
 		var qi := 0
-		var touches := false
+		var touches_paint := false
+		var edges := 0
+		var wall_edges := 0
 		while qi < comp.size():
 			var i := comp[qi]; qi += 1
 			var x := i % W
@@ -551,14 +594,60 @@ func _find_enclosed_sky_bg() -> void:
 				if nx < 0 or ny < 0 or nx >= W or ny >= H:
 					continue
 				var j := ny * W + nx
-				if not WorldPalette.is_world_solid(level.fg[j]) and skyish.call(level.bg[j]):
-					touches = true
-				if not seen[j] and mount.call(j):
+				var bj: int = level.bg[j]
+				var in_comp: bool = not WorldPalette.is_world_solid(level.fg[j]) and (stone.call(bj) if is_stone else paint.call(bj))
+				if not in_comp:
+					edges += 1
+					if not WorldPalette.is_world_solid(level.fg[j]) and bj != 0 and not paint.call(bj):
+						wall_edges += 1   # a painted wall (stone / brick bg) next to the patch
+				if WorldPalette.is_world_solid(level.fg[j]):
+					continue
+				if is_stone and (paint.call(bj) or bj == 0):
+					touches_paint = true
+				if not seen[j] and (stone.call(bj) if is_stone else paint.call(bj)):
 					seen[j] = 1
 					comp.append(j)
-		if not touches:
+		var inside := _inside_fraction(comp)
+		if is_stone:
+			if inside >= 0.5 or not touches_paint:
+				for i in comp:
+					enclosed_sky_bg[i] = 1
+		elif comp.size() <= WINDOW_MAX and wall_edges * 8 >= edges and _inside_fraction(comp, WINDOW_SIDE, WINDOW_ROOF) >= 0.7:
+			# a window is a hole in a wall: at least an eighth of its outline is painted wall, not just rock
 			for i in comp:
 				enclosed_sky_bg[i] = 1
+				window[i] = 1
+
+## R8 per tile: 0 = nothing, 6 = structure stone wall, 6 + 34 * (tiles to the nearest non-window tile) for
+## windows. The terrain shader carves the opening deep inside a window and draws the stone frame around it.
+func window_image() -> Image:
+	var d := PackedInt32Array(); d.resize(W * H)
+	var q := PackedInt32Array()
+	for i in W * H:
+		if window[i]:
+			d[i] = 1 << 20
+		else:
+			d[i] = 0
+			q.append(i)
+	var qi := 0
+	while qi < q.size():
+		var i := q[qi]; qi += 1
+		var x := i % W
+		var y := i / W
+		for k in 4:
+			var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+			var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var j := ny * W + nx
+			if d[j] > d[i] + 1:
+				d[j] = d[i] + 1
+				q.append(j)
+	var b := PackedByteArray(); b.resize(W * H)
+	for i in W * H:
+		# 6 = a structure's stone interior wall (ashlar in the shader), >= 40 = window (6 + 34 per tile inward)
+		b[i] = mini(6 + d[i] * 34, 255) if window[i] else (6 if enclosed_sky_bg[i] else 0)
+	return Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
 
 func _classify() -> void:
 	_find_art_doors()
@@ -734,7 +823,7 @@ func _classify_bg_regions(has_bgc: PackedByteArray) -> void:
 				perim += 1
 				if _sky_flood[j]:
 					open += 1
-		var exterior := perim > 0 and float(open) / perim >= BG_OPEN_MAX
+		var exterior := perim > 0 and float(open) / perim >= BG_OPEN_MAX and _inside_fraction(comp) < 0.5
 		for i in comp:
 			bg_region[i] = 2 if exterior else 1
 			if exterior:
@@ -747,7 +836,8 @@ func _classify_bg_regions(has_bgc: PackedByteArray) -> void:
 			if sky[i]:
 				zones[i] = WorldPalette.Z_DAY
 
-## Overview for the lead: solid grey, interior walls green, exterior (now sky) red, sky black. 1 px / tile.
+## Overview for the lead: solid grey, interior walls green (structure stone walls dark green), windows cyan,
+## exterior bg (now sky) red, enclosed air blue, sky black. 1 px / tile.
 func bg_region_image() -> Image:
 	var img := Image.create(W, H, false, Image.FORMAT_RGB8)
 	for y in H:
@@ -756,6 +846,10 @@ func bg_region_image() -> Image:
 			var c := Color(0, 0, 0)
 			if solid[i]:
 				c = Color(0.35, 0.35, 0.35)
+			elif window.size() == W * H and window[i]:
+				c = Color(0.2, 0.9, 1.0)   # window in a structure wall
+			elif enclosed_sky_bg.size() == W * H and enclosed_sky_bg[i]:
+				c = Color(0.05, 0.45, 0.12)   # structure stone wall (541-544 / enclosed sky paint)
 			elif bg_region[i] == 1:
 				c = Color(0.1, 0.8, 0.2)
 			elif bg_region[i] == 2:
@@ -908,6 +1002,8 @@ func _make_material() -> void:
 		material.set_shader_parameter("shrine_trophy", Vector2(WorldPalette.FV_SHRINE))
 	material.set_shader_parameter("bgcol_tex", ImageTexture.create_from_image(bgcol_img))
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
+	if day:
+		material.set_shader_parameter("window_tex", ImageTexture.create_from_image(window_image()))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))
 	material.set_shader_parameter("detail_nrm", _noise_tex(0.025, 11, 5, 5.0))
 	material.set_shader_parameter("detail_nrm2", _noise_tex(0.03, 23, 4, 4.0))

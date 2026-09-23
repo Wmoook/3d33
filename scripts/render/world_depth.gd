@@ -79,7 +79,7 @@ func _compute_depth() -> void:
 	mass.resize(n)
 	depth.resize(n)
 	for i in n:
-		mass[i] = 1 if (terrain.solid[i] or terrain.backwall[i] or terrain.pocket[i] == 1) else 0
+		mass[i] = 1 if (terrain.solid[i] or (terrain.backwall[i] and not terrain.window[i]) or terrain.pocket[i] == 1) else 0   # windows: holes through the volume (jambs)
 	var rw := PackedInt32Array(); rw.resize(n)
 	var vt := PackedInt32Array(); vt.resize(n)
 	for y in H:
