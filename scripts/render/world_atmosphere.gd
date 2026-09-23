@@ -310,6 +310,15 @@ func _measure(world_pos: Vector3) -> PackedFloat32Array:
 
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	var target := _measure(world_pos)
+	# day levels, zoomed far out (C overview): the frame is mostly open exterior, so the ball's interior
+	# preset (exposure 1.25-1.3) over-exposed it; fade toward the open-day look by camera distance
+	# (zoom 30/60 sit below 45 units: unchanged)
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if _terrain and _terrain.day and cam:
+		var far_k := smoothstep(45.0, 110.0, cam.global_position.z)
+		if far_k > 0.0:
+			for k in target.size():
+				target[k] = lerpf(target[k], 1.0 if k == WorldPalette.Z_DAY else 0.0, far_k)
 	var a := 1.0 if _first else clampf(delta * 1.2, 0.0, 1.0)
 	_first = false
 	for k in weights.size():

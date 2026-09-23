@@ -81,6 +81,7 @@ func _ready() -> void:
 	await _wait(2.5)
 	game.collision_overlay.visible = false
 	var cam := get_viewport().get_camera_3d()
+	print("CAMZ zoom=%s z=%.2f" % [str(zoom), cam.global_position.z])
 	cam.near = 0.05
 	cam.far = 800.0
 	await _wait(0.4)
