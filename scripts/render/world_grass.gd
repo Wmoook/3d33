@@ -148,8 +148,8 @@ static func canopy_map(terrain: WorldTerrain) -> PackedByteArray:
 			if WorldPalette.is_odyssey():
 				if y < 22:
 					votes += 1
-			elif _canopy_walk(terrain, x, y, W, H):
-				votes += 1
+			elif _canopy_walk(terrain, x, y, W, H) or _leafy_extent(terrain, x, y, W, H) >= 6:
+				votes += 1   # hangs over open space / a trunk, or is a thick crown (lawns are thin mantles)
 			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nx := x + d.x
 				var ny := y + d.y
@@ -164,6 +164,16 @@ static func canopy_map(terrain: WorldTerrain) -> PackedByteArray:
 				out[i] = 1
 	terrain.set_meta(&"canopy_map", out)
 	return out
+
+## Contiguous leafy tiles in the column through (x, y).
+static func _leafy_extent(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> int:
+	var n := 1
+	for dir in [-1, 1]:
+		var yy: int = y + dir
+		while yy >= 0 and yy < H and terrain.solid[yy * W + x] and is_leafy(terrain.mat_ids[yy * W + x]):
+			n += 1
+			yy += dir
+	return n
 
 static func _canopy_walk(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	var air := 0
