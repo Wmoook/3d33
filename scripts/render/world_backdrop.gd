@@ -165,14 +165,25 @@ func _make_interior_occluder(terrain: WorldTerrain) -> void:
 	var verts := PackedVector3Array()
 	var idx := PackedInt32Array()
 	var z := 1.3
-	for y in H:
-		var x := 0
-		while x < W:
-			if dist[y * W + x] <= INTERIOR_DEPTH:
+	# the margin (world continuing past the border) shares the shade of the mirrored edge region
+	var M := WorldTerrain.MARGIN
+	var deep := func(xx: int, yy: int) -> bool:
+		var mx := xx
+		if mx < 0: mx = 2 - mx
+		elif mx >= W: mx = 2 * (W - 1) - mx
+		var my := yy
+		if my >= H: my = 2 * (H - 1) - my
+		mx = clampi(mx, 0, W - 1)
+		my = clampi(my, 0, H - 1)
+		return dist[my * W + mx] > INTERIOR_DEPTH
+	for y in range(0, H + M):
+		var x := -M
+		while x < W + M:
+			if not deep.call(x, y):
 				x += 1
 				continue
 			var x0 := x
-			while x < W and dist[y * W + x] > INTERIOR_DEPTH:
+			while x < W + M and deep.call(x, y):
 				x += 1
 			var b := verts.size()
 			verts.append_array([Vector3(x0, -y, z), Vector3(x, -y, z), Vector3(x, -y - 1, z), Vector3(x0, -y - 1, z)])

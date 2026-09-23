@@ -287,6 +287,36 @@ func sky_paint_image() -> Image:
 		buf[i * 4 + 3] = 255 if filled[i] else 0
 	return Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
 
+## Day levels: the level's own masses as seen by the sky backdrop (so every silhouette continues into
+## depth). R = grounded solid mass (floating art - scroll, logo, V-birds, specks - excluded), G = "fall-away"
+## below every mass (1 right under it, fading over FALL tiles), so masses sit on rock falling into mist.
+const FALL := 28.0
+
+func sky_depth_image() -> Image:
+	var buf := PackedByteArray()
+	buf.resize(W * H * 2)
+	var logo := Rect2i(300, 14, 46, 29)
+	for x in W:
+		var since := 1e9
+		for y in H:
+			var i := y * W + x
+			var m := solid[i] == 1 and speck[i] == 0 and level.fg[i] != 87
+			var p := Vector2i(x, y)
+			if WorldPalette.FV_RECT_SCROLL.has_point(p) or logo.has_point(p):
+				m = false
+			if m:
+				since = 0.0
+			else:
+				since += 1.0
+			buf[i * 2] = 255 if m else 0
+			buf[i * 2 + 1] = int(clampf(1.0 - since / FALL, 0.0, 1.0) * 255.0)
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_RG8, buf)
+	img.resize(W * 2, H * 2, Image.INTERPOLATE_BILINEAR)
+	var sm := img.duplicate() as Image
+	sm.resize(W / 2, H / 2, Image.INTERPOLATE_BILINEAR)
+	sm.resize(W * 2, H * 2, Image.INTERPOLATE_CUBIC)
+	return sm
+
 ## Day levels: soft density masks of the painted sky features, R = clouds (flat pale components),
 ## G = distant mountain ranges (tall pale components). Upsampled 4x and blurred so no pixel steps remain.
 func sky_mask_image() -> Image:

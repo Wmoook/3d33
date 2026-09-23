@@ -103,6 +103,9 @@ func _make_environment() -> void:
 		if masks:
 			sky_mat.set_shader_parameter("masks", ImageTexture.create_from_image(masks))
 		sky_mat.set_shader_parameter("sun_dir", _lights.moon.transform.basis.z.normalized())
+		var depthm := _terrain.sky_depth_image()
+		if depthm:
+			sky_mat.set_shader_parameter("depth_mask", ImageTexture.create_from_image(depthm))
 	else:
 		sky_mat.shader = load("res://shaders/world/night_sky.gdshader")
 		sky_mat.set_shader_parameter("moon_dir", Vector3(0.24, 0.13, -1.0).normalized())

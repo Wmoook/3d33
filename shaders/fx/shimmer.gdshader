@@ -2,7 +2,7 @@ shader_type spatial;
 // Invisible gravity blocks (411-414): EE hides them, so only a very faint heat-shimmer hint: a soft
 // wavering glint drifting in the gravity direction (arrows) or a faint breathing speck (dot).
 // INSTANCE_CUSTOM: x = phase, y = dir angle (world), z = 1 for the dot.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(0.8, 0.9, 1.0);
 uniform float intensity = 0.08;

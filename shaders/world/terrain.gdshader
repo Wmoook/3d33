@@ -145,9 +145,12 @@ float triplanar_h(sampler2D t, vec3 pos, vec3 n, float scale) {
 void fragment() {
 	float t = TIME * time_scale;
 	vec3 wp = w_pos;
-	vec2 p = vec2(wp.x, -wp.y);
+	vec2 p_real = vec2(wp.x, -wp.y);
+	vec2 p = level_mirror(p_real);   // outside the level: sample the mirrored edge region (no stretching)
+	float p_out = level_out(p_real);
 	vec4 s = sdf_bicubic(p);
 	s.x = sdf_linear(p).x;
+	s = margin_solidify(p_real, p, s);
 	vec4 fld = field_at(p);
 
 	// art key-door tiles (demon body...) vanish while their key is active (WorldDoors draws the ghost)
@@ -169,13 +172,13 @@ void fragment() {
 	// ---- geometric normal (world space) from the height field ----
 	// central differences on the (bilinear) baked height, one texel apart: 4 taps
 	float e = 1.0 / htpt;
-	float hx1 = textureLod(height_tex, huv(p + vec2(e, 0.0)), 0.0).r;
-	float hx0 = textureLod(height_tex, huv(p - vec2(e, 0.0)), 0.0).r;
-	float hy1 = textureLod(height_tex, huv(p + vec2(0.0, e)), 0.0).r;
-	float hy0 = textureLod(height_tex, huv(p - vec2(0.0, e)), 0.0).r;
+	float hx1 = textureLod(height_tex, huv(p_real + vec2(e, 0.0)), 0.0).r;
+	float hx0 = textureLod(height_tex, huv(p_real - vec2(e, 0.0)), 0.0).r;
+	float hy1 = textureLod(height_tex, huv(p_real + vec2(0.0, e)), 0.0).r;
+	float hy0 = textureLod(height_tex, huv(p_real - vec2(0.0, e)), 0.0).r;
 	// world y = -p.y  ->  dz/dwy = -(dz/dpy)
 	vec3 gn = normalize(vec3(-(hx1 - hx0) / (2.0 * e), (hy1 - hy0) / (2.0 * e), 1.0));
-	if (layer == 0 && s.x < 0.0) {
+	if (layer == 0 && s.x < 0.0 && p_out <= 0.0) {
 		// cliff: normal points outward (away from the solid), mostly horizontal
 		vec2 gs = vec2(sdf_linear(p + vec2(0.02, 0.0)).x - sdf_linear(p - vec2(0.02, 0.0)).x,
 			sdf_linear(p + vec2(0.0, 0.02)).x - sdf_linear(p - vec2(0.0, 0.02)).x);
@@ -673,9 +676,19 @@ void fragment() {
 		emit *= smoothstep(-2.2, -0.15, wp.z);
 	}
 	// outside the level (the margin ring): fade to dark rock
-	float outside = max(max(-p.x, p.x - level_size.x), max(-p.y, p.y - level_size.y));
-	albedo *= mix(1.0, 0.7, smoothstep(0.0, 3.0, outside));
+	// margin: the continuing world recedes into atmospheric depth
+	albedo *= mix(1.0, 0.45, smoothstep(1.0, 12.0, p_out));
+	emit *= 1.0 - smoothstep(1.0, 4.0, p_out);
 	emit += rune_emit;
+	if (scroll_rect.x >= 0.0 && layer == 0) {
+		// silhouettes against the sky: warm sun rim on sunward (upper-left) edges, cool sky rim elsewhere
+		vec2 outp = vec2(gn.x, -gn.y);
+		float sky_here = field_at(p + normalize(outp + vec2(0.0001)) * 0.7).r;
+		float edge = pow(1.0 - clamp(gn.z, 0.0, 1.0), 1.5) + (1.0 - smoothstep(0.0, 0.2, max(s.x, 0.0))) * 0.5;
+		float sunward = smoothstep(-0.2, 0.7, dot(normalize(vec2(gn.x, gn.y) + vec2(0.0001)), normalize(vec2(-0.6, 0.8))));
+		vec3 rimc = mix(vec3(0.45, 0.6, 0.95) * 0.35, vec3(1.0, 0.8, 0.5) * 0.8, sunward);
+		emit += albedo * rimc * clamp(edge, 0.0, 1.0) * sky_here * smoothstep(-1.5, 0.2, wp.z);
+	}
 	n = normalize(n + rune_n);
 	ALBEDO = albedo * ao;
 	ROUGHNESS = rough;

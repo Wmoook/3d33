@@ -215,21 +215,22 @@ func _build_fall(comp: Array[Vector2i]) -> void:
 	var side := 1.0
 	var sun_r := 0
 	var sun_l := 0
-	for k in range(2, 9):
-		sun_r += 1 if sunny(int(cx) + k, int(py) - 2) else 0
-		sun_l += 1 if sunny(int(cx) - k, int(py) - 2) else 0
+	for k in range(2, 10):
+		for dy in [3, 5, 7]:
+			sun_r += 1 if sunny(int(cx) + k, int(py) - dy) else 0
+			sun_l += 1 if sunny(int(cx) - k, int(py) - dy) else 0
 	if sun_l > sun_r:
 		side = -1.0
-	if maxi(sun_l, sun_r) >= 2:
+	if maxi(sun_l, sun_r) >= 8:
 		var rb := MeshInstance3D.new()
 		rb.name = "SprayRainbow"
 		var rq := QuadMesh.new()
-		rq.size = Vector2(9.0, 4.5)
+		rq.size = Vector2(12.0, 6.0)
 		rb.mesh = rq
 		var rbm := ShaderMaterial.new()
 		rbm.shader = preload("res://shaders/fx/rainbow.gdshader")
 		rb.material_override = rbm
-		rb.position = base + Vector3(side * 3.0, 2.25 - 0.2, -0.7)
+		rb.position = base + Vector3(side * 4.0, 3.0 - 0.3, 0.3)
 		rb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(rb)
 	_falls.append({"center": Vector2(cx, (lip + y1) * 0.5), "sheet": mi, "mist": mist, "spray": spray,

@@ -8,7 +8,7 @@ extends Node3D
 ## crown then snaps on (FxPlayerBall.hold_silver_crown / silver_snap).
 
 const PILLAR_H := 70.0
-const CROWN_SCALE := 0.95
+const CROWN_SCALE := 1.25
 const LIFT_T := 1.5
 const FLY_T := 1.5
 
@@ -54,7 +54,7 @@ func _build_shrine(t: Vector2i) -> void:
 	back.mesh = bq
 	var bm := ShaderMaterial.new()
 	bm.shader = preload("res://shaders/fx/glyph_halo.gdshader")
-	bm.set_shader_parameter("strength", 0.55)
+	bm.set_shader_parameter("strength", 0.7)
 	back.material_override = bm
 	back.scale = Vector3.ONE * 2.8
 	back.position = Vector3(0, 0.55, -0.4)
@@ -69,12 +69,12 @@ func _build_shrine(t: Vector2i) -> void:
 	metal.roughness = 0.12
 	metal.emission_enabled = true
 	metal.emission = Color(0.75, 0.82, 1.0)
-	metal.emission_energy_multiplier = 0.9
+	metal.emission_energy_multiplier = 0.5
 	var gem := StandardMaterial3D.new()
 	gem.albedo_color = Color(0.35, 0.6, 1.0)
 	gem.emission_enabled = true
 	gem.emission = Color(0.4, 0.7, 1.0)
-	gem.emission_energy_multiplier = 3.0
+	gem.emission_energy_multiplier = 2.2
 	crown.set_surface_override_material(0, metal)
 	crown.set_surface_override_material(1, gem)
 	crown.scale = Vector3.ONE * CROWN_SCALE
@@ -86,7 +86,7 @@ func _build_shrine(t: Vector2i) -> void:
 	var hm := ShaderMaterial.new()
 	hm.shader = preload("res://shaders/fx/glow_sprite.gdshader")
 	hm.set_shader_parameter("color", Color(0.8, 0.9, 1.0))
-	hm.set_shader_parameter("intensity", 0.55)
+	hm.set_shader_parameter("intensity", 0.3)
 	halo.material_override = hm
 	halo.position = Vector3(0, 0.5, -0.3)
 	root.add_child(halo)
@@ -103,7 +103,7 @@ func _build_shrine(t: Vector2i) -> void:
 	root.add_child(glint)
 	var l := OmniLight3D.new()
 	l.light_color = Color(0.85, 0.9, 1.0)
-	l.light_energy = 1.4
+	l.light_energy = 0.7
 	l.omni_range = 5.0
 	l.shadow_enabled = false
 	l.position = Vector3(0, 0.6, 0.8)
@@ -203,8 +203,8 @@ func _rising_sparks() -> GPUParticles3D:
 
 ## sim_event &"complete": start the crowning at the shrine that was touched (or the nearest one).
 func on_complete(data: Dictionary) -> void:
-	if _shrines.is_empty() or _crowning >= 0.0:
-		return
+	if _shrines.is_empty() or _crowning != -1.0:
+		return   # already crowning / crowned (a restart resets via reset_if_needed)
 	_active = _shrines[0]
 	var tile = data.get("tile")
 	if tile is Vector2i:

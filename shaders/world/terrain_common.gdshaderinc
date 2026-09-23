@@ -77,6 +77,25 @@ float domes(vec2 p) {
 }
 
 // ---------- smooth (B-spline) sampling of the SDF texture ----------
+
+// ---------- out-of-level margin: the world continues ----------
+// Distance outside the level on the left / right / bottom (the top is sky, never walled).
+float level_out(vec2 p) {
+	return max(max(-p.x, p.x - level_size.x), p.y - level_size.y);
+}
+// Mirror a margin point back into the level (noise-warped so the reflection isn't obvious).
+vec2 level_mirror(vec2 p) {
+	float o = level_out(p);
+	if (o <= 0.0) return p;
+	vec2 q = p;
+	// reflect across the inner edge of the border tiles (the EE border column/row itself is never copied)
+	if (q.x < 0.0) q.x = 2.0 - q.x;
+	if (q.x > level_size.x) q.x = 2.0 * (level_size.x - 1.0) - q.x;
+	if (q.y > level_size.y) q.y = 2.0 * (level_size.y - 1.0) - q.y;
+	q += vec2(fbm2(p * 0.08), fbm2(p * 0.08 + 7.0)) * min(o, 6.0) * 0.18;
+	return clamp(q, vec2(0.5), level_size - 0.5);
+}
+
 vec4 sdf_bicubic(vec2 p) {
 	// p in tile space; texel centres at (i+.5)/SPT
 	vec2 tsize = level_size * SPT;
@@ -185,9 +204,27 @@ vec4 field_at(vec2 p) {
 	return f;
 }
 
-float height_at(vec2 p) {
+// Margin walls: out of bounds is solid in EE. Where the mirrored edge is terrain (not sky), the margin
+// becomes a solid mass rising at the border - never a floor that seems to continue.
+vec4 margin_solidify(vec2 p_real, vec2 pm, vec4 s) {
+	float o = level_out(p_real);
+	if (o <= 0.0) return s;
+	float skym = textureLod(field_tex, pm / level_size, 0.0).r;
+	float wall = (o - 0.25) * 2.0 * (1.0 - skym);
+	return vec4(max(s.x, wall), max(s.y, wall), max(s.z, wall), max(s.w, o * (1.0 - skym)));
+}
+
+float height_at(vec2 p_real) {
+	vec2 p = level_mirror(p_real);
 	vec4 fld = field_at(p);
 	vec4 s = sdf_bicubic(p);
 	s.x = sdf_linear(p).x;   // the cliff sits exactly on the (rounded) collision contour
-	return height_from(p, s, fld);
+	s = margin_solidify(p_real, p, s);
+	float z = height_from(p, s, fld);
+	// the border mass bulges forward and rises a little: a wall of forest / cliff, not a corridor
+	float o = level_out(p_real);
+	if (o > 0.0 && s.x > 0.0) {
+		z += smoothstep(0.0, 6.0, o) * 0.9 + fbm2(p_real * 0.3) * 0.25 * smoothstep(0.0, 3.0, o);
+	}
+	return z;
 }

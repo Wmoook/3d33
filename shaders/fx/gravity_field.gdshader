@@ -2,7 +2,7 @@ shader_type spatial;
 // Gravity arrows (ids 1/2/3) and dots (4) as one continuous energy-current field.
 // A single quad covers the level; `field` holds per-tile masks (R=left, G=up, B=right, A=dot).
 // Linear sampling gives soft merged regions; texelFetch gives exact tiles for readable chevrons.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform sampler2D field_lin : filter_linear, repeat_disable;
 uniform sampler2D field_near : filter_nearest, repeat_disable;

@@ -1,6 +1,6 @@
 shader_type spatial;
 // Instanced soft glow billboard (halo behind crystals/crowns/coins). INSTANCE_CUSTOM.x = phase.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(1.0, 0.2, 0.15);
 uniform float intensity = 0.5;

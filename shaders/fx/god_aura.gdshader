@@ -1,7 +1,7 @@
 shader_type spatial;
 // God-mode halo: camera-facing additive disc with a soft corona, a crisp rotating ring of light
 // and drifting sparkles. Premium take on EE's translucent aura.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color_a : source_color = vec3(1.0, 0.93, 0.62);
 uniform vec3 color_b : source_color = vec3(0.55, 0.8, 1.0);

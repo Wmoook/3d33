@@ -1,6 +1,6 @@
 shader_type spatial;
 // Spawn beacon light column: additive vertical shaft with rising rings and a soft base pool.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(0.7, 0.9, 1.0);
 uniform float intensity = 1.0;

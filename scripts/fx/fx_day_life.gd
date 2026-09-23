@@ -331,7 +331,7 @@ func _update_flock(delta: float, t: float) -> void:
 # ------------------------------------------------------------------------------------------ gliders
 
 ## Soaring birds circle slowly in open sky around the painted "V" bird sculptures (fg 87, which stay solid
-## world art). They glide far behind the playfield (z -3.5) so they never overlap a solid tile in front.
+## world art). They glide behind the playfield (z -2.5) so they never overlap a solid tile in front.
 func _find_glide_sites() -> void:
 	var seen := {}
 	for t in lvl.find_all(87):
@@ -371,8 +371,8 @@ func _update_gliders(delta: float, t: float) -> void:
 		var beat := 1.0 if fmod(t * 0.23 + g.ph, 1.0) < 0.12 else 0.12
 		g.flap += delta * (10.0 if beat > 0.5 else 1.5)
 		var face := 1.0 if vel.x >= 0.0 else -1.0
-		var basis := Basis(Vector3(0, 0, 1), clampf(vel.y * 1.5, -0.35, 0.35) * face) * Basis.IDENTITY.scaled(Vector3(face, 1, 1) * 2.0)
-		_glide_mm.set_instance_transform(n, Transform3D(basis, Vector3(pos.x, -pos.y, -3.5)))
+		var basis := Basis(Vector3(0, 0, 1), clampf(vel.y * 1.5, -0.35, 0.35) * face) * Basis.IDENTITY.scaled(Vector3(face, 1, 1) * 3.2)
+		_glide_mm.set_instance_transform(n, Transform3D(basis, Vector3(pos.x, -pos.y, -2.5)))
 		_glide_mm.set_instance_custom_data(n, Color(g.flap, 0.0, 1.0, beat))
 		n += 1
 	_glide_mm.visible_instance_count = n

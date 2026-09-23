@@ -1,7 +1,7 @@
 shader_type spatial;
 // Pooled expanding rings (piano note ripples, switch pulses, speed-boost kicks). MultiMesh quads with
 // per-instance COLOR; INSTANCE_CUSTOM.x = age 0..1 (CPU driven), y = ring count (1..3).
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform float intensity = 2.2;
 varying float v_age;

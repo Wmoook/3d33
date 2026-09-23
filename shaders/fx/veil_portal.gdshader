@@ -8,7 +8,7 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform vec3 veil_a : source_color = vec3(0.62, 0.9, 1.0);
-uniform vec3 veil_b : source_color = vec3(0.95, 0.75, 1.0);
+uniform vec3 veil_b : source_color = vec3(0.85, 0.85, 1.0);
 uniform float invisible = 0.0;
 uniform float intensity = 1.0;
 uniform float pulse = 0.0;
@@ -57,21 +57,22 @@ void fragment() {
 		if (length(p * vec2(1.1, 0.9)) > 1.0) discard;
 		float ring_r = length(p * vec2(1.1, 0.9));
 		// stone ring: dark carved band with a pale bevel + a few rune notches
-		float ring = smoothstep(0.78, 0.8, ring_r);
+		float ring = smoothstep(0.8, 0.82, ring_r);
 		float bevel = exp(-pow((ring_r - 0.83) / 0.03, 2.0));
 		float ang = atan(p.y, p.x);
 		float notch = step(0.93, cos(ang * 6.0 + 0.5)) * smoothstep(0.82, 0.86, ring_r) * (1.0 - smoothstep(0.93, 0.96, ring_r));
 		vec3 bg = textureLod(screen_tex, SCREEN_UV + n, 1.0).rgb;
 		// membrane: refracted background tinted by drifting iridescent bands + a bright rim of light
 		float band = sin(q.y * 6.0 + sin(q.x * 3.0 + t * 0.7) * 1.5 - t * 0.9) * 0.5 + 0.5;
-		vec3 irid = mix(veil_a, veil_b, band) * 0.6 + spectrum(band * 0.5 + t * 0.05 + r * 0.3) * 0.25;
+		vec3 irid = mix(veil_a, veil_b, band * 0.5) * 0.7 + spectrum(band * 0.5 + t * 0.05 + r * 0.3) * 0.07;
 		float mem = smoothstep(0.8, 0.1, r);
 		float edge = exp(-pow((ring_r - 0.76) / 0.05, 2.0));
 		float shimmer = 0.5 + 0.5 * sin(q.y * 30.0 + t * 3.0 + q.x * 8.0);
-		vec3 m = mix(bg, bg * 0.55 + irid * (0.8 + 0.4 * shimmer), 0.55 + mem * 0.2);
-		m += veil_a * (edge * 1.3 + abs(rip) * 0.5 * mem) + vec3(1.0) * ev * 0.4 * mem;
+		// a soft inner light, brighter toward the centre, over the refracted world behind
+		vec3 m = mix(bg, bg * 0.6 + irid * (0.7 + 0.3 * shimmer), 0.45 + mem * 0.25);
+		m += veil_a * (edge * 1.8 + abs(rip) * 0.45 * mem + mem * 0.15) + vec3(1.0) * ev * 0.4 * mem;
 		m *= intensity * (1.0 + pulse);
-		vec3 stone = mix(vec3(0.12, 0.13, 0.15), vec3(0.42, 0.44, 0.47), bevel);
+		vec3 stone = mix(vec3(0.07, 0.075, 0.09), vec3(0.5, 0.52, 0.56), bevel);
 		stone = mix(stone, veil_a * 1.8, notch * (0.4 + 0.6 * near + ev));
 		vec3 col = mix(m, stone, ring);
 		ALBEDO = col;

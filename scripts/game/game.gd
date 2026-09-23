@@ -991,6 +991,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_jump_latch = true
 			elif event.is_action_pressed(&"ee_god"):
 				_god_request = true
+			elif event.is_action_pressed(&"ee_overview"):
+				toggle_overview()
 			elif event.is_action_pressed(&"ee_ghost"):
 				ghost.toggle()
 				audio.play("ui_move", -8.0, 0.0)
@@ -1048,8 +1050,26 @@ func _is_any_press(e: InputEvent) -> bool:
 	return (e is InputEventJoypadButton and e.pressed) or (e is InputEventMouseButton and e.pressed and e.button_index <= MOUSE_BUTTON_RIGHT)
 
 func _zoom(steps: float) -> void:
+	if _overview:
+		_overview = false   # wheel/+- leaves the overview and adjusts the normal zoom
+		rig.target_zoom = _overview_prev
 	rig.add_zoom_steps(steps)
 	settings.zoom = rig.target_zoom
+
+## C / R3: toggle a wide overview (~2.5x the visible width) around the player; the EE follow keeps running.
+## Never saved as the default zoom.
+const OVERVIEW_FACTOR := 2.5
+const OVERVIEW_MAX := 160.0
+var _overview := false
+var _overview_prev := 30.0
+func toggle_overview() -> void:
+	_overview = not _overview
+	if _overview:
+		_overview_prev = rig.target_zoom
+		rig.target_zoom = minf(_overview_prev * OVERVIEW_FACTOR, OVERVIEW_MAX)
+	else:
+		rig.target_zoom = _overview_prev
+	audio.play("ui_move", -8.0, 0.0, 0.8 if _overview else 1.1)
 
 func _pause() -> void:
 	get_tree().paused = true

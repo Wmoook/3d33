@@ -1,6 +1,6 @@
 shader_type spatial;
 // Speed streak ribbon behind the ball. UV.x = 0 at head .. 1 at tail, UV.y across. COLOR.a = strength.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 head_color : source_color = vec3(1.0, 0.9, 0.55);
 uniform vec3 tail_color : source_color = vec3(1.0, 0.38, 0.06);

@@ -1,7 +1,7 @@
 shader_type spatial;
 // Water surface line: bright rolling crest, foam flecks and a soft glow band just under the surface.
 // Strip mesh: UV.x = world x, UV.y = 0 at the top edge .. 1 deep (crest sits ~0.28 into the strip).
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 crest : source_color = vec3(0.75, 0.92, 1.0);
 uniform vec3 deep : source_color = vec3(0.15, 0.45, 1.0);

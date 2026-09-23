@@ -1,6 +1,6 @@
 shader_type spatial;
 // Instanced additive glow billboard coloured per instance (fireflies, moths, wisps). COLOR.a = brightness.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform float intensity = 3.0;
 

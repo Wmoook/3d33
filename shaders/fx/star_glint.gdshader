@@ -1,7 +1,7 @@
 shader_type spatial;
 // Relic coin glint: a 4-ray star flare + soft core that blooms briefly every few seconds ("chime shimmer"),
 // camera-facing. INSTANCE-free: per-node uniforms. pulse_boost adds a manual flash (collect / on-screen chime).
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(1.0, 0.85, 0.45);
 uniform float intensity = 1.6;

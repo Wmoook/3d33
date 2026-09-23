@@ -256,6 +256,7 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_build_near_silhouettes(lvl, terrain)
 	if not WorldPalette.is_odyssey():
 		_build_shrine(lvl, terrain)
+		_build_floating_anchors(lvl, terrain)
 
 var _near_mat: ShaderMaterial
 
@@ -357,6 +358,34 @@ func _build_shrine(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_add_mm("ShrineGrass", _grass_mesh(), m, xs, cs)
 	_add_mm("ShrineFlowers", _sphere(), _mat_glow, fx, fc, true)
 	_add_mm("ShrineStems", _box(), _mat_prop, stem_x, stem_c)
+
+## Floating art (the ΣX logo, the Winners' Scroll, marble V-birds): vines and roots trailing below them,
+## set back behind the gameplay plane (z -1.2..-2.2) so they anchor the piece without occluding play.
+func _build_floating_anchors(lvl: EELevel, terrain: WorldTerrain) -> void:
+	var W := lvl.width
+	var H := lvl.height
+	var logo := Rect2i(300, 14, 46, 29)
+	var xs: Array[Transform3D] = []
+	var cs: Array[Color] = []
+	for y in range(1, H - 1):
+		for x in W:
+			var i := y * W + x
+			if not terrain.solid[i] or terrain.solid[i + W] or not terrain.sky[i + W]:
+				continue
+			var pt := Vector2i(x, y)
+			var bird: bool = lvl.fg[i] == 87
+			if not (logo.has_point(pt) or WorldPalette.FV_RECT_SCROLL.has_point(pt) or bird):
+				continue
+			if _rng.randf() > (0.25 if bird else 0.55):
+				continue
+			var n := 1 if bird else 2
+			for k in n:
+				var l := _rng.randf_range(0.8, 2.2) if bird else _rng.randf_range(1.2, 4.5)
+				var b := Basis(Vector3.FORWARD, _rng.randf_range(-0.12, 0.12)).scaled(Vector3(0.06, l, 0.06))
+				xs.append(Transform3D(b, Vector3(x + _rng.randf_range(0.15, 0.85), -y - 1.0 - l * 0.5, _rng.randf_range(-2.2, -1.2))))
+				cs.append(_vary(Color(0.2, 0.36, 0.12) if not bird else Color(0.55, 0.6, 0.5), 0.15))
+	var m := _foliage_mat(0.6, 0.4, 0.0, 0.8)
+	_add_mm("FloatingVines", _box(), m, xs, cs)
 
 func _near_sky(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	for dy in range(-4, 5):

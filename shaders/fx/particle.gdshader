@@ -1,6 +1,6 @@
 shader_type spatial;
 // Generic additive particle sprite (soft dot or streak). Color comes from the process material's color ramp.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform float intensity = 3.0;
 uniform float streak = 0.0; // 1 = elongated along UV.y

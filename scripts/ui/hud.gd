@@ -191,7 +191,7 @@ func _draw() -> void:
 			UITheme.draw_scrim(self, Vector2(520, size.y - 50), Vector2(1500, 170), 0.45 * ha)
 			var hy := size.y - 44
 			var x := 44.0
-			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["H", "ghost"], ["F3", "collision"], ["ESC", "menu"]]:
+			for pair in [["ARROWS / WASD", "move"], ["SPACE", "jump"], ["G", "god mode"], ["M", "map"], ["SHIFT+R", "retry"], ["C", "zoom"], ["H", "ghost"], ["F3", "collision"], ["ESC", "menu"]]:
 				x = _hint(Vector2(x, hy), pair[0], pair[1], ha) + 26
 
 func _coin_row(c: Vector2, n: int, total: int, blue: bool, spin: float, pop: float) -> void:

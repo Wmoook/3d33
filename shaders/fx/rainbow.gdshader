@@ -1,9 +1,9 @@
 shader_type spatial;
 // Faint spray rainbow over a waterfall's plunge pool (FxVeil): an additive spectral arc that breathes with
 // the mist. UV (0,0) top-left; the arc is centred at the bottom middle of the quad.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
-uniform float intensity = 0.35;
+uniform float intensity = 0.9;
 
 vec3 spectrum(float x) {
 	float h = (1.0 - x) * 0.78;   // red outside -> violet inside

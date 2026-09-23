@@ -1,7 +1,7 @@
 shader_type spatial;
 // Speed boost strip (114-117) behind the chevrons: fast additive speed lines rushing in the boost
 // direction plus a soft core glow. UV.x runs along the boost direction (0..1 over length_tiles), UV.y across.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(0.35, 0.95, 1.0);
 uniform float intensity = 0.9;

@@ -1,7 +1,7 @@
 shader_type spatial;
 // Sun glints on water surfaces and wet stone (FxVeil MultiMesh): a tiny camera-facing 4-ray star that
 // sparkles in short random bursts. INSTANCE_CUSTOM: x = phase, y = rate, z = strength.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform vec3 color : source_color = vec3(1.0, 0.97, 0.88);
 uniform float intensity = 3.0;

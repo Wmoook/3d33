@@ -1,7 +1,7 @@
 shader_type spatial;
 // Flame tongue sprite (MultiMesh): noise-licked teardrop with an HDR blackbody ramp.
 // Quad faces +z; its bottom edge sits on a fire tile's top. INSTANCE_CUSTOM.x = phase, .y = heat (0..1).
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform float intensity = 1.35;
 uniform float wind = 0.0;

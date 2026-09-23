@@ -29,13 +29,17 @@ const SPOTS := [
 	["grove_nodapple", Vector2(30, 40)],
 	["falls_glint", Vector2(140, 160)],
 	["shrine", Vector2(388, 73)],
+	["shrine_nopillar", Vector2(388, 73)],
+	["shrine_none", Vector2(388, 73)],
 	["crowning_a", Vector2(391, 73)],
 	["crowning_b", Vector2(391, 73)],
 	["crowning_c", Vector2(391, 73)],
 	["scroll", Vector2(372, 30)],
+	["scroll_noink", Vector2(372, 30)],
+	["scroll_far", Vector2(372, 30)],
 	["logo", Vector2(322, 28)],
 	["veils", Vector2(245, 84)],
-	["rainbow", Vector2(145, 160)],
+	["rainbow", Vector2(146, 158)],
 	["updraft", Vector2(200, 64)],
 	["aqueduct", Vector2(360, 180)],
 	["sky_birds", Vector2(20, 12)],
@@ -85,13 +89,37 @@ func _ready() -> void:
 				dp.node.visible = false
 			for i in 3:
 				await get_tree().process_frame
+		if s[0].begins_with("shrine_") and game.actors.shrine:
+			var r: Node3D = game.actors.shrine._shrines[0].root
+			r.get_node("LightPillar").visible = false
+			if s[0] == "shrine_none":
+				r.visible = false
+			for i in 3:
+				await get_tree().process_frame
+		if s[0] == "sky_birds" and game.actors.day_life:
+			print("glide sites ", game.actors.day_life._glide_sites.size(), " gliders ", game.actors.day_life._gliders.size(), " first ", game.actors.day_life._glide_sites.slice(0, 4))
+		if s[0] == "scroll_noink":
+			for n in game.actors.blocks.find_children("InkLetters", "", false, false):
+				n.visible = false
+			for i in 3:
+				await get_tree().process_frame
+		if game.rig and s[0] != "scroll_far":
+			game.rig.set("target_zoom", 30.0)
+		if s[0] == "scroll_far" and game.rig:
+			game.rig.set("target_zoom", 70.0); game.rig.set("zoom", 70.0)
+			await _wait(1.5)
 		if s[0].begins_with("crowning"):
+			while game.actors.shrine._crowning >= 0.0:
+				await get_tree().process_frame
+			game.sim.set("has_silver_crown", false)
+			game.actors.shrine.reset_if_needed()   # as after a restart
 			game.sim.set("has_silver_crown", true)
 			game.actors._on_sim_event(&"complete", {"tile": Vector2i(394, 74)})
 			var wait: float = {"crowning_a": 0.9, "crowning_b": 2.3, "crowning_c": 3.4}[s[0]]
 			var t0 := Time.get_ticks_msec()
 			while Time.get_ticks_msec() - t0 < int(wait * 1000.0):
 				await get_tree().process_frame
+			print("crowning t=", game.actors.shrine._crowning, " crown vis=", game.actors.shrine._shrines[0].crown.visible, " at ", game.actors.shrine._shrines[0].crown.global_position)
 		if s[0] == "piano_hit":
 			for k in 4:
 				var pt := Vector2i(396 + (k % 2), 27 + k * 2)

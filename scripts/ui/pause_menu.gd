@@ -145,7 +145,9 @@ func _build_settings() -> void:
 	_hc_btn = _toggle_row(v, "HIGH-CONTRAST GLYPHS", func(on): setting_changed.emit("high_contrast", on))
 	v.add_child(_spacer(6))
 	var ctl := Label.new()
-	ctl.text = "ARROWS / WASD  move      SPACE  jump      G  god mode\nM  map      SHIFT+R  retry      WHEEL / + -  zoom      H  ghost      F3  collision      F11  fullscreen"
+	ctl.text = "ARROWS / WASD  move      SPACE  jump      G  god mode      M  map
+SHIFT+R  retry      WHEEL / + -  zoom      C  overview      H  ghost
+F3  collision      F11  fullscreen"
 	ctl.add_theme_font_size_override(&"font_size", 19)
 	ctl.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.45))
 	v.add_child(ctl)

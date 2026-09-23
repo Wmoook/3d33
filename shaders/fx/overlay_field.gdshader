@@ -1,7 +1,7 @@
 shader_type spatial;
 // Living light over the painted terrain, one quad for the whole level (just in front of the terrain face).
 // mask: R = fire (1 yellow / .6 orange), G = caustic weight, B = ice glint, A = splash stream.
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 uniform sampler2D mask_lin : filter_linear, repeat_disable;
 uniform sampler2D mask_near : filter_nearest, repeat_disable;

@@ -8,9 +8,9 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 
 uniform sampler2D mask : filter_linear, repeat_disable;
 uniform vec4 rect = vec4(350.0, 0.0, 48.0, 72.0);   // x, y, w, h in tiles (with a 1-tile border)
-uniform vec3 gold : source_color = vec3(0.98, 0.74, 0.28);
+uniform vec3 gold : source_color = vec3(1.0, 0.72, 0.22);
 uniform vec3 gold_dark : source_color = vec3(0.45, 0.28, 0.06);
-uniform vec3 vermilion : source_color = vec3(0.78, 0.1, 0.05);
+uniform vec3 vermilion : source_color = vec3(0.62, 0.07, 0.04);
 uniform float glint_speed = 0.12;
 uniform vec4 flares[4];
 uniform vec4 flares_b[4];
@@ -59,7 +59,7 @@ void fragment() {
 	float leaf = 0.8 + 0.25 * vnoise(tp * 6.0) - 0.15 * step(0.8, vnoise(tp * 14.0));
 	float edge_g = 1.0 - smoothstep(0.5, 0.75, m.r);
 	float sweep = fract((tp.x + tp.y * 0.6) * 0.035 - TIME * glint_speed);
-	float glint = exp(-pow((sweep - 0.5) / 0.03, 2.0)) * 1.6;
+	float glint = exp(-pow((sweep - 0.5) / 0.03, 2.0)) * 0.6;
 	vec3 gc = mix(gold * leaf, gold_dark, edge_g * 0.7) + vec3(1.0, 0.95, 0.8) * glint * (1.0 - edge_g);
 	// vermilion ink: matte, pooled darker at the stroke edges
 	float edge_v = 1.0 - smoothstep(0.5, 0.8, m.g);
