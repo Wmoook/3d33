@@ -89,8 +89,21 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		# art doors are drawn by the terrain while closed, except blue ones (the terrain's glassy blue-pond
 		# art bloomed into white blobs): WorldDoors draws those in both states
 		var art := terrain.art_door[start] != 0 and not TAKEOVER_ART.has(WorldPalette.key_color_of(id))
+		# the cave back wall behind the doorway, shown while it is open (the terrain has no wall there for
+		# art doors, which it discards entirely; plain doors keep the terrain's own back wall)
+		var back: MeshInstance3D = null
+		if terrain.art_door[start] != 0:
+			back = MeshInstance3D.new()
+			back.mesh = _grid_coarse(size.x, size.y)
+			back.position = mi.position
+			back.custom_aabb = AABB(Vector3(0, -size.y, -4.0), Vector3(size.x, size.y, 3.0))
+			back.material_override = mats[id][2]
+			back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			back.name = "DoorBack%d_%d_%d" % [id, mn.x, mn.y]
+			back.visible = false
+			add_child(back)
 		regions.append({"node": mi, "tile": Vector2i(start % W, start / W), "id": id, "art": art,
-			"solid_mat": mats[id][0], "ghost_mat": mats[id][1], "solid": true})
+			"solid_mat": mats[id][0], "ghost_mat": mats[id][1], "back": back, "solid": true})
 		if art:
 			mi.visible = false   # the terrain draws it while closed
 	_push_keys()
@@ -104,7 +117,7 @@ func _materials(id: int, terrain: WorldTerrain) -> Array:
 		1006: col = Color8(145, 45, 153)
 	var kc: Color = KEY_RGB[WorldPalette.key_color_of(id)]
 	var out := []
-	for sh in ["res://shaders/world/door.gdshader", "res://shaders/world/door_ghost.gdshader"]:
+	for sh in ["res://shaders/world/door.gdshader", "res://shaders/world/door_ghost.gdshader", "res://shaders/world/door_back.gdshader"]:
 		var m := ShaderMaterial.new()
 		m.shader = load(sh)
 		m.set_shader_parameter("door_sdf", sdf_tex)
@@ -117,15 +130,22 @@ func _materials(id: int, terrain: WorldTerrain) -> Array:
 		out.append(m)
 	return out
 
+## 3 vertices per tile: enough for the back wall's gentle relief.
+func _grid_coarse(tw: int, th: int) -> ArrayMesh:
+	return _grid_n(tw, th, 3)
+
 func _grid(tw: int, th: int) -> ArrayMesh:
-	var nx := tw * VPT
-	var ny := th * VPT
+	return _grid_n(tw, th, VPT)
+
+func _grid_n(tw: int, th: int, vpt: int) -> ArrayMesh:
+	var nx := tw * vpt
+	var ny := th * vpt
 	var verts := PackedVector3Array()
 	verts.resize((nx + 1) * (ny + 1))
 	var k := 0
 	for j in ny + 1:
 		for i in nx + 1:
-			verts[k] = Vector3(float(i) / VPT, -float(j) / VPT, 0.0)
+			verts[k] = Vector3(float(i) / vpt, -float(j) / vpt, 0.0)
 			k += 1
 	var idx := PackedInt32Array()
 	idx.resize(nx * ny * 6)
@@ -170,6 +190,8 @@ func _process(_delta: float) -> void:
 		mi.material_override = r["solid_mat"] if s else r["ghost_mat"]
 		if r["art"]:
 			mi.visible = not s
+		if r["back"]:
+			(r["back"] as MeshInstance3D).visible = not s
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if s else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func _push_keys() -> void:
