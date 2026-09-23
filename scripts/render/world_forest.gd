@@ -622,6 +622,7 @@ func _build_block_layers(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArra
 	_block_mats.append(m)
 	var mi := MultiMeshInstance3D.new()
 	mi.name = "BlockTrees"
+	print("WorldForest: %d block cubes, %d duplicate cells skipped" % [xs.size(), dup_blocks])
 	mi.multimesh = mm
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -703,7 +704,17 @@ func _library_row(terrain: WorldTerrain, xs: Array[Transform3D], cs: Array[Color
 			_block(xs, cs, cu, Vector3(x + dx + 0.5, -wy - 0.5, zz), 1.0, t[2], WorldPalette.M_FOLIAGE, Vector2(x + dx, wy), fog)
 		x += w + 1 + _rng.randi() % 4
 
+## Cells already holding a cube (x, y, z quantised): two cubes in one cell have coplanar faces in different
+## colours, which z-fight as the camera moves (the flickering texture / sawtooth edges). First cube wins.
+var _cells := {}
+var dup_blocks := 0
+
 func _block(xs: Array[Transform3D], cs: Array[Color], cu: Array[Color], c: Vector3, depth: float, col: Color, mat: int, src: Vector2, fog: float) -> void:
+	var key := Vector3i(int(floor(c.x)), int(floor(c.y)), int(round((c.z + depth * 0.5) * 4.0)))
+	if _cells.has(key):
+		dup_blocks += 1
+		return
+	_cells[key] = true
 	xs.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, depth)), c))
 	cs.append(col.srgb_to_linear())
 	cu.append(Color(float(mat), fog, src.x, src.y))
