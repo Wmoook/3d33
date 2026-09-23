@@ -197,6 +197,23 @@ static func hollow_mask(terrain: WorldTerrain) -> PackedByteArray:
 					out[i] = 1
 					r = r.expand(Vector2i(x, y)).expand(Vector2i(x + 1, y + 1))
 		grown[gi] = r
+	# pores (forest-bg pockets) touching the hollow anywhere, even just past a region's rect (e.g. (231,155)):
+	# their back wall is discarded next to the hollow, so they must show forest too
+	for pass_i in 2:
+		var add := PackedInt32Array()
+		for y in range(1, H - 1):
+			for x in range(1, W - 1):
+				var i := y * W + x
+				if out[i] or terrain.solid[i] or not terrain.pocket[i] or stone_room(terrain, i) or not FOREST_BG.has(int(lvl.bg[i])):
+					continue
+				if out[i - 1] or out[i + 1] or out[i - W] or out[i + W]:
+					add.append(i)
+		for i in add:
+			out[i] = 1
+			for gi in grown.size():
+				if grown[gi].grow(2).has_point(Vector2i(i % W, i / W)):
+					grown[gi] = grown[gi].expand(Vector2i(i % W, i / W)).expand(Vector2i(i % W + 1, i / W + 1))
+					break
 	terrain.set_meta(&"forest_hollow", out)
 	terrain.set_meta(&"forest_regions", grown)
 	return out

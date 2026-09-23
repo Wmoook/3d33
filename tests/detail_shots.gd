@@ -22,6 +22,7 @@ const SPOTS_FV := [
 	["cave43", Vector2(43, 64)],
 	["cave4360", Vector2(43, 60)],
 	["room227", Vector2(231, 162)],
+	["room226", Vector2(226, 161)],
 	["ov_spire", Vector2(245, 90)],
 	["ov_falls", Vector2(140, 150)],
 	["far_grove", Vector2(35, 50)],
@@ -138,12 +139,74 @@ func _ready() -> void:
 	if args.get("novolfog", "0") == "1":
 		wv.get_environment().volumetric_fog_enabled = false
 		print("volumetric fog off")
+	if args.has("depthfog"):
+		var v := str(args.depthfog).split(",")
+		var dm: ShaderMaterial = wv.get("depth").material
+		dm.set_shader_parameter("forest_fog", Color(float(v[0]), float(v[1]), float(v[2])))
+		print("depth forest_fog = ", v)
+	if args.get("depthnopbr", "0") == "1":
+		(wv.get("depth").material as ShaderMaterial).set_shader_parameter("pbr_strength", 0.0)
+		print("depth pbr off")
+	if args.get("depthflatn", "0") == "1":
+		# test-only: WorldDepth with a flat derivative normal (checks for a degenerate / NaN computed normal)
+		var fm: ShaderMaterial = wv.get("depth").material
+		var fc: String = fm.shader.code.replace("
+
+", "
+")
+		var fp := fc.rfind("}")
+		fc = fc.substr(0, fp) + "	NORMAL = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
+}
+"
+		var fsh := Shader.new()
+		fsh.code = fc
+		fm.shader = fsh
+		print("depthflatn on")
+	if args.get("depthnan", "0") == "1":
+		# test-only: WorldDepth fragments with a NaN normal / albedo -> magenta / cyan emission
+		var nm: ShaderMaterial = wv.get("depth").material
+		var nc: String = nm.shader.code.replace("
+
+", "
+")
+		var ep := nc.rfind("}")
+		nc = nc.substr(0, ep) + "	if (any(isnan(NORMAL)) || any(isinf(NORMAL))) { EMISSION = vec3(4.0, 0.0, 4.0); }
+	if (any(isnan(ALBEDO))) { EMISSION = vec3(0.0, 4.0, 4.0); }
+	if (any(isnan(EMISSION)) || any(isinf(EMISSION))) { EMISSION = vec3(4.0, 4.0, 0.0); }
+	if (isnan(AO) || isnan(ROUGHNESS) || isnan(SPECULAR)) { EMISSION = vec3(4.0, 0.0, 0.0); }
+}
+"
+		var nsh := Shader.new()
+		nsh.code = nc
+		nm.shader = nsh
+		print("depthnan on")
+	if args.get("depthdbg", "0") == "1":
+		# test-only: tint WorldDepth face classes (wallblock magenta, earth_back cyan, inroom yellow, inner blue)
+		var ddm: ShaderMaterial = wv.get("depth").material
+		var dsc: String = ddm.shader.code.replace("
+
+", "
+")
+		var endp := dsc.rfind("}")
+		dsc = dsc.substr(0, endp) + "	EMISSION = wallblock ? vec3(1.0, 0.0, 1.0) : earth_back ? vec3(0.0, 1.0, 1.0) : inroom ? vec3(1.0, 1.0, 0.0) : inner ? vec3(0.0, 0.0, 1.0) : back ? vec3(1.0, 0.5, 0.0) : vec3(0.0, 1.0, 0.0);
+}
+"
+		var dsh := Shader.new()
+		dsh.code = dsc
+		ddm.shader = dsh
+		print("depthdbg ", dsc.find("vec3(1.0, 0.5, 0.0)") >= 0)
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
 		game._ui.visible = false
 	game.sim.set_god_mode(true)
 	var spots: Array = SPOTS_FV if args.level == "forgotten_veil" else SPOTS_OD
+	if args.has("at"):
+		var av := str(args.at).split(";")
+		spots = []
+		for a in av:
+			var q := a.split(",")
+			spots.append(["at_%s_%s" % [q[0], q[1]], Vector2(float(q[0]), float(q[1]))])
 	if args.get("regions", "0") == "1":
 		spots = []
 		for r: Rect2i in WorldForest.regions(wv.terrain):
@@ -179,6 +242,16 @@ func _ready() -> void:
 		var shot := get_viewport().get_texture().get_image()
 		shot.save_png("user://detail_%s_%s%s.png" % [lv, s[0], args.tag])
 		print("saved detail_", lv, "_", s[0], args.tag, "  fps ", Engine.get_frames_per_second())
+		if args.has("zeroat"):
+			var zimg := get_viewport().get_texture().get_image()
+			for zt in str(args.zeroat).split(";"):
+				var zq := zt.split(",")
+				var zt2 := Vector2i(int(zq[0]), int(zq[1]))
+				var zc := _zero_count(zimg, zt2)
+				if zc.y > 0:
+					var camz := get_viewport().get_camera_3d()
+					var cp := camz.unproject_position(Vector3(zt2.x + 0.5, -zt2.y - 0.5, 0.0)) * Vector2(zimg.get_width(), zimg.get_height()) / get_viewport().get_visible_rect().size
+					print("ZERO %s tile (%s,%s): %s  centre colour %s" % [s[0], zq[0], zq[1], str(zc), str(zimg.get_pixelv(Vector2i(clampi(int(cp.x), 0, zimg.get_width() - 1), clampi(int(cp.y), 0, zimg.get_height() - 1))))])
 		if args.get("skycheck", "0") == "1":
 			# measured without the HUD (its panels / titles are not the world)
 			var ui_vis: bool = game._ui.visible
@@ -494,3 +567,23 @@ func _patch_vista(wv: WorldView) -> void:
 		m.shader = ns
 		n_p += 1
 	print("vista patch: %d shaders" % n_p)
+
+## Pixels whose camera ray lands in tile t (at z = 0) that are exactly (0,0,0) (every 2nd px), and their count.
+func _zero_count(img: Image, t: Vector2i) -> Vector2i:
+	var cam := get_viewport().get_camera_3d()
+	var vs := get_viewport().get_visible_rect().size
+	var sx := vs.x / img.get_width()
+	var sy := vs.y / img.get_height()
+	var p0 := cam.unproject_position(Vector3(t.x, -t.y, 0.0))
+	var p1 := cam.unproject_position(Vector3(t.x + 1, -t.y - 1, 0.0))
+	var n := 0
+	var z := 0
+	for py in range(int(minf(p0.y, p1.y) / sy), int(maxf(p0.y, p1.y) / sy), 2):
+		for px in range(int(minf(p0.x, p1.x) / sx), int(maxf(p0.x, p1.x) / sx), 2):
+			if px < 0 or py < 0 or px >= img.get_width() or py >= img.get_height():
+				continue
+			n += 1
+			var c := img.get_pixel(px, py)
+			if c.r + c.g + c.b < 0.004:
+				z += 1
+	return Vector2i(z, n)
