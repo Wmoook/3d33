@@ -71,7 +71,9 @@ vec3 bevel(vec3 n, int side, ivec2 tc, vec3 wp, float d) {
 			o += vec3(1.0, 0.0, 0.0) * (1.0 - smoothstep(0.0, bw, 1.0 - dl));
 		}
 	}
-	return normalize(n + o * 1.5);
+	vec3 bn = n + o * 1.5;
+	float bl = length(bn);
+	return bl > 1e-4 ? bn / bl : n;   // opposite offsets on 1-tile slots cancel: keep the face normal
 }
 
 float vnoise(vec2 p) {
@@ -91,7 +93,14 @@ void vertex() {
 void fragment() {
 	float sf = solid_f;
 	vec3 wp = w_pos;
-	vec3 gn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	vec3 gn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	float gl = length(gn);
+	if (!(gl > 1e-4)) {
+		// degenerate vertex normal (a zero-area / NaN face normal from the mesh builder): use the screen-space one
+		gn = (INV_VIEW_MATRIX * vec4(normalize(cross(dFdx(VERTEX), dFdy(VERTEX))), 0.0)).xyz;
+		gl = length(gn);
+	}
+	gn /= max(gl, 1e-6);
 	float d = -1.2 - wp.z;
 	bool horiz = abs(gn.y) > 0.5;
 	// colour: the source tile, jittered to its neighbours along the depth (strata / patches, not streaks)
@@ -104,6 +113,11 @@ void fragment() {
 	}
 	ivec2 ti = clamp(ivec2(floor(ps)), ivec2(0), ivec2(level_size) - 1);
 	vec4 c = sf > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
+	if (dot(c.rgb, vec3(1.0)) < 0.015) {
+		// no colour for this tile (painted-black / uncoloured air): use the other layer, then a dark stone
+		c.rgb = sf > 0.5 ? texelFetch(bgcol_tex, ti, 0).rgb : texelFetch(fgcol_tex, ti, 0).rgb;
+		if (dot(c.rgb, vec3(1.0)) < 0.015) { c.rgb = vec3(0.1, 0.085, 0.07); }
+	}
 	int mat = sf > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
 	vec3 albedo = c.rgb;
 	bool back = kind > 3.5 && kind < 4.5;   // a room's recessed back wall
@@ -325,6 +339,14 @@ void fragment() {
 			albedo /= 0.72;   // forest crown / trunk undersides: as lit as their fronts (the base 0.72 is undone)
 		}
 	}
+	// NaN guard: any NaN in the shading inputs turns the pixel pure black
+	if (any(isnan(albedo)) || any(isinf(albedo))) { albedo = c.rgb * 0.6; }
+	if (isnan(ao) || isinf(ao)) { ao = 0.8; }
+	if (isnan(hz)) { hz = 0.0; }
+	if (isnan(rough)) { rough = 0.9; }
+	// structural floor: no depth face may ever render pure black (AO / haze products can reach 0)
+	ao = max(ao, 0.35);
+	hz = min(hz, 0.92);
 	ALBEDO = albedo * ao * (1.0 - hz);
 	if (prop) {
 		// roots are dirt-brown, rocks the floor's colour (never black specks against the dark cave)
@@ -362,7 +384,12 @@ void fragment() {
 		float gl = step(0.985, h21(gi + 17.0)) * (1.0 - smoothstep(0.02, 0.07, length(fract(gq) - 0.5)));
 		EMISSION += vec3(0.35, 0.8, 0.55) * gl * (0.6 + 0.4 * sin(TIME * 1.3 + gi.x * 3.1));
 	}
+	float nl = length(n);
+	n = (nl > 1e-4 && nl == nl) ? n / nl : gn;   // degenerate / NaN normal: fall back to the geometric one
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	if (any(isnan(EMISSION)) || any(isinf(EMISSION))) { EMISSION = vec3(0.0); }
+	if (any(isnan(ALBEDO))) { ALBEDO = c.rgb * 0.5; }
+	EMISSION = max(EMISSION, c.rgb * 0.12);   // never-black floor in the tile's own colour
 	if (back || earth_back || inroom || prop) {
 		// interiors (rooms, caves, corridors) never fall to black: a soft ambient floor in the surface's own tone
 		vec3 tone = normalize(max(ALBEDO, vec3(0.001))) * 0.577;
@@ -371,11 +398,12 @@ void fragment() {
 	if (!FRONT_FACING) {
 		// the inside of a volume: only ever seen through the hairline where the slab's bevelled cliff meets a
 		// side face. Before, back faces were culled and those slits showed the sky as bright vertical lines.
-		ALBEDO = c.rgb * 0.08;
+		// shaded as the rock's own deep shadow (never exact black: seen through slots it read as a black hole)
+		ALBEDO = c.rgb * 0.2;
 		ROUGHNESS = 1.0;
 		SPECULAR = 0.0;
-		AO = 0.2;
-		EMISSION = vec3(0.0);
+		AO = 0.6;
+		EMISSION = c.rgb * 0.1;
 		NORMAL = -NORMAL;
 	}
 }

@@ -342,6 +342,8 @@ func _face(buckets: Dictionary, x: int, y: int, side: int, d0: float, d1: float,
 		var nrm := (p[1] - p[0]).cross(p[2] - p[0])
 		if nrm.length_squared() < 1e-10:
 			nrm = (p[2] - p[0]).cross(p[3] - p[0])
+		if nrm.length_squared() < 1e-12:
+			continue   # zero-area quad (d0 == d1): no face, never a NaN normal
 		nrm = nrm.normalized()
 		# Godot front faces are clockwise seen from outside: the cross product must point inward
 		if nrm.dot(out) > 0.0:
