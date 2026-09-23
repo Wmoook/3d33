@@ -3,7 +3,7 @@ shader_type spatial;
 // mean), G = translucency/thickness, A = coverage; leaf_normal RGB = card-space normal (GL), A = coverage.
 // INSTANCE_CUSTOM: rgb = painted canopy colour (linear), a = atlas cell (int part) + depth shade (fract);
 // +10 = SNAP: the card sits on the sculpted canopy surface (baked terrain height), instance z = offset.
-render_mode cull_disabled, depth_draw_opaque;
+render_mode cull_disabled, depth_draw_opaque, alpha_to_coverage;
 
 uniform sampler2D leaf_albedo : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2D leaf_normal : filter_linear_mipmap_anisotropic, repeat_disable;
@@ -38,7 +38,8 @@ void vertex() {
 	float gust = sin(TIME * 0.9 + c.x * 0.12) * 0.5 + 0.5;
 	float sw = (sin(TIME * 1.7 + ph) * 0.6 + sin(TIME * 3.3 + ph * 1.7) * 0.25) * (0.4 + 0.6 * gust) * wind_strength;
 	vec2 q = VERTEX.xy;
-	float fl = sin(TIME * 6.0 + ph * 5.0 + q.x * 7.0 + q.y * 5.0) * 0.015 * wind_strength;
+	// gentle corner flutter (a fast, large flutter flickered leaf edges every frame)
+	float fl = sin(TIME * 3.2 + ph * 5.0 + q.x * 7.0 + q.y * 5.0) * 0.006 * wind_strength;
 	float a = sw * 0.06;
 	VERTEX.xy = mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a))) * q + vec2(fl, fl * 0.6);
 	VERTEX.z += sin(TIME * 2.3 + ph + q.x * 4.0) * 0.02 * wind_strength;
@@ -62,9 +63,11 @@ void fragment() {
 	vec4 al = texture(leaf_albedo, auv);
 	vec4 nm = texture(leaf_normal, auv);
 	// sharpen coverage so mips keep crisp leaf edges (alpha-to-coverage style)
-	float cov = (al.a - alpha_cut) / max(fwidth(al.a), 1e-4) + 0.5;
-	ALPHA = clamp(cov, 0.0, 1.0);
-	ALPHA_SCISSOR_THRESHOLD = 0.5;
+	// antialiased cut-out: MSAA alpha-to-coverage across a ~1 px band around the cut (fwidth), so edges resolve
+	// to fractional coverage instead of popping pixels on/off as the camera moves
+	ALPHA = al.a;
+	ALPHA_SCISSOR_THRESHOLD = alpha_cut;
+	ALPHA_ANTIALIASING_EDGE = clamp(fwidth(al.a) * 0.75, 0.005, 0.25);
 	vec3 tn = nm.rgb * 2.0 - 1.0;
 	tn.y = -tn.y;   // GL green = image-up; card UV.y grows downward, card local +y is up
 	vec3 fwd = FRONT_FACING ? v_fwd : -v_fwd;

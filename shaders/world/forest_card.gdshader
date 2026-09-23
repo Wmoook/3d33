@@ -2,7 +2,7 @@ shader_type spatial;
 // WorldForest hanging foliage: leaf-cluster cards (atlas as WorldFoliage's) and vine strands hanging from
 // the canopy into the hollow, fading into the forest haze with depth. Clipped to the hollow mask.
 // INSTANCE_CUSTOM: rgb = colour (linear), a = atlas cell (int, 0-3; 4 = vine strand) + haze (fract).
-render_mode cull_disabled, depth_draw_opaque;
+render_mode cull_disabled, depth_draw_opaque, alpha_to_coverage;
 
 #include "res://shaders/world/forest_mask.gdshaderinc"
 
@@ -41,9 +41,10 @@ void fragment() {
 		cov = al.a;
 		lum = al.r * 2.0;
 	}
-	if (cov < 0.45) {
-		discard;
-	}
+	// antialiased cut-out (MSAA alpha-to-coverage over a ~1 px fwidth band) instead of a hard discard
+	ALPHA = cov;
+	ALPHA_SCISSOR_THRESHOLD = 0.45;
+	ALPHA_ANTIALIASING_EDGE = clamp(fwidth(cov) * 0.75, 0.005, 0.25);
 	vec3 col = mix(v_c.rgb * mix(0.6, 1.1, lum * 0.5), haze_col * 0.55, haze);
 	ALBEDO = col * mix(0.15, 1.0, vis);
 	BACKLIGHT = col * 0.4 * vis;
