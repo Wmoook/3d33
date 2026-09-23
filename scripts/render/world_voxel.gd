@@ -193,6 +193,7 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 		_dE = depth.depth.duplicate()
 		_dH = terrain.H
 	_has_vista = vista != null
+	_request_shaders()
 	if fore_enabled:
 		fore = WorldVoxelFore.new()
 		fore.name = "Fore"
@@ -273,6 +274,28 @@ func _sample_vista() -> void:
 	for k in NZ:
 		_river[k] = _vista.river_x(Z0 + k + 0.5) if _vista else 148.0
 
+const SHADERS := ["res://shaders/world/voxel_block.gdshader", "res://shaders/world/voxel_water.gdshader",
+	"res://shaders/world/voxel_plant.gdshader"]
+
+## Threaded shader loads requested from setup(), i.e. during the world build: they overlap the rest of the
+## level load, so the generation thread only collects them.
+func _request_shaders() -> void:
+	for path: String in SHADERS:
+		ResourceLoader.load_threaded_request(path, "Shader")
+
+func _load_shaders() -> void:
+	var t := Time.get_ticks_msec()
+	var out: Array[Shader] = []
+	for path: String in SHADERS:
+		var sh: Shader = ResourceLoader.load_threaded_get(path) as Shader
+		if sh == null:
+			sh = load(path) as Shader
+		out.append(sh)
+	_sh_block = out[0]
+	_sh_water = out[1]
+	_sh_plant = out[2]
+	timings["voxel_shader_collect"] = Time.get_ticks_msec() - t
+
 func _fallback_base(x: float) -> float:
 	var lx := clampi(int(floorf(x)), 0, W - 1)
 	return maxf(_ab[lx] - 6.0, float(WATER_Y) - 2.0)
@@ -304,6 +327,7 @@ func _group(fn: Callable, n: int) -> void:
 
 func _run() -> void:
 	var t0 := Time.get_ticks_msec()
+	# the three shaders parse (~2.5 s) on their own pool task, in parallel with the generation
 	_sample_vista()
 	timings["voxel_vista_grid"] = Time.get_ticks_msec() - t0
 	# P1: column fields
@@ -369,11 +393,9 @@ func _run() -> void:
 	timings["voxel_tex_thread"] = Time.get_ticks_msec() - t1
 	# shaders parse / compile off the main thread too
 	t1 = Time.get_ticks_msec()
-	_sh_block = load("res://shaders/world/voxel_block.gdshader")
-	_sh_water = load("res://shaders/world/voxel_water.gdshader")
-	_sh_plant = load("res://shaders/world/voxel_plant.gdshader")
+	_load_shaders()
 	_make_materials()   # new, not yet used resources: safe to set up off the main thread
-	timings["voxel_shader_thread"] = Time.get_ticks_msec() - t1
+	timings["voxel_shader_wait"] = Time.get_ticks_msec() - t1
 	timings["voxel_thread_total"] = Time.get_ticks_msec() - t0
 	if not _abort:
 		call_deferred("_on_generated")
