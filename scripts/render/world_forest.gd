@@ -673,35 +673,25 @@ func _build_block_layers(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArra
 			x += sw
 			copy += 1
 	_fill_layers(int(floor_y))
-	var occ := _merge_block_layers(xs, cs, cu)
-	var cube := BoxMesh.new()
-	cube.size = Vector3.ONE
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	mm.mesh = cube
-	mm.instance_count = xs.size()
-	for k in xs.size():
-		mm.set_instance_transform(k, xs[k])
-		mm.set_instance_color(k, cs[k])
-		mm.set_instance_custom_data(k, cu[k])
+	var res := SlabMerge.merge(_grid, LAYER_FRONT, LAYER_FOG, _mat_class)
+	var mm := SlabMerge.multimesh(res)
+	var n_slabs: int = (res.xs as Array).size()
 	var m := _mat("res://shaders/world/forest_block.gdshader")
 	WorldPbr.bind(m, false, 1.0, terrain)
 	m.set_shader_parameter("floor_y", floor_y)
 	m.set_shader_parameter("canopy_y", _canopy_y_hint)
-	m.set_shader_parameter("occ_tex", ImageTexture.create_from_image(occ[0]))
-	m.set_shader_parameter("occ_origin", occ[1])
+	m.set_shader_parameter("occ_tex", ImageTexture.create_from_image(res.occ))
+	m.set_shader_parameter("occ_origin", res.occ_origin)
 	m.set_shader_parameter("leaf_tex", load("res://assets/world/pbr/leaf_cluster_albedo.png"))
 	_block_mats.append(m)
 	var mi := MultiMeshInstance3D.new()
 	mi.name = "BlockTrees"
-	print("WorldForest: %d block cells merged into %d slabs, %d duplicate cells skipped" % [_grid.size(), xs.size(), dup_blocks])
+	print("WorldForest: %d block cells merged into %d slabs, %d duplicate cells skipped" % [_grid.size(), n_slabs, dup_blocks])
 	mi.multimesh = mm
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
-	return xs.size()
+	return n_slabs
 
 ## The level's crown library: every tree-crown component of canopy_map (all of FV's crowns), each as its tile
 ## list [dx, dy, colour] relative to its bottom-left, plus its width / height. Cached on the terrain.
@@ -865,70 +855,6 @@ func _fill_layers(floor_key: int) -> void:
 			var k := Vector3i(xx, y, 2)
 			if not _grid.has(k):
 				_grid[k] = [WorldPalette.M_FOLIAGE, 1.0, dark] if y >= floor_key - 2 else [WorldPalette.M_EARTH, 1.0, soil]
-
-## Greedy-merges each layer's same-material, same-depth cells into boxes (row runs, then stacked while the run
-## below matches), one colour per (layer, material) so merged faces never step in tone. Returns
-## [occupancy image (R/G/B = material class of the near / mid / far layer per tile), its world origin]
-## for the shader's mass-silhouette edges.
-func _merge_block_layers(xs: Array[Transform3D], cs: Array[Color], cu: Array[Color]) -> Array:
-	var sum := {}
-	var cnt := {}
-	var lo := Vector2i(1 << 30, 1 << 30)
-	var hi := Vector2i(-(1 << 30), -(1 << 30))
-	for key: Vector3i in _grid:
-		var e: Array = _grid[key]
-		var sk := Vector2i(key.z, int(e[0]))
-		sum[sk] = (sum.get(sk, Color(0, 0, 0)) as Color) + (e[2] as Color)
-		cnt[sk] = int(cnt.get(sk, 0)) + 1
-		lo = Vector2i(mini(lo.x, key.x), mini(lo.y, key.y))
-		hi = Vector2i(maxi(hi.x, key.x), maxi(hi.y, key.y))
-	if _grid.is_empty():
-		return [Image.create(1, 1, false, Image.FORMAT_RGBA8), Vector2.ZERO]
-	var org := lo - Vector2i(1, 1)
-	var img := Image.create(hi.x - lo.x + 3, hi.y - lo.y + 3, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	for key: Vector3i in _grid:
-		var px := img.get_pixel(key.x - org.x, key.y - org.y)
-		px[key.z] = float(_mat_class(int((_grid[key] as Array)[0]))) / 4.0
-		img.set_pixel(key.x - org.x, key.y - org.y, px)
-	var done := {}
-	var keys := _grid.keys()
-	keys.sort_custom(func(a: Vector3i, b: Vector3i) -> bool: return a.y > b.y if a.y != b.y else a.x < b.x)
-	for key: Vector3i in keys:
-		if done.has(key):
-			continue
-		var e: Array = _grid[key]
-		var mat := int(e[0])
-		var depth: float = e[1]
-		var w := 1
-		while _merge_ok(key + Vector3i(w, 0, 0), mat, depth, done):
-			w += 1
-		var h := 1
-		while true:
-			var ok := true
-			for dx in w:
-				if not _merge_ok(key + Vector3i(dx, -h, 0), mat, depth, done):
-					ok = false
-					break
-			if not ok:
-				break
-			h += 1
-		for dy in h:
-			for dx in w:
-				done[key + Vector3i(dx, -dy, 0)] = true
-		var sk := Vector2i(key.z, mat)
-		var front: float = LAYER_FRONT[key.z]
-		var c := Vector3(key.x + w * 0.5, key.y + 1.0 - h * 0.5, front - depth * 0.5)
-		xs.append(Transform3D(Basis().scaled(Vector3(w, h, depth)), c))
-		cs.append((sum[sk] as Color) / float(cnt[sk]))
-		cu.append(Color(float(mat), LAYER_FOG[key.z], float(key.z), depth))
-	return [img, Vector2(org)]
-
-func _merge_ok(k: Vector3i, mat: int, depth: float, done: Dictionary) -> bool:
-	if done.has(k) or not _grid.has(k):
-		return false
-	var e: Array = _grid[k]
-	return int(e[0]) == mat and is_equal_approx(float(e[1]), depth)
 
 ## Material classes that merge into one mass (leafy / wood / ground).
 static func _mat_class(mat: int) -> int:
