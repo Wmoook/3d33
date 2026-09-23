@@ -100,9 +100,11 @@ var _fade_t := -1.0
 var _vista: WorldVista
 ## Phase 2: the foreground band in front of the gameplay plane (occlusion-safe, see WorldVoxelFore).
 var fore: WorldVoxelFore
+var _terrain_mat: ShaderMaterial
 ## OFF by default (lead / user: "random blocks in random places"); tests may set it true before build.
 static var fore_enabled := false
 var _lin_cols := PackedColorArray()
+var _grass_b := Color(-1, 0, 0)
 var _shrine := Vector2(-10000.0, 0.0)   # level-specific keep-out (FV: the summit shrine), world x / y
 var _rim := PackedFloat32Array()   # vista island_edge (depth of the home island rim) per G3 x column
 
@@ -193,6 +195,8 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 	var table := _color_table()
 	for id: int in table:
 		_lin_cols[id] = (table[id] as Color).srgb_to_linear()
+	_level_colors(terrain)
+	_terrain_mat = terrain.material
 	timings["voxel_setup"] = Time.get_ticks_msec() - t0
 
 ## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
@@ -536,7 +540,7 @@ func _fill_task(k: int) -> void:
 		var hf := _H[ci - NX] if k > 0 else h
 		var hb := _H[ci + NX] if k < NZ - 1 else h
 		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
-		var snow_y := -26.0 + nz.biome.get_noise_2d(x, z) * 6.0
+		var snow_y := -16.0 + nz.biome.get_noise_2d(x, z) * 6.0
 		if h < b:
 			var any_isl := false
 			for isl: PackedFloat32Array in _islands:
@@ -676,19 +680,38 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 				continue
 			var y := Y0 + j + 1.0
 			var room := _feat_max(i, k) - y
-			var pine := y > -95.0 + f * 20.0 or _vget(i, j, k) == SNOW_GRASS or rng.randf() < 0.25
+			# the level's trees are round leaf-cluster crowns: mostly crown trees, pines only up high
+			var pine := y > -62.0 + f * 12.0 or _vget(i, j, k) == SNOW_GRASS
 			if pine:
 				var ph := rng.randi_range(7, 12)
 				if room < ph + 1:
 					continue
 				_pine(i, j + 1, k, ph, rng)
-			elif rng.randf() < 0.1 and room > 14.0:
+			elif rng.randf() < 0.12 and room > 14.0:
 				_big_oak(i, j + 1, k, rng)
 			else:
-				var oh := rng.randi_range(4, 6)
-				if room < oh + 3:
+				var th := rng.randi_range(3, 6)
+				if room < th + 6:
 					continue
-				_oak(i, j + 1, k, oh, rng)
+				_crown_tree(i, j + 1, k, th, rng)
+
+## A round leaf-cluster crown (2-4 overlapping lumpy spheres) on a short trunk, like the level's trees.
+func _crown_tree(i: int, j: int, k: int, h: int, rng: RandomNumberGenerator) -> void:
+	for y in h + 1:
+		_put(i, j + y, k, LOG, false)
+	var R := rng.randf_range(2.4, 3.6)
+	var cy := j + h + int(R * 0.7)
+	var blobs: Array[Vector4] = [Vector4(0, 0, 0, R)]
+	for _b in rng.randi_range(1, 3):
+		blobs.append(Vector4(rng.randf_range(-R, R) * 0.7, rng.randf_range(-0.6, 0.5) * R, rng.randf_range(-R, R) * 0.5, R * rng.randf_range(0.6, 0.85)))
+	for bl: Vector4 in blobs:
+		var ri := int(ceil(bl.w)) + 1
+		for dy in range(-ri, ri + 1):
+			for dx in range(-ri, ri + 1):
+				for dk in range(-ri, ri + 1):
+					var d := Vector3(dx - bl.x, (dy - bl.y) * 1.15, dk - bl.z).length()
+					if d <= bl.w + rng.randf_range(-0.35, 0.2):
+						_leaf(i + dx, cy + dy, k + dk, LEAVES)
 
 func _leaf(i: int, j: int, k: int, id: int) -> void:
 	_put(i, j, k, id, true)
@@ -1090,6 +1113,14 @@ func _make_materials() -> void:
 	material = ShaderMaterial.new()
 	material.shader = load("res://shaders/world/voxel_block.gdshader")
 	WorldPbr.bind(material, false, 1.0)
+	# same detail textures as the level's blocks (world's depth volume), and an empty canopy mask
+	if _terrain_mat:
+		for k in ["detail_nrm2", "detail_hgt"]:
+			material.set_shader_parameter(k, _terrain_mat.get_shader_parameter(k))
+	var blank := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	blank.fill(Color(0, 0, 0, 0))
+	material.set_shader_parameter("pbr_canopy_tex", ImageTexture.create_from_image(blank))
+	material.set_shader_parameter("pbr_level_size", Vector2(1, 1))
 	water_material = ShaderMaterial.new()
 	water_material.shader = load("res://shaders/world/voxel_water.gdshader")
 	plant_material = ShaderMaterial.new()
@@ -1098,7 +1129,7 @@ func _make_materials() -> void:
 	cols.resize(N_SOLID)
 	for id in N_SOLID:
 		cols[id] = Vector3(_lin_cols[id].r, _lin_cols[id].g, _lin_cols[id].b)
-	var g2 := _pal(19, Color8(67, 131, 16)).srgb_to_linear()
+	var g2 := _grass_b if _grass_b.r >= 0.0 else _pal(19, Color8(67, 131, 16)).srgb_to_linear()
 	var wa := _pal(54, Color8(126, 153, 246)).srgb_to_linear()
 	var wd := _pal(10, Color8(53, 82, 168)).srgb_to_linear()
 	if fore:
@@ -1116,13 +1147,73 @@ func _make_materials() -> void:
 	plant_material.set_shader_parameter("grass_col", cols[GRASS])
 	plant_material.set_shader_parameter("grass_b", Vector3(g2.r, g2.g, g2.b))
 
+## Block colours = what the level's own blocks use: the average painted (fgcol) colour of the level's tiles
+## per material class (grass tops, earth, ruin stone, foliage, wood, sand), linear. Falls back to the palette.
+func _level_colors(terrain: WorldTerrain) -> void:
+	var img := terrain.fgcol_img
+	if img == null:
+		return
+	var sums := {}
+	var W2 := terrain.W
+	for y in terrain.H:
+		for x in W2:
+			var i := y * W2 + x
+			if not terrain.solid[i]:
+				continue
+			var m: int = terrain.mat_ids[i]
+			var key := m
+			if m == WorldPalette.M_GRASS and (y == 0 or terrain.solid[i - W2]):
+				continue   # only lawn TOPS count as grass
+			var c := img.get_pixel(x, y).srgb_to_linear()
+			if not sums.has(key):
+				sums[key] = [Color(0, 0, 0, 0), 0]
+			var e: Array = sums[key]
+			e[0] = (e[0] as Color) + c
+			e[1] = int(e[1]) + 1
+	var avg := func(m: int) -> Color:
+		if not sums.has(m) or int(sums[m][1]) < 20:
+			return Color(-1, 0, 0)
+		var e: Array = sums[m]
+		var c: Color = e[0]
+		var nn := float(e[1])
+		return Color(c.r / nn, c.g / nn, c.b / nn)
+	var g: Color = avg.call(WorldPalette.M_GRASS)
+	var ea: Color = avg.call(WorldPalette.M_EARTH)
+	var ru: Color = avg.call(WorldPalette.M_RUIN)
+	var fo: Color = avg.call(WorldPalette.M_FOLIAGE)
+	var wo: Color = avg.call(WorldPalette.M_WOOD)
+	var sa: Color = avg.call(WorldPalette.M_SAND)
+	if g.r >= 0.0:
+		_lin_cols[GRASS] = g
+		_grass_b = g * Color(0.8, 1.05, 0.7)
+	if ea.r >= 0.0:
+		_lin_cols[DIRT] = ea
+		_lin_cols[DIRT_L] = ea * 1.15
+		_lin_cols[CLAY] = ea * Color(1.05, 0.9, 0.8)
+	if ru.r >= 0.0:
+		_lin_cols[RUIN] = ru
+		_lin_cols[RUIN_MOSS] = ru
+		_lin_cols[STONE] = ru
+		_lin_cols[STONE_W] = ru * Color(1.0, 0.97, 0.9)
+		_lin_cols[STONE_L] = ru * 1.15
+		_lin_cols[GRAVEL] = ru * 0.9
+	if fo.r >= 0.0:
+		_lin_cols[LEAVES] = fo
+		_lin_cols[PINE] = fo * Color(0.6, 0.75, 0.7)
+	if wo.r >= 0.0:
+		_lin_cols[LOG] = wo
+		_lin_cols[PINE_LOG] = wo * 0.8
+	if sa.r >= 0.0:
+		_lin_cols[SAND] = sa
+	print("WorldVoxel level colours: grass %s earth %s ruin %s foliage %s wood %s" % [g, ea, ru, fo, wo])
+
 ## Block colours (sRGB) from the level palette.
 func _color_table() -> Dictionary:
 	return {
 		GRASS: _pal(35, Color8(69, 99, 19)), DIRT: _pal(45, Color8(114, 97, 75)), DIRT_L: _pal(47, Color8(142, 115, 79)),
 		CLAY: _pal(48, Color8(127, 79, 43)).lerp(_pal(45, Color8(114, 97, 75)), 0.45), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
 		STONE_L: _pal(86, Color8(134, 134, 134)), SAND: _pal(88, Color8(108, 79, 44)).lerp(Color8(196, 170, 120), 0.45),
-		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(84, 58, 38), 0.65),
+		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: Color8(78, 56, 38),
 		LEAVES: _pal(14, Color8(66, 168, 54)), PINE: _pal(19, Color8(67, 131, 16)).lerp(Color8(24, 60, 30), 0.5),
 		RUIN: _pal(42, Color8(153, 153, 153)).lerp(_pal(9, Color8(110, 110, 110)), 0.5), RUIN_MOSS: Color8(96, 118, 62),
 		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(62, 44, 30), 0.7),

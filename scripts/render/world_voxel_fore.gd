@@ -24,7 +24,14 @@ const BALL_R := 5.5             # fully clear radius around the ball (tiles); fa
 const BALL_FADE := 0.9
 const MARGIN := 0               # mask covers exactly the level; outside it counts as air
 
+## true (default): FORWARD EXTRUSION of the level's own masses (same silhouettes eroded 1 tile, same painted
+## colours / material classes, 1..MAX_E blocks deep by mass thickness); false: the old procedural props band.
+static var extrude := true
+const MAX_E := 4
+const EXT := 40                  # block id of an extruded level tile (colour + material from the tile itself)
 var W := 400
+var _tile_col := PackedColorArray()   # per level tile: painted colour (linear)
+var _tile_mat := PackedByteArray()    # per level tile: WorldPalette material
 var H := 200
 var vox := PackedByteArray()      # (k * FNY + j) * FNX + i ; block (i,j,k) spans x [FX0+i,+1], y [FY0+j,+1], z [FZ0+k,+1]
 var mask := PackedByteArray()     # per tile (y down): 255 = foreground may cover this tile
@@ -49,6 +56,12 @@ func setup(terrain: WorldTerrain) -> void:
 		if WorldPalette.is_key_door(id) or id == 43 or (id >= 1001 and id <= 1499) or id == 87:
 			ok = false   # dynamic doors / gates / one-ways / coin doors / the sky's stepping-stone birds
 		raw[i] = 1 if ok else 0
+	_tile_col.resize(W * H)
+	_tile_mat.resize(W * H)
+	for y in H:
+		for x in W:
+			_tile_col[y * W + x] = terrain.fgcol_img.get_pixel(x, y).srgb_to_linear()
+			_tile_mat[y * W + x] = terrain.mat_ids[y * W + x]
 	# erode by one tile: only the interior of masses, their edges always stay visible
 	mask.resize(W * H)
 	for y in H:
@@ -107,6 +120,10 @@ func generate(cols: PackedColorArray) -> void:
 	fn.seed = 313
 	fn.frequency = 0.07
 	fn.fractal_octaves = 3
+	if extrude:
+		_extrude()
+		_build_mesh()
+		return
 	var trunk_x := -100
 	for tx in W:
 		var ty := 0
@@ -128,6 +145,19 @@ func generate(cols: PackedColorArray) -> void:
 	_boulders(rng, fn)
 	_moss_tops(rng)
 	_build_mesh()
+
+## The level's masses continue toward the camera: every coverable tile becomes a column of blocks from z +1
+## to +1+E, E = 1..MAX_E growing with the distance to the mass edge (thick masses deeper), so the forward
+## depth is the level's own silhouette, never extra props.
+func _extrude() -> void:
+	for ty in H:
+		for tx in W:
+			var d := dist[ty * W + tx]
+			if d <= 0:
+				continue
+			var e := clampi(int(d * 0.8), 1, MAX_E)
+			for z in e:
+				_fput(tx, -ty - 1, FZ0 + z, EXT)
 
 ## One tile column of one run: bank from the floor, hang from the ceiling (world block y = -tile - 1).
 func _column(tx: int, a: int, b: int, ln: int, fn: FastNoiseLite, rng: RandomNumberGenerator) -> void:
@@ -278,6 +308,11 @@ func _build_mesh() -> void:
 					continue
 				voxel_count += 1
 				var bc: Color = _cols[id] if id < _cols.size() else Color(0.3, 0.3, 0.3)
+				var id_out := id
+				if id == EXT:
+					var ti := clampi(-(FY0 + j) - 1, 0, H - 1) * W + clampi(FX0 + i, 0, W - 1)
+					bc = _tile_col[ti]
+					id_out = 100 + _tile_mat[ti]
 				# blocks stacked above this one (-> darker toward the bottom of every mass: grounded, AO-like)
 				var above := 0
 				while above < 12 and _occ(i, j + above + 1, k):
@@ -306,7 +341,7 @@ func _build_mesh() -> void:
 						var ao := 0.0 if s1 + s2 > 1.5 else (3.0 - s1 - s2 - cc) / 3.0
 						verts.append(p)
 						norms.append(Vector3(n))
-						colors.append(Color(bc.r, bc.g, bc.b, float(id) / 255.0))
+						colors.append(Color(bc.r, bc.g, bc.b, float(id_out) / 255.0))
 						uvs.append(Vector2(ao, above + (FY0 + j + 1.0 - p.y)))
 						cust.append_array(PackedFloat32Array([FX0 + i + 0.5, FY0 + j + 0.5, FZ0 + k + 0.5, 0.0]))
 					var nf := Vector3(n)

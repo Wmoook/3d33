@@ -14,13 +14,15 @@ uniform vec3 vol_origin = vec3(-104.0, -256.0, 3.0);
 uniform ivec3 vol_size = ivec3(608, 320, 160);
 uniform vec3 blk_col[18];
 uniform vec3 grass_b = vec3(0.06, 0.23, 0.005);
+uniform sampler2D detail_nrm2 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D detail_hgt : filter_linear_mipmap, repeat_enable;
 uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform float fog_density = 0.0011;
 uniform float haze_near = 0.08;      // readability haze at the volume front ...
 uniform float haze_far = 0.40;       // ... and at its back (the vista's near haze takes over there)
 uniform float haze_gain = 1.0;
 uniform float fade = 1.0;            // build fade-in (0 = fully hazed)
-uniform float ao_strength = 0.62;
+uniform float ao_strength = 0.42;
 // readability: everything here is seen through open sky air, so no pixel may read much darker than the sky
 // behind it. The lit luminance is predicted (sun + sky ambient, no shadows) and extra haze is added where it
 // would fall below min_rel x the sky's luminance (linear), which keeps world's sky-luma check OK.
@@ -105,109 +107,145 @@ void fragment() {
 	float aov = mix(mix(a00, a10, u), mix(a01, a11, u), v);
 	aov = aov * aov * (3.0 - 2.0 * aov);
 	float block_ao = mix(1.0 - ao_strength, 1.0, aov);
-	// --- colour
+	// --- material: the SAME classes / look as the level's own blocks (world's depth_volume + terrain):
+	// continuous world-space textures (no per-block patches, no pixel pattern), pillow bevels on convex edges,
+	// detail lumps, lawn turf with blade texture, strata earth, ashlar ruin stone with moss, leaf-cluster crowns
 	vec3 bcf = vec3(bc);
-	float hb = h31(bcf + 0.5);
-	float hb2 = h31(bcf.zxy + 17.3);
 	vec3 albedo = blk_col[clamp(id, 0, 17)];
-	int mat = PBR_M_STONE;
-	int layer = PBR_ROCK;
-	float tscale = 0.35;
 	bool top = gn.y > 0.5;
 	bool side = abs(gn.y) < 0.5;
-	float big = vnoise2(bcf.xz * 0.07) * 0.65 + vnoise2(bcf.xz * 0.21 + 3.1) * 0.35;
+	bool horiz = abs(gn.y) > 0.5;
+	vec2 pp = vec2(wp.x, -wp.y);
+	float big = vnoise2(wp.xz * 0.07) * 0.65 + vnoise2(wp.xz * 0.21 + 3.1) * 0.35;
+	int mat = PBR_M_STONE;
+	bool lawn = false;     // grass top or the turf fringe of a grass block
+	bool turf_side = false;
 	if (id == B_GRASS || id == B_SNOW_GRASS) {
 		bool open_up = occ(bc + ivec3(0, 1, 0)) < 0.5;
-		// Minecraft grass side: dirt with a jagged fringe of turf hanging over the top edge
+		// turf fringe hanging over the top edge (irregular, continuous along the face)
 		float fy = fract(wp.y);
-		float jag = pbr_hash(vec2(floor(u * 8.0), bcf.x * 3.1 + bcf.z * 7.7 + bcf.y)) * 0.22;
-		bool fringe = side && open_up && fy > 0.80 - jag;
+		// the level's turf wraps over the block sides: green down to a ragged soil edge near the bottom
+		float jag = vnoise2(vec2(dot(wp, T1) * 3.1, bcf.y * 1.7)) * 0.35;
+		bool fringe = side && open_up && fy > 0.18 + jag;
 		if (top || fringe) {
 			if (id == B_GRASS) {
-				albedo = mix(albedo, grass_b, smoothstep(0.3, 0.75, big)) * 0.82;
-				// per-block hue drift (yellower / bluer greens) like Minecraft's biome-blended grass
-				albedo *= vec3(1.0 + 0.16 * (hb2 - 0.5), 1.0, 1.0 - 0.3 * (hb2 - 0.5));
-				mat = PBR_M_GRASS; layer = PBR_GRASS; tscale = 0.55;
+				albedo = mix(albedo, grass_b, smoothstep(0.3, 0.75, big));
+				mat = PBR_M_GRASS;
+				lawn = true;
 			} else {
-				mat = PBR_M_SNOW; layer = PBR_MARBLE; tscale = 0.3;
+				mat = PBR_M_SNOW;
+				albedo = mix(albedo, vec3(0.62, 0.66, 0.7), 0.35);   // softer, less contrasty snow
 			}
-		} else if (side || gn.y < -0.5) {
+		} else {
 			albedo = blk_col[B_DIRT];
-			mat = PBR_M_EARTH; layer = PBR_SOIL; tscale = 0.4;
+			mat = PBR_M_EARTH;
+			turf_side = side && open_up;
 		}
 	} else if (id == B_DIRT || id == B_DIRT_L || id == B_CLAY) {
-		mat = PBR_M_EARTH; layer = PBR_SOIL; tscale = 0.4;
+		mat = PBR_M_EARTH;
 	} else if (id == B_SAND || id == B_GRAVEL) {
-		mat = PBR_M_SAND; layer = id == B_SAND ? PBR_SAND : PBR_ROCK; tscale = id == B_SAND ? 0.5 : 0.9;
+		mat = PBR_M_SAND;
 	} else if (id == B_SNOW) {
-		mat = PBR_M_SNOW; layer = PBR_MARBLE; tscale = 0.3;
+		mat = PBR_M_SNOW;
 	} else if (id == B_LOG || id == B_PINE_LOG) {
-		mat = PBR_M_WOOD; layer = PBR_BARK; tscale = 0.5;
-		if (!side) {
-			// end grain: rings
-			vec2 q = vec2(u, v) - 0.5;
-			float rr = length(q);
-			albedo = mix(albedo * 1.6, albedo * 1.15, 0.5 + 0.5 * sin(rr * 40.0));
-			albedo *= 1.0 - smoothstep(0.42, 0.5, max(abs(q.x), abs(q.y))) * 0.5;
-			layer = PBR_SOIL;
-		}
+		mat = PBR_M_WOOD;
 	} else if (id == B_LEAVES || id == B_PINE) {
-		mat = PBR_M_FOLIAGE; layer = PBR_LITTER; tscale = 0.45;
-		albedo *= mix(0.7, 1.08, big) * 0.85;
-		albedo *= vec3(1.0 + 0.14 * (hb2 - 0.5), 1.0, 1.0 - 0.25 * (hb2 - 0.5));
+		mat = PBR_M_FOLIAGE;
 	} else if (id == B_RUIN || id == B_RUIN_MOSS) {
-		mat = PBR_M_RUIN; layer = PBR_ASHLAR; tscale = 0.5;
-		if (id == B_RUIN_MOSS && top) {
-			albedo = pbr_moss_color * 1.3;
-			layer = PBR_MOSS;
-		} else if (id == B_RUIN_MOSS) {
-			albedo = mix(albedo, pbr_moss_color * 1.2, smoothstep(0.3, 0.9, fract(wp.y)));
-		}
-	} else if (id == B_STONE || id == B_STONE_W || id == B_STONE_L) {
-		layer = (hb > 0.5) ? PBR_ROCK : PBR_STRATA;
-		tscale = 0.35;
+		mat = PBR_M_RUIN;
+	} else {
+		mat = PBR_M_CRAG;   // natural rock: the strata cliff scan, like the level's crags
 	}
-	// Minecraft-like pixel texture: a 4x4 grid of light / dark texels per face (strong on grass & leaves)
-	{
-		float tex = pbr_hash(floor(vec2(u, v) * 4.0) + bcf.xy * 5.3 + bcf.z * 11.7 + (top ? 0.0 : 3.1));
-		bool leafy_b = id == B_LEAVES || id == B_PINE || ((id == B_GRASS) && (top || fract(wp.y) > 0.72));
-		float amp = leafy_b ? 0.3 : 0.12;
-		float fk = 1.0 - smoothstep(35.0, 110.0, length(CAMERA_POSITION_WORLD - wp));
-		albedo *= 1.0 + (tex - 0.5) * amp * fk;
-	}
-	// per-block jitter (every cube a slightly different shade, like hand-placed blocks)
-	float far_k = 1.0 - smoothstep(40.0, 120.0, length(CAMERA_POSITION_WORLD - wp)) * 0.7;
-	albedo *= 1.0 + (hb - 0.5) * 0.16 * far_k;
-	albedo *= mix(0.94, 1.05, big);
-	// --- bevels on convex edges + faint seams on every block edge
-	vec3 n = gn;
-	float bw = 0.14;
-	float e1p = occ(bc + c1), e1n = occ(bc - c1), e2p = occ(bc + c2), e2n = occ(bc - c2);
-	vec3 bend = vec3(0.0);
-	bend += T1 * (1.0 - smoothstep(0.0, bw, 1.0 - u)) * (1.0 - e1p);
-	bend -= T1 * (1.0 - smoothstep(0.0, bw, u)) * (1.0 - e1n);
-	bend += T2 * (1.0 - smoothstep(0.0, bw, 1.0 - v)) * (1.0 - e2p);
-	bend -= T2 * (1.0 - smoothstep(0.0, bw, v)) * (1.0 - e2n);
-	float convex = clamp(length(bend), 0.0, 1.0);
-	n = normalize(n + bend * 0.9);
-	float edge = min(min(u, 1.0 - u), min(v, 1.0 - v));
-	float seam = 1.0 - smoothstep(0.0, 0.03, edge);
-	albedo *= 1.0 - seam * 0.16 * (1.0 - convex) * far_k;
-	albedo *= 1.0 + convex * 0.1;   // worn, sunlit rims
-	// --- photoscan detail, sampled with a per-block offset so every block shows a different patch
-	float rough = 0.88;
+	float rough = 0.85;
 	float ao = block_ao;
-	vec3 off = vec3(hb, hb2, h31(bcf + 5.7)) * 13.0;
-	vec3 sp = floor(wp - gn * 0.25) + off + (wp - floor(wp - gn * 0.25));
-	float fadek = pbr_fade(wp, CAMERA_POSITION_WORLD, 0.35) * pbr_strength;
-	PbrS s = pbr_tri(layer, sp, gn, tscale, 1.0, false);
-	float kalb = mat == PBR_M_SNOW ? 0.3 : 0.85;
-	pbr_apply(s, kalb * fadek, 0.7 * fadek, 0.5, 0.0, albedo, n, rough, ao);
-	if (mat == PBR_M_SNOW) {
-		rough = 0.55;
+	vec3 n = gn;
+	// plane coordinates of this face (u across, v along the depth), as world's depth volume
+	vec2 q = horiz ? vec2(wp.x, -wp.z) : (abs(gn.x) > 0.5 ? vec2(-wp.z, -wp.y) : vec2(wp.x, -wp.y));
+	if (mat == PBR_M_RUIN) {
+		// dressed ashlar: running bond of big blocks with darker mortar joints (world's depth_volume)
+		vec2 wq = q + vec2(vnoise2(q * 0.4), vnoise2(q * 0.4 + 3.0)) * 0.3;
+		float row = floor(wq.y * 0.8);
+		vec2 bq = vec2(wq.x * 0.5 + pbr_hash(vec2(row, 1.7)) * 3.0, wq.y * 0.8);
+		vec2 bi = floor(bq);
+		vec2 bf = bq - bi;
+		float joint = min(min(bf.x, 1.0 - bf.x) * 2.0, min(bf.y, 1.0 - bf.y));
+		float jl = 1.0 - smoothstep(0.02, 0.08, joint);
+		albedo *= mix(0.82, 1.1, pbr_hash(bi + 7.0)) * (1.0 - jl * 0.45);
+		// moss in the joints and on the tops (the level's mossy ruins)
+		float mz = (top ? 0.75 : 0.0) + jl * 0.5 + (id == B_RUIN_MOSS ? 0.4 : 0.0);
+		mz *= smoothstep(0.35, 0.7, vnoise2(pp * 0.5) + (top ? 0.25 : 0.0));
+		albedo = mix(albedo, pbr_moss_color * mix(0.7, 1.1, vnoise2(pp * 3.0)), clamp(mz, 0.0, 1.0) * 0.8);
+	} else if (mat == PBR_M_EARTH || mat == PBR_M_CRAG) {
+		// soil / rock strata on the faces (continuous across blocks)
+		float sy = -wp.y * 1.2 + vnoise2(q * vec2(0.2, 0.5)) * 1.4;
+		albedo *= mix(0.84, 1.08, sin(sy * 3.1) * 0.25 + 0.5 + (pbr_hash(vec2(floor(sy), 7.0)) - 0.5) * 0.5);
+	} else if (mat == PBR_M_WOOD && horiz) {
+		vec2 rq = fract(horiz ? wp.xz : wp.zy) - 0.5;
+		albedo = mix(albedo * 1.5, albedo * 1.1, 0.5 + 0.5 * sin(length(rq) * 40.0));
 	}
+	bool leafy = mat == PBR_M_GRASS || mat == PBR_M_FOLIAGE;
+	if (mat == PBR_M_FOLIAGE && side) {
+		albedo *= 0.8;   // inside a crown: shaded leaves
+	}
+	{
+		// big rock lumps / leaf clumps so faces aren't flat planes (world's detail normals, two scales)
+		vec3 U = horiz ? vec3(1.0, 0.0, 0.0) : (abs(gn.x) > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0));
+		vec3 V = horiz ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+		vec2 luv = horiz ? wp.xz : (abs(gn.x) > 0.5 ? wp.zy : wp.xy);
+		vec3 t1 = texture(detail_nrm2, luv * 0.18).xyz * 2.0 - 1.0;
+		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
+		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
+		float lump = mat == PBR_M_RUIN ? 0.35 : (mat == PBR_M_FOLIAGE ? 0.9 : (leafy ? 0.3 : 0.7));
+		n = normalize(n + (U * tb.x + V * tb.y) * lump);
+		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
+	}
+	// pillow bevel: bend the normal outward near every CONVEX edge (world's day bevel profile)
+	{
+		float bw = 0.34;
+		float e1p = occ(bc + c1), e1n = occ(bc - c1), e2p = occ(bc + c2), e2n = occ(bc - c2);
+		vec3 bend = vec3(0.0);
+		bend += T1 * (1.0 - smoothstep(0.0, bw, 1.0 - u)) * (1.0 - e1p);
+		bend -= T1 * (1.0 - smoothstep(0.0, bw, u)) * (1.0 - e1n);
+		bend += T2 * (1.0 - smoothstep(0.0, bw, 1.0 - v)) * (1.0 - e2p);
+		bend -= T2 * (1.0 - smoothstep(0.0, bw, v)) * (1.0 - e2n);
+		n = normalize(n + bend * 1.5);
+	}
+	// photoscan detail: the same library calls the level uses
+	float fadek = pbr_fade(wp, CAMERA_POSITION_WORLD, 0.35) * pbr_strength;
+	bool hex = length(CAMERA_POSITION_WORLD - wp) < pbr_hex_dist;
+	if (mat == PBR_M_GRASS) {
+		// the level's lawn: grass scan broken by leaf-litter patches
+		PbrS sg = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, hex);
+		float cov = smoothstep(0.45, 0.85, vnoise2(pp * 0.23)) * 0.6;
+		if (cov > 0.01) {
+			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
+			sg = pbr_mix(sg, l, pbr_hblend(sg.h, l.h, cov, 0.25));
+		}
+		pbr_apply(sg, fadek, 0.85 * fadek, 0.6, 0.1, albedo, n, rough, ao);
+	} else if (mat == PBR_M_FOLIAGE) {
+		// leaf-cluster crowns: the dense leaf scan with big leaves, deep cavities
+		PbrS sl2 = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, hex);
+		pbr_apply(sl2, fadek, 0.9 * fadek, 0.6, 0.0, albedo, n, rough, ao);
+		albedo *= mix(0.6, 1.0, sl2.h);
+	} else if (mat == PBR_M_SNOW) {
+		PbrS ss = pbr_tri(PBR_MARBLE, wp, gn, 0.3, 1.0, false);
+		pbr_apply(ss, 0.3 * fadek, 0.5 * fadek, 0.3, 0.0, albedo, n, rough, ao);
+		rough = 0.55;
+	} else {
+		pbr_terrain(mat, wp, gn, pp, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+	}
+	if (turf_side) {
+		// turf side under the lawn: soil laced with hanging roots (the level's turf edge)
+		vec2 ruv = vec2(wp.x * 1.3 + wp.z * 1.3, -wp.y * 0.28);
+		float rl = texture(pbr_tex, vec3(ruv, float(PBR_BARK))).r * 2.0;
+		float roots = smoothstep(0.75, 0.25, rl) * (1.0 - smoothstep(0.0, 0.7, 1.0 - fract(wp.y)));
+		albedo *= 1.0 - roots * 0.45 * fadek;
+	}
+	// patchy large-scale tone so the hillsides don't read as one flat colour
+	albedo *= mix(0.88, 1.06, vnoise2(wp.xz * 0.12));
 	if (gn.y < -0.5) {
-		albedo *= 0.6;   // undersides: shadowed rock
+		albedo *= 0.45;   // undersides: shadowed rock (as the level's volumes)
+		ao *= 0.8;
 	}
 	// --- aerial haze toward the sky of the same direction
 	vec3 sd = normalize(sun_dir);

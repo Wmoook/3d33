@@ -95,7 +95,13 @@ void fragment() {
 	uv = clamp(uv, 0.0, 1.0);
 	int layer = PBR_ROCK;
 	float sc = 0.35;
-	if (id == 1) {
+	bool level_tile = id >= 100;
+	int lmat = id - 100;
+	if (level_tile) {
+		// an extruded level tile: the tile's own painted colour + its material class's photoscan
+		layer = pbr_layer_of(lmat);
+		sc = lmat == 10 || lmat == 11 ? 0.55 : 0.4;
+	} else if (id == 1) {
 		if (abs(gn.y) < 0.5) {
 			float jag = h12(vec2(floor(uv.x * 8.0), bpos.x + bpos.z * 7.0)) * 0.22;
 			if (lp.y < 0.8 - jag) {
