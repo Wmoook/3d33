@@ -7,13 +7,16 @@ usage: python tests/fv_audit_report.py <audit dir> [--watch] [--keep] [--workers
   --keep:  keep the raw .bin frames (default: deleted once analysed)
 
 Per capture (a = normal camera, b = camera distance x (1 + 1e-5), c = normal again, d/e = moved 0.45 px):
-  SKY LEAK   sky-coloured pixels (pale blue sky / pale cyan-white cloud) whose z = 0 tile is NOT open sky, static
+  SKY LEAK   (frame s, primary) pure-sentinel background pixels (sky, vista, voxel, backdrop replaced by magenta)
+             on non-open-sky tiles, outside the bevel + parallax band. PALE (secondary, the old test):
+             sky-coloured pixels (pale blue sky / pale cyan-white cloud) whose z = 0 tile is NOT open sky, static
              (a == c: waterfalls / spray / glints animate), outside the bevel + parallax band along open-sky edges
   FLICKER    |lum(b) - lum(a|c)| > 0.12 on pixels that are stable between a and c (z-fighting)
   SHIMMER    lum(d) (camera moved 0.45 px) outside lum(a)'s 3x3 range by > 0.10, stable a vs c (move flicker)
   BLACK LINE near-black (luma < 0.02) thin runs (<= 4 px @1080p thick, >= 40 px @1080p long, both sides > 0.06)
              over air tiles
-Excluded: gameplay glyph tiles (+1 ring), painted window tiles, the ball (1.7 tiles), pixels outside the level.
+Excluded: gameplay glyph tiles (+1 ring), window tiles (+1 ring: terrain windows, enclosed painted sky, world_depth.win), water / waterfall tiles (+2 ring, flicker and
+shimmer; sky ignores them within 1 tile), the ball (1.7 tiles), pixels outside the level.
 Writes <dir>/<base>.png (dimmed frame; sky leak magenta, flicker yellow, shimmer orange, black line cyan), report.json, report.txt.
 """
 import json
@@ -31,12 +34,16 @@ FLICKER_D = 0.12        # luminance change under the depth-precision change
 ANIM_D = 0.04           # a vs c: above this the pixel animates by itself (particles, wind, water)
 BLACK_L = 0.02
 BLACK_SIDE = 0.06        # both sides of a black line must be brighter than this
-CLUSTER_MIN = 4.0       # per-mille of a tile's area for a tile to join a cluster
+CLUSTER_MIN = {"sky": 4.0, "black": 4.0, "flicker": 30.0, "shimmer": 30.0, "pale": 4.0}
+                        # per-mille of a tile's area for a tile to count / join a cluster; flicker / shimmer
+                        # need >= 3 % of the tile (SSAO / SSR noise stays below; z-fighting is blocky patches)
 SHIMMER_M = 0.10       # d (camera moved 0.45 px) outside a's 3x3 luminance range by more than this
 BEVEL = 0.16            # sky within this many tiles of a sky-neighbour edge = the block's rounded bevel, not a leak
+SKY_MIN_PX = 24         # sky blobs smaller than this (px @1080p) are specks (glints / sparkles), not leaks
 BACK_D = 1.0            # air tiles: tiles of depth behind z = 0 through which perspective may see the sky neighbour
-CATS = ("sky", "flicker", "shimmer", "black")
-COLS = {"black": (0, 1, 1), "shimmer": (1, 0.5, 0), "flicker": (1, 1, 0), "sky": (1, 0, 1)}
+CATS = ("sky", "flicker", "shimmer", "black", "pale")   # sky = sentinel pass; pale = the colour-test metric
+COLS = {"black": (0, 1, 1), "shimmer": (1, 0.5, 0), "flicker": (1, 1, 0), "sky": (1, 0, 1)}   # pale is not drawn
+SENT_MIN_PX = 6         # sentinel blobs smaller than this (px @1080p) are dropped (single AA pixels)
 MAT_BLUE = {4, 5, 9, 15, 17, 18}   # ice, water, glass, cloud, gem, snow: legitimately pale blue materials
 
 _tiles = None
@@ -50,11 +57,16 @@ def load_tiles(d):
         mat = t[:, :, 1]
         glyph = (t[:, :, 2] & 1) > 0
         window = (t[:, :, 2] & 2) > 0
+        # glass panes / frames overhang their opening tiles by up to a tile
+        window = ndimage.binary_dilation(window, structure=np.ones((3, 3), bool))
+        painted = (t[:, :, 2] & 8) > 0   # painted-sky air: sky, but world may frame it (window frames are not lines)
         sky = cls == 1
         near_sky = ndimage.binary_dilation(sky, structure=np.ones((3, 3), bool))
         blue_mat = np.isin(mat, list(MAT_BLUE)) | ((t[:, :, 2] & 4) > 0)   # + painted water / waterfalls
         blue_mat = ndimage.binary_dilation(blue_mat, structure=np.ones((3, 3), bool))
-        _tiles = dict(cls=cls, mat=mat, glyph=glyph, near_sky=near_sky, blue_mat=blue_mat, sky=sky, window=window)
+        wet = np.isin(mat, [4, 5]) | ((t[:, :, 2] & 4) > 0)
+        wet = ndimage.binary_dilation(wet, structure=np.ones((5, 5), bool))   # + the splash / mist ring
+        _tiles = dict(cls=cls, mat=mat, glyph=glyph, near_sky=near_sky, blue_mat=blue_mat, sky=sky, window=window, wet=wet, painted=painted)
     return _tiles
 
 
@@ -147,18 +159,39 @@ def analyse(d, meta, keep):
         anim = np.abs(lumA - lumC) > ANIM_D
         anim = ndimage.binary_dilation(anim, iterations=2)
         anim_n = int(anim.sum())
-        flick = (np.abs(lumB - lumA) > FLICKER_D) & (np.abs(lumB - lumC) > FLICKER_D) & ~anim & valid
+        wet = T["wet"][ty, tx]   # animated water / waterfall tiles: never z-fighting evidence
+        flick = (np.abs(lumB - lumA) > FLICKER_D) & (np.abs(lumB - lumC) > FLICKER_D) & ~anim & valid & ~wet
         flick = ndimage.binary_opening(flick, structure=np.ones((1, 2), bool)) | \
             ndimage.binary_opening(flick, structure=np.ones((2, 1), bool))   # drop isolated single pixels
         # pale animated overlays (waterfalls, spray, glints) are not sky: drop sky pixels at / near motion
         sky_leak &= ~ndimage.binary_dilation(anim, iterations=max(int(4 * s), 1))
+
+    # isolated pale specks (glints, sparkles, speculars) are not leaks: keep sky blobs of >= SKY_MIN_PX @1080p
+    lab, n = ndimage.label(sky_leak, structure=np.ones((3, 3)))
+    if n:
+        sizes = ndimage.sum(sky_leak, lab, index=np.arange(1, n + 1))
+        keep_ids = np.flatnonzero(sizes >= SKY_MIN_PX * s * s) + 1
+        sky_leak = np.isin(lab, keep_ids)
+
+    # sentinel pass (frame s: sky / vista / voxel / backdrop replaced by pure magenta): the primary sky metric;
+    # the colour test above stays as the secondary "pale" column (it also flags sky-ambient-lit blue-grey stone)
+    pale = sky_leak
+    S = read_frame(os.path.join(raw, base + "_s.bin"), iw, ih, fmt) if meta.get("sentinel") else None
+    if S is not None:
+        sent = (np.minimum(S[..., 0], S[..., 2]) - S[..., 1]) > 0.4   # >= ~half the pixel is background
+        sky_leak = sent & valid & (cls != 1) & ~edge & ~T["blue_mat"][ty, tx]
+        lab, n = ndimage.label(sky_leak, structure=np.ones((3, 3)))
+        if n:
+            sizes = ndimage.sum(sky_leak, lab, index=np.arange(1, n + 1))
+            sky_leak = np.isin(lab, np.flatnonzero(sizes >= SENT_MIN_PX * s * s) + 1)
+        sky_edge_n = int((sent & valid & (cls != 1) & edge).sum())
 
     shim = np.zeros_like(sky_leak)
     if D is not None:
         lumD = D @ LUM
         lo = ndimage.minimum_filter(np.minimum(lumA, lumC), size=3)
         hi = ndimage.maximum_filter(np.maximum(lumA, lumC), size=3)
-        shim = ((lumD < lo - SHIMMER_M) | (lumD > hi + SHIMMER_M)) & ~anim & valid
+        shim = ((lumD < lo - SHIMMER_M) | (lumD > hi + SHIMMER_M)) & ~anim & valid & ~wet
         if E is not None:
             lumE = E @ LUM
             shim &= (np.abs(lumE - lumD) < ANIM_D)   # static in the moved camera too (not a passing particle)
@@ -179,7 +212,7 @@ def analyse(d, meta, keep):
     hline = (hr >= long_) & (vr <= thin) & (side_min(k, 0) > BLACK_SIDE)
     vline = (vr >= long_) & (hr <= thin) & (side_min(0, k) > BLACK_SIDE)
     black = dark & (hline | vline) & valid
-    black_air = black & (cls != 2)
+    black_air = black & (cls != 2) & ~T["painted"][ty, tx]
     black_solid_n = int((black & (cls == 2)).sum())
 
     # per-tile scores (per-mille of a tile's area) + details
@@ -187,7 +220,7 @@ def analyse(d, meta, keep):
     tile_idx = (ty * W + tx)
     res = {"base": base, "name": meta["name"], "zoom": meta["zoom"], "tile": meta["tile"], "px_per_tile": px_per_tile,
            "anim_px": anim_n, "black_solid_px": black_solid_n, "sky_edge_px": sky_edge_n}
-    masks = {"sky": sky_leak, "flicker": flick, "shimmer": shim, "black": black_air}
+    masks = {"sky": sky_leak, "flicker": flick, "shimmer": shim, "black": black_air, "pale": pale}
     for k, m in masks.items():
         n = int(m.sum())
         res[k + "_px"] = n
@@ -216,16 +249,16 @@ def analyse(d, meta, keep):
         img = img[::f, ::f]
     Image.fromarray(img).save(os.path.join(d, base + ".png"), compress_level=3)
     if not keep:
-        for sfx in "abcde":
+        for sfx in "abcdes":
             p = os.path.join(raw, "%s_%s.bin" % (base, sfx))
             if os.path.exists(p):
                 os.remove(p)
     return res
 
 
-def clusters(score, W, top=40):
+def clusters(score, W, k, top=40):
     """8-connected clusters of tiles with score >= CLUSTER_MIN (gap of 1 tile bridged)."""
-    m = score >= CLUSTER_MIN
+    m = score >= CLUSTER_MIN[k]
     if not m.any():
         return []
     lab, n = ndimage.label(ndimage.binary_dilation(m, structure=np.ones((3, 3), bool)), structure=np.ones((3, 3)))
@@ -263,7 +296,7 @@ def report(d, results):
     tot["sky_edge_px"] = sum(r.get("sky_edge_px", 0) for r in results)
     cl = {}
     for k in CATS:
-        cl[k] = clusters(glob[k], W)
+        cl[k] = clusters(glob[k], W, k)
         for c in cl[k]:
             caps = set()
             for y in range(c["y0"], c["y1"] + 1):
@@ -271,12 +304,12 @@ def report(d, results):
                     caps.update(seen[k].get(y * W + x, []))
             c["captures"] = sorted(caps)[:8]
             c["cls"] = {n: int(((T["cls"][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] == v) &
-                               (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN)).sum())
+                               (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN[k])).sum())
                         for n, v in (("air", 0), ("sky", 1), ("solid", 2))}
             if k == "sky":
                 c["edge_tiles"] = int((T["near_sky"][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] &
-                                       (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN)).sum())
-        tot[k + "_tiles"] = int((glob[k] >= CLUSTER_MIN).sum())
+                                       (glob[k][c["y0"]:c["y1"] + 1, c["x0"]:c["x1"] + 1] >= CLUSTER_MIN[k])).sum())
+        tot[k + "_tiles"] = int((glob[k] >= CLUSTER_MIN[k]).sum())
         tot[k + "_clusters"] = len(cl[k])
     results = sorted(results, key=lambda r: -sum(r[k + "_px"] for k in CATS) / r["px_per_tile"] ** 2)
     for r in results:
@@ -298,9 +331,10 @@ def report(d, results):
     L.append("TOTALS  sky leak %(sky_px)d px on %(sky_tiles)d tiles (%(sky_clusters)d clusters) | flicker %(flicker_px)d px on "
              "%(flicker_tiles)d tiles (%(flicker_clusters)d) | shimmer %(shimmer_px)d px on %(shimmer_tiles)d tiles "
              "(%(shimmer_clusters)d) | black lines %(black_px)d px on %(black_tiles)d tiles (%(black_clusters)d)" % tot)
+    L.append("  secondary: pale-colour sky test %(pale_px)d px on %(pale_tiles)d tiles (the pre-sentinel metric)" % tot)
     L.append("  (not counted: sky at sky-edges within bevel/parallax tolerance %(sky_edge_px)d px, black lines over "
              "solids %(black_solid_px)d px)" % tot)
-    L.append("score = per-mille of a tile's area flagged (max over captures); tiles >= %.0f join clusters" % CLUSTER_MIN)
+    L.append("score = per-mille of a tile's area flagged (max over captures); tiles join clusters at %s" % CLUSTER_MIN)
     for k in CATS:
         L.append("")
         L.append("== %s clusters (worst first) ==" % k.upper())
