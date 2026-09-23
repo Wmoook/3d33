@@ -20,7 +20,7 @@ var rec                          # EEReplay of the current run
 var best                         # EEReplay of the best run (or null)
 var best_ticks := -1
 var ghost_sim                    # EESim replaying `best`
-var ghost_enabled := true
+var ghost_enabled := false   # off by default (user); H still shows your best-run ghost
 var ghost_node: Node3D
 var _ghost_is_actor := false
 var _ghost_alpha := 0.0
