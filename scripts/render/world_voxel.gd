@@ -240,6 +240,16 @@ func _keep_out_image(terrain: WorldTerrain, depth: WorldDepth) -> Image:
 							b[j] = maxi(b[j], v)
 				rooms += 1
 		print("WorldVoxel keep-out: %d room tiles" % rooms)
+	# the landscape is only ever seen through OPEN SKY: any other tile has its own geometry behind it (slab,
+	# depth volume, room, forest, cave), and a ray grazing past a solid's rounded corner in that tile's
+	# footprint showed voxel land as pale slivers along block edges (flickering as the camera moved)
+	if terrain.sky.size() == b.size():
+		var room_ok: bool = depth != null and depth.room.size() == b.size()
+		for i in b.size():
+			var open_sky: bool = terrain.sky[i] != 0 and not terrain.solid[i]
+			if open_sky or b[i] == 63 or (room_ok and depth.room[i] != 0):
+				continue
+			b[i] = 255
 	return Image.create_from_data(W2, terrain.H, false, Image.FORMAT_R8, b)
 
 ## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
