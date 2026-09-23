@@ -189,10 +189,10 @@ func _build_keys() -> void:
 		_build_ink(INK_REGIONS[ri][0], ink[ri])
 
 ## Non-Odyssey art regions where crowns (5) / red keys (6) are the INK of painted lettering
-## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z]
+## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z, gain]
 const INK_REGIONS := [
-	[Rect2i(350, 0, 48, 72), [5, 6], -0.83],   # just above world's pocket floor (-0.85)
-	[Rect2i(300, 14, 46, 29), [5], -0.83],
+	[Rect2i(350, 0, 48, 72), [5, 6], -0.83, 1.0],   # just above world's pocket floor (-0.85)
+	[Rect2i(300, 14, 46, 29), [5], -0.83, 0.5],    # logo inlays: metal catching light, not ink
 ]
 var _ink_mats: Array[ShaderMaterial] = []
 
@@ -240,6 +240,7 @@ func _build_ink(rect: Rect2i, cells: Array) -> void:
 	for reg in INK_REGIONS:
 		if reg[0] == rect:
 			z = reg[2]
+			m.set_shader_parameter("gain", reg[3])
 	mi.position = Vector3(r.position.x + r.size.x * 0.5, -(r.position.y + r.size.y * 0.5), z)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)

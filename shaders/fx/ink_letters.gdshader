@@ -12,6 +12,7 @@ uniform vec3 gold : source_color = vec3(0.82, 0.58, 0.19);
 uniform vec3 gold_dark : source_color = vec3(0.36, 0.24, 0.09);
 uniform vec3 vermilion : source_color = vec3(0.4, 0.07, 0.05);
 uniform float glint_speed = 0.05;
+uniform float gain = 1.0;         // < 1: metal inlay catching light rather than bright ink
 uniform vec4 flares[4];
 uniform vec4 flares_b[4];
 
@@ -62,8 +63,8 @@ void fragment() {
 	float rim_g = (1.0 - inner_g) * g;                           // bright burnished edge band
 	float sheen_x = SCREEN_UV.x * 1.3 + SCREEN_UV.y * 0.6 - TIME * glint_speed;
 	float sheen = exp(-pow((fract(sheen_x) - 0.5) / 0.08, 2.0));
-	vec3 gc = mix(gold * 0.9, gold_dark, inner_g * 0.55) * (0.9 + 0.2 * vnoise(tp * 5.0) - crackle);
-	gc += gold * rim_g * 0.35 + vec3(1.0, 0.9, 0.7) * sheen * (0.25 + rim_g * 0.6);
+	vec3 gc = mix(gold * 0.9 * gain, gold_dark, inner_g * mix(0.8, 0.55, gain)) * (0.9 + 0.2 * vnoise(tp * 5.0) - crackle);
+	gc += gold * rim_g * 0.35 * gain + vec3(1.0, 0.9, 0.7) * sheen * (0.25 + rim_g * 0.6) * mix(0.8, 1.0, gain);
 	// oxblood / cinnabar ink: matte, pooled darker at the stroke edges, slight fibre variation
 	float edge_v = 1.0 - smoothstep(0.5, 0.85, m.g);
 	vec3 vc = vermilion * (0.85 + 0.25 * vnoise(tp * 4.0 + 3.0));
