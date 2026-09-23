@@ -719,7 +719,7 @@ func _make_islands() -> void:
 		if far_terrain and use_world_terrain:
 			# painted in FV blocks and rendered by world's terrain (the level's own materials), deferred
 			var sc := clampf(R / 12.0, 1.6, 3.5)
-			var art := WorldVistaBlocks.make_island(int(R / sc), int(d[4] / sc), int(d[6] / sc), d[5], k)
+			var art := WorldVistaBlocks.make_island(int(R / sc), int(d[4] / sc), int(d[6] * 0.45 / sc), d[5], k)   # towers kept low: tall pale ones crowded the sky behind gameplay
 			var org := Vector3(c.x - (art.anchor.x + 1) * sc, c.y + (art.anchor.y + 1) * sc, c.z)
 			_deferred_pieces.append([art.make_level(), org, sc, 100 + k])
 			if d[5]:
