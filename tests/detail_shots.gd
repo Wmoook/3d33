@@ -20,6 +20,9 @@ const SPOTS_FV := [
 	["walk8", Vector2(8, 56)],
 	["user7", Vector2(11, 56)],
 	["cave43", Vector2(43, 64)],
+	["cave4360", Vector2(43, 60)],
+	["ov_spire", Vector2(245, 90)],
+	["ov_falls", Vector2(140, 150)],
 	["far_grove", Vector2(35, 50)],
 	["far_keep", Vector2(320, 100)],
 	["far_east", Vector2(385, 100)],
@@ -123,6 +126,17 @@ func _ready() -> void:
 		env.ssil_enabled = false
 		env.sdfgi_enabled = false
 		print("ssao/ssil/sdfgi off")
+	if args.get("dayenv", "0") == "1":
+		# experiment: every zone uses the open-day preset (exposure / ambient / key / fill...)
+		var at = wv.atmosphere
+		for k in at.PRESETS:
+			at.PRESETS[k] = at.PRESETS[WorldPalette.Z_DAY]
+		print("dayenv: all presets = Z_DAY")
+	if args.get("vistapatch", "0") == "1":
+		_patch_vista(wv)
+	if args.get("novolfog", "0") == "1":
+		wv.get_environment().volumetric_fog_enabled = false
+		print("volumetric fog off")
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
@@ -440,3 +454,42 @@ func _find_at(t: Vector2, r: float) -> void:
 		var c := ab.get_center()
 		if Vector2(c.x, c.y).distance_to(wp) < r + ab.size.length() * 0.5 and c.z > -30.0:
 			print("FIND ", vi.get_path(), " ", vi.get_class(), " aabb ", ab)
+
+## Recompile every shader that includes vista_common with the test copy (zoom-independent haze proposal).
+func _patch_vista(wv: WorldView) -> void:
+	var inc := '#include "res://shaders/world/vista_common.gdshaderinc"'
+	var rep := '#include "res://tests/detail_vista_patch.gdshaderinc"'
+	var done := {}
+	var mats: Array[ShaderMaterial] = []
+	var env := wv.get_environment()
+	if env and env.sky and env.sky.sky_material is ShaderMaterial:
+		mats.append(env.sky.sky_material)
+	for n in get_tree().root.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if gi.material_override is ShaderMaterial:
+			mats.append(gi.material_override)
+		if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+			var mesh := (gi as MeshInstance3D).mesh
+			for k in mesh.get_surface_count():
+				var m := mesh.surface_get_material(k)
+				if m is ShaderMaterial:
+					mats.append(m)
+	var n_p := 0
+	for m in mats:
+		var sh := m.shader
+		if sh == null:
+			continue
+		if done.has(sh):
+			m.shader = done[sh]
+			continue
+		var code := sh.code
+		if code.find(inc) < 0 and code.find("voxel_haze.gdshaderinc") < 0:
+			continue
+		if code.find(inc) < 0:
+			continue
+		var ns := Shader.new()
+		ns.code = code.replace(inc, rep)
+		done[sh] = ns
+		m.shader = ns
+		n_p += 1
+	print("vista patch: %d shaders" % n_p)

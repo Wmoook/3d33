@@ -172,7 +172,9 @@ PbrS pbr_mix(PbrS a, PbrS b, float t) {
 
 // 1 near the camera, fading to `floor_v` far away.
 float pbr_fade(vec3 wp, vec3 cam, float floor_v) {
-	float d = length(cam - wp);
+	// measured as if the camera stood at its gameplay distance (z 26, like vista_fog_f): zooming out to the
+	// overview must not strip the surface detail off the level
+	float d = max(length(cam - wp) - max(cam.z - 26.0, 0.0), 0.0);
 	return mix(1.0, floor_v, smoothstep(pbr_fade_near, pbr_fade_far, d));
 }
 
