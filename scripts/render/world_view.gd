@@ -128,6 +128,11 @@ func _step_depth() -> void:
 	depth = WorldDepth.new()
 	_add(depth, "Depth")
 	depth.build(terrain)
+	if depth.face_count == 0 or depth.depth.size() != level.width * level.height:
+		push_warning("WorldDepth build failed; continuing without depth volumes")
+		terrain.material.set_shader_parameter("depth_cont", 0.0)
+		depth.queue_free()
+		depth = null
 	timings["depth"] = Time.get_ticks_msec() - t
 
 func _step_backdrop() -> void:
