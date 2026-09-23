@@ -61,6 +61,7 @@ var _silver_k := 0.0
 var _dying := false
 var _death_t := 0.0
 var _materialize := 1.0
+var materialize_time := 0.45
 var _glow_flash := 0.0
 ## Ghost replay ball: translucent + desaturated, no lights/trail/bursts/aura. Set before adding to the tree.
 var ghost := false
@@ -414,7 +415,7 @@ func update_from_sim(world_pos: Vector3, sim, delta: float) -> void:
 		var d := clampf((_death_t - 0.08) / 0.18, 0.0, 1.0)
 		_mat.set_shader_parameter("dissolve", d)
 		_body.visible = d < 0.999
-	_materialize = minf(_materialize + delta / 0.45, 1.0)
+	_materialize = minf(_materialize + delta / materialize_time, 1.0)
 	if not _dying and _materialize < 1.0:
 		var m := _materialize
 		_mat.set_shader_parameter("dissolve", 1.0 - m)

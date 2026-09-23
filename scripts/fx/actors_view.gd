@@ -62,6 +62,7 @@ func build(lvl: EELevel, s) -> void:
 	mech.bursts = bursts
 	add_child(mech)
 	mech.build(lvl, s)
+	blocks.mech = mech
 	life = FxAmbientLife.new()
 	life.name = "AmbientLife"
 	life.odyssey = is_odyssey()
@@ -170,6 +171,7 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 		# the level's first frame: the ball materializes with a soft burst of light at the spawn
 		_intro_done = true
 		player.on_respawn()
+		player.materialize_time = 0.8   # a slower, grander first materialize (then back to the respawn speed)
 		bursts.play(&"respawn", world_pos, Vector3.UP, Color(0.75, 0.9, 1.0))
 		bursts.flash(world_pos, Color(0.8, 0.92, 1.0), 2.5, 0.8, 5.0)
 	blocks.set_ball_pos(world_pos)
@@ -280,6 +282,10 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 			bursts.play(&"coin_ring", p, Vector3.UP, Color(1.0, 0.95, 0.75))
 		&"portal":
 			blocks.portal_fx(data.get("from"), data.get("to"))
+			if not is_odyssey():
+				for t in [data.get("from"), data.get("to")]:
+					if t is Vector2i:
+						mech.spawn_ripple(EECoords.tile_center(t.x, t.y, 0.2), Color(0.7, 0.92, 1.0), 2.4, 0.5, 2)
 		&"switch":
 			mech.on_switch(data)
 		&"piano":
@@ -287,6 +293,7 @@ func _on_sim_event(kind: StringName, data: Dictionary) -> void:
 		&"death":
 			player.on_death()
 		&"respawn":
+			player.materialize_time = 0.45
 			player.on_respawn()
 			if shrine:
 				shrine.reset_if_needed()

@@ -191,8 +191,8 @@ func _build_keys() -> void:
 ## Non-Odyssey art regions where crowns (5) / red keys (6) are the INK of painted lettering
 ## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z, gain]
 const INK_REGIONS := [
-	[Rect2i(350, 0, 48, 72), [5, 6], -0.56, 1.0],   # in the pocket, just behind the ball's back (world's bevelled floor rises above -0.85 in thin strokes)
-	[Rect2i(300, 14, 46, 29), [5], -0.56, 0.5],    # logo inlays: metal catching light, not ink
+	[Rect2i(350, 0, 48, 72), [5, 6], -0.88, 1.0],   # just above world's flat -0.9 ink floor
+	[Rect2i(300, 14, 46, 29), [5], -0.88, 0.5],    # logo inlays: metal catching light, not ink
 ]
 var _ink_mats: Array[ShaderMaterial] = []
 
@@ -350,10 +350,41 @@ func _build_barrier(id: int, tiles: Array[Vector2i]) -> void:
 	for mm in mats:
 		mm.set_shader_parameter("openness", o)
 	var labels: Array[Label3D] = []
+	var need := int(lvl.get_extra(tiles[0].x, tiles[0].y).get("rotation", 0))
 	if not odyssey and style == 2:
-		labels = _coin_labels(tiles, mask, int(lvl.get_extra(tiles[0].x, tiles[0].y).get("rotation", 0)), front)
+		labels = _coin_labels(tiles, mask, need, front)
 	_barriers.append({"id": id, "mats": mats, "reps": reps, "open": o, "target": o, "style": style,
-		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels})
+		"center": _centroid(tiles), "color": spec[1], "flash": 0.0, "labels": labels, "need": need})
+
+## Coin door reached its count (non-Odyssey): the bars grind up with dust, sparks and a warm flare at every
+## piece of the door; the grand final gate (the highest count in the level) gets a much bigger unsealing.
+func _unseal(b: Dictionary) -> void:
+	print("[fx] unseal coin door need=", b.need, " pieces=", b.labels.size())
+	if bursts == null:
+		return
+	var grand := true
+	for o in _barriers:
+		if o.style == 2 and o.need > b.need:
+			grand = false
+	var col := Color(1.0, 0.78, 0.35)
+	var spots: Array[Vector3] = []
+	for l: Label3D in b.labels:
+		spots.append(Vector3(l.position.x, l.position.y, 0.1))
+	if spots.is_empty():
+		spots.append(b.center)
+	for p in spots:
+		bursts.play(&"dust", p + Vector3(0, -0.5, 0.2), Vector3.UP, Color(0.85, 0.75, 0.55), 1.0)
+		bursts.play(&"sparks", p + Vector3(0, 0.4, 0.2), Vector3.UP, col, 1.0)
+		bursts.flash(p, col, 5.0 if grand else 3.0, 0.7 if grand else 0.45, 7.0 if grand else 5.0)
+		if grand:
+			bursts.play(&"crown", p, Vector3.UP, col)
+			bursts.play(&"coin_ring", p + Vector3(0, 0, 0.3), Vector3.UP, col)
+			bursts.play(&"shards", p, Vector3.UP, col, 0.8)
+	if mech:
+		for p in spots:
+			mech.spawn_ripple(p + Vector3(0, 0, 0.4), col, 6.0 if grand else 3.0, 1.2 if grand else 0.7, 3 if grand else 1)
+
+var mech   # FxMechBlocks (ripple pool), set by ActorsView
 
 ## Readability: the number of coins a coin door needs, once per connected piece (EE prints it on the door).
 func _coin_labels(tiles: Array[Vector2i], mask: Dictionary, need: int, _front: float) -> Array[Label3D]:
@@ -919,6 +950,8 @@ func _process(delta: float) -> void:
 		if tgt != b.target:
 			b.target = tgt
 			b.flash = 1.0
+			if tgt == 1.0 and not odyssey and b.style == 2:
+				_unseal(b)
 		b.open = move_toward(b.open, b.target, delta / 0.45)
 		b.flash = maxf(b.flash - delta * 2.0, 0.0)
 		for m: ShaderMaterial in b.mats:

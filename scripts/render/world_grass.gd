@@ -118,8 +118,54 @@ static func is_leafy(m: int) -> bool:
 ## space under the crown) or on a trunk (wood); a ground mantle ends on earth / stone, possibly across
 ## small holes (windows, pores). Shared with WorldFoliage.
 static func canopy_column(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
-	if WorldPalette.is_odyssey():
-		return y < 22
+	return canopy_map(terrain)[y * W + x] == 1
+
+## Per-tile canopy classification (1 = tree crown), cached on the terrain. Each 4-connected leafy mass
+## votes with the column walk (_canopy_walk) of its tiles: a mass is a crown if >= 35% of its tiles walk
+## down into open space or a trunk; otherwise it is a ground mantle (lawn).
+static func canopy_map(terrain: WorldTerrain) -> PackedByteArray:
+	if terrain.has_meta(&"canopy_map"):
+		return terrain.get_meta(&"canopy_map")
+	var W := terrain.W
+	var H := terrain.H
+	var out := PackedByteArray()
+	out.resize(W * H)
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	for i0 in W * H:
+		if seen[i0] or not terrain.solid[i0] or not is_leafy(terrain.mat_ids[i0]):
+			continue
+		var comp := PackedInt32Array()
+		var stack := PackedInt32Array([i0])
+		seen[i0] = 1
+		var votes := 0
+		while not stack.is_empty():
+			var i: int = stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			comp.append(i)
+			var x := i % W
+			var y := i / W
+			if WorldPalette.is_odyssey():
+				if y < 22:
+					votes += 1
+			elif _canopy_walk(terrain, x, y, W, H):
+				votes += 1
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := x + d.x
+				var ny := y + d.y
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if not seen[j] and terrain.solid[j] and is_leafy(terrain.mat_ids[j]):
+					seen[j] = 1
+					stack.append(j)
+		if float(votes) >= 0.35 * comp.size():
+			for i in comp:
+				out[i] = 1
+	terrain.set_meta(&"canopy_map", out)
+	return out
+
+static func _canopy_walk(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
 	var air := 0
 	for d in range(1, 30):
 		var yy := y + d
@@ -150,7 +196,7 @@ static func _open_row(terrain: WorldTerrain, x: int, y: int, W: int) -> bool:
 		var xx := clampi(x + dx, 0, W - 1)
 		if not terrain.solid[y * W + xx]:
 			n += 1
-	return n >= 4
+	return n >= 3
 
 ## True if the solid run through (x, y) along the row is at most `maxw` wide with open air at both ends.
 static func _narrow_run(terrain: WorldTerrain, x: int, y: int, W: int, maxw: int) -> bool:

@@ -60,12 +60,13 @@ void fragment() {
 	vec3 ns = normalize(v_right * cp.x - v_up * cp.y + fwd * 0.9);
 	nw = normalize(mix(nw, ns, round_normal));
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
-	float lum = al.r * 2.0;
-	vec3 col = v_tint * lum * mix(0.55, 1.05, v_shade);
+	float lum = mix(1.0, al.r * 2.0, 0.75);
+	// deeper cards sit in the crown's shade; the painted colour stays the average
+	vec3 col = v_tint * lum * mix(0.5, 1.0, v_shade);
 	ALBEDO = col;
 	BACKLIGHT = col * al.g * mix(0.35, 0.95, day);
-	ROUGHNESS = 0.5;
-	SPECULAR = 0.4;
+	ROUGHNESS = 0.62;
+	SPECULAR = 0.3;
 	AO = mix(0.6, 1.0, v_shade);
 	AO_LIGHT_AFFECT = 0.4;
 }

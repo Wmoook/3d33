@@ -54,6 +54,11 @@ func build(level: EELevel, s) -> void:
 	_build_invisible()
 	if not (_switches.is_empty() and _boost_tiles.is_empty() and _chime_index.is_empty()):
 		_build_ripples()
+	if not _switches.is_empty():
+		_find_doors()
+		_build_runners()
+	if not _boost_tiles.is_empty():
+		_build_boost_streak()
 
 func _number(t: Vector2i) -> int:
 	if sim != null and sim.has_method("get_tile_number"):
@@ -105,6 +110,143 @@ func _build_switches() -> void:
 		_switches.append({"tile": t, "sid": _number(t), "mat": m, "halo": hm, "light": l,
 			"on": 1.0 if on else 0.0, "flash": 0.0})
 
+## Purple doors 184 / gates 185 grouped by switch id -> centres of their connected pieces.
+var _door_spots := {}
+var _runners: Array = []      # {from, to, t, dur, col}
+var _runner_mm: MultiMesh
+var _boost_streak: GPUParticles3D
+
+func _find_doors() -> void:
+	var by_id := {}
+	for id in [184, 185]:
+		for t in lvl.find_all(id):
+			var sid := _number(t)
+			if not by_id.has(sid):
+				by_id[sid] = {}
+			by_id[sid][t] = true
+	for sid in by_id:
+		var mask: Dictionary = by_id[sid]
+		var seen := {}
+		var spots: Array[Vector3] = []
+		for t0: Vector2i in mask:
+			if seen.has(t0):
+				continue
+			var sum := Vector2.ZERO
+			var n := 0
+			var stack: Array[Vector2i] = [t0]
+			seen[t0] = true
+			while not stack.is_empty():
+				var c: Vector2i = stack.pop_back()
+				sum += Vector2(c) + Vector2(0.5, 0.5)
+				n += 1
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var q: Vector2i = c + d
+					if mask.has(q) and not seen.has(q):
+						seen[q] = true
+						stack.append(q)
+			sum /= n
+			spots.append(Vector3(sum.x, -sum.y, 0.25))
+		_door_spots[sid] = spots
+
+func _build_runners() -> void:
+	var q := QuadMesh.new()
+	q.size = Vector2(1.0, 1.0)
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/glow_inst.gdshader")
+	m.set_shader_parameter("intensity", 4.0)
+	q.material = m
+	_runner_mm = MultiMesh.new()
+	_runner_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_runner_mm.use_colors = true
+	_runner_mm.mesh = q
+	_runner_mm.instance_count = 64
+	_runner_mm.visible_instance_count = 0
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "RunePulses"
+	mi.multimesh = _runner_mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.extra_cull_margin = 16384.0
+	add_child(mi)
+
+## A rune pulse runs from the switch along the stone to each door piece it controls (a glowing head with
+## a short trail), and the door piece rings when it arrives.
+func _send_pulses(from: Vector3, sid: int) -> void:
+	for to: Vector3 in _door_spots.get(sid, []):
+		var d := from.distance_to(to)
+		if d > 60.0:
+			continue
+		_runners.append({"from": from, "to": to, "t": 0.0, "dur": clampf(d / 22.0, 0.35, 1.6), "col": SWITCH_COLOR})
+
+func _update_runners(delta: float) -> void:
+	if _runner_mm == null:
+		return
+	var n := 0
+	for i in range(_runners.size() - 1, -1, -1):
+		var r: Dictionary = _runners[i]
+		r.t += delta
+		if r.t >= r.dur:
+			spawn_ripple(r.to, SWITCH_COLOR, 3.0, 0.8, 2)
+			if bursts:
+				bursts.flash(r.to, SWITCH_COLOR, 2.0, 0.4, 4.0)
+			_runners.remove_at(i)
+	for r in _runners:
+		var k: float = r.t / r.dur
+		var from: Vector3 = r.from
+		var to: Vector3 = r.to
+		# gentle arc so pulses crossing open air still read as travelling
+		var arc := minf(from.distance_to(to) * 0.08, 2.0)
+		for j in 5:
+			if n >= _runner_mm.instance_count:
+				break
+			var kk := clampf(k - j * 0.035, 0.0, 1.0)
+			var p := from.lerp(to, kk) + Vector3(0, sin(kk * PI) * arc, 0)
+			var sz := 0.9 * (1.0 - j * 0.17)
+			_runner_mm.set_instance_transform(n, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * sz), p))
+			var c: Color = r.col
+			c.a = 1.0 - j * 0.18
+			_runner_mm.set_instance_color(n, c)
+			n += 1
+	_runner_mm.visible_instance_count = n
+
+## Boost launch: a burst of speed streaks flying back off the ball.
+func _build_boost_streak() -> void:
+	var p := GPUParticles3D.new()
+	p.name = "BoostStreak"
+	p.amount = 40
+	p.lifetime = 0.45
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.emitting = false
+	p.local_coords = false
+	p.transform_align = GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY
+	p.visibility_aabb = AABB(Vector3(-10, -4, -3), Vector3(20, 8, 6))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.45
+	pm.direction = Vector3(-1, 0, 0)
+	pm.spread = 12.0
+	pm.initial_velocity_min = 7.0
+	pm.initial_velocity_max = 13.0
+	pm.damping_min = 8.0
+	pm.damping_max = 14.0
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 1.0])
+	g.colors = PackedColorArray([Color(0.8, 1.0, 1.0, 1), Color(0.3, 0.9, 1.0, 0)])
+	var gt := GradientTexture1D.new(); gt.gradient = g
+	pm.color_ramp = gt
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.05, 0.9)
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/fx/particle.gdshader")
+	m.set_shader_parameter("intensity", 3.0)
+	m.set_shader_parameter("streak", 1.0)
+	q.material = m
+	p.draw_pass_1 = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	_boost_streak = p
+
 func _switch_state(sid: int) -> bool:
 	return sim != null and sim.has_method("is_switch_on") and sim.is_switch_on(sid)
 
@@ -118,6 +260,7 @@ func on_switch(data: Dictionary) -> void:
 			sw.flash = 1.0
 			var p := EECoords.tile_center(sw.tile.x, sw.tile.y, -0.2)
 			spawn_ripple(p, SWITCH_COLOR, 3.2, 1.3, 3)
+			_send_pulses(p, sw.sid)
 			if bursts:
 				bursts.play(&"key", p, Vector3.UP, SWITCH_COLOR, 0.5)
 				bursts.flash(p, SWITCH_COLOR, 2.5, 0.45, 5.0)
@@ -332,7 +475,13 @@ func set_ball_pos(p: Vector3) -> void:
 			var d := Vector3(cos(ang), sin(ang), 0.0)
 			if bursts:
 				bursts.play(&"sparks", p, -d, BOOST_COLOR, 0.6)
+				bursts.flash(p, BOOST_COLOR, 1.8, 0.3, 4.0)
 			spawn_ripple(p, BOOST_COLOR, 2.0, 0.45, 1)
+			if _boost_streak:
+				_boost_streak.global_position = p
+				(_boost_streak.process_material as ParticleProcessMaterial).direction = -d
+				_boost_streak.restart()
+				_boost_streak.emitting = true
 	_last_boost_tile = t
 
 func set_glyph_boost(k: float) -> void:
@@ -351,6 +500,7 @@ func _process(delta: float) -> void:
 		var l: OmniLight3D = sw.light
 		l.light_energy = 1.1 * sw.on + sw.flash * 1.5
 		l.visible = l.light_energy > 0.01
+	_update_runners(delta)
 	_surge = maxf(_surge - delta * 2.5, 0.0)
 	for m in _flow_mats:
 		m.set_shader_parameter("surge", _surge)

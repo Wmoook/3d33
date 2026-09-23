@@ -279,8 +279,8 @@ void sky() {
 			rockc = mix(rockc, vec3(0.02, 0.045, 0.06), wet * 0.7);
 			float sunf = smoothstep(-0.2, 0.8, fbm(hp * 0.07));
 			rockc *= mix(0.7, 1.15, sunf);
-			vec3 dcol = mix(rockc, haze, S == 2 ? 0.45 : (S == 1 ? 0.22 : 0.1));
-			dcol = mix(dcol, haze, (1.0 - smoothstep(0.4, 0.8, dm.g)) * 0.3 * float(S > 0));
+			vec3 dcol = mix(rockc, haze * 0.6, S == 2 ? 0.28 : (S == 1 ? 0.06 : 0.03));
+			dcol = mix(dcol, haze * 0.7, (1.0 - smoothstep(0.35, 0.75, dm.g)) * 0.25 * float(S > 0));
 			c = mix(c, dcol, clamp(a, 0.0, 1.0));
 		}
 		float wisp = n2(vec2(w.x * 0.04 + TIME * 0.01, w.y * 0.1)) * n2(vec2(w.x * 0.09 - TIME * 0.006, w.y * 0.18 + 3.0));
