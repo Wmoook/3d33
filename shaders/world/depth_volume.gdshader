@@ -222,7 +222,11 @@ void fragment() {
 		// cap the painted value and pull it toward grey stone
 		vec3 pc = c.rgb;
 		float pl = dot(pc, vec3(0.3, 0.55, 0.15));
+		// a whole room painted in sky / cloud bg (Lower Sanctum: all 531) has no stone colour of its own at all:
+		// cool, bright paint is replaced outright by the warm grey ashlar every other hall uses
+		float sky_paint = smoothstep(0.2, 0.35, pl) * smoothstep(1.02, 1.2, pc.b / max(pc.r, 0.001));
 		pc = mix(pc, vec3(pl), smoothstep(0.12, 0.35, pl) * 0.8) * min(1.0, 0.14 / max(pl, 0.001));
+		pc = mix(pc, vec3(0.24, 0.19, 0.13), sky_paint);
 		vec3 stone = mix(pc * 0.8, vec3(0.2, 0.17, 0.135), 0.55);
 		// very dark painted stone (the Great Spire's 542-544) is lifted to the warm mid-dark target
 		float sl = dot(stone, vec3(0.3, 0.55, 0.15));
@@ -389,7 +393,9 @@ void fragment() {
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	if (any(isnan(EMISSION)) || any(isinf(EMISSION))) { EMISSION = vec3(0.0); }
 	if (any(isnan(ALBEDO))) { ALBEDO = c.rgb * 0.5; }
-	EMISSION = max(EMISSION, c.rgb * 0.12);   // never-black floor in the tile's own colour
+	// never-black floor in the tile's own colour - on back walls / wall slabs the shaded stone, not the raw
+	// painted bg (a sky-painted hall's pale blue x0.12 washed the whole Lower Sanctum wall blue)
+	EMISSION = max(EMISSION, ((back || wallblock) ? albedo : c.rgb) * 0.12);
 	if (back || earth_back || inroom || prop) {
 		// interiors (rooms, caves, corridors) never fall to black: a soft ambient floor in the surface's own tone
 		vec3 tone = normalize(max(ALBEDO, vec3(0.001))) * 0.577;
