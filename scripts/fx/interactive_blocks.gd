@@ -804,7 +804,15 @@ func _build_portals() -> void:
 		else:
 			_portal_mat = m
 		q.material = m
-		_multimesh(q, tiles, Vector3(0, 0, Z_PORTAL), 1.0, false, rots).name = "Portals_%d" % id
+		var pmi := _multimesh(q, tiles, Vector3(0, 0, Z_PORTAL), 1.0, false, rots)
+		pmi.name = "Portals_%d" % id
+		if not odyssey:
+			# daylight factor per rift (custom.z): brighter cores where open sky is nearby, halls unchanged
+			var pm := pmi.multimesh
+			for i in tiles.size():
+				var c := pm.get_instance_custom_data(i)
+				c.b = _daylight(tiles[i])
+				pm.set_instance_custom_data(i, c)
 		if id == 242:
 			var gm := ShaderMaterial.new()
 			gm.shader = GLOW_SHADER
@@ -819,6 +827,25 @@ func _build_portals() -> void:
 
 var _veil_mats: Array[ShaderMaterial] = []
 var _veil_flares: Array = []   # Vector4(x, y, age, strength)
+
+## 0..1: how bright the backdrop around a rift is: share of the 5x5 neighbourhood that is open air with the
+## sky showing behind it (no back wall: bg empty or a painted-sky id). Roofed but sky-backed rooms count as
+## daylight (that's what washes the cores out); walled halls stay dark.
+const SKY_BG := [0, 530, 531, 540, 541, 542, 543, 544]
+
+func _daylight(t: Vector2i) -> float:
+	var n := 0
+	var hit := 0
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var x := t.x + dx
+			var y := t.y + dy
+			if x < 0 or y < 0 or x >= lvl.width or y >= lvl.height:
+				continue
+			n += 1
+			if FxOverlayMaps.is_open(lvl, x, y) and SKY_BG.has(lvl.get_bg(x, y)):
+				hit += 1
+	return clampf(float(hit) / maxf(n, 1.0) * 1.6, 0.0, 1.0)
 
 func portal_fx(from_tile, to_tile) -> void:
 	for t in [from_tile, to_tile]:

@@ -18,6 +18,7 @@ uniform float hc = 0.0;
 
 varying float v_ph;
 varying float v_hue;
+varying float v_day;     // 0 dark hall .. 1 open daylight (INSTANCE_CUSTOM.z)
 varying vec3 v_o;
 
 vec3 hue3(float h) {
@@ -38,6 +39,7 @@ float vnoise(vec2 p) {
 void vertex() {
 	v_ph = INSTANCE_CUSTOM.x * 6.2832;
 	v_hue = INSTANCE_CUSTOM.y;
+	v_day = INSTANCE_CUSTOM.z;
 	v_o = MODEL_MATRIX[3].xyz;
 }
 
@@ -98,7 +100,8 @@ void fragment() {
 		vec3 mid = mix(vec3(0.5, 0.2, 0.95), pair * 1.25, 0.6);
 		vec3 core_c = mix(deep, mid, smoothstep(0.1, 0.9, arms * (1.0 - r * 0.6)));
 		core_c += pair * fine * 0.35 * (1.0 - r);
-		core_c = mix(core_c, vec3(1.0, 0.97, 0.92), exp(-r * r * 6.0) * (0.9 + excite * 0.3));
+		// daylight: a bigger white-hot centre and ~+40% core emission so rifts hold up against the bright sky
+		core_c = mix(core_c, vec3(1.0, 0.97, 0.92), exp(-r * r * mix(6.0, 4.2, v_day)) * (0.9 + excite * 0.3));
 		// motes spiralling in
 		float motes = 0.0;
 		for (int k = 0; k < 6; k++) {
@@ -115,7 +118,7 @@ void fragment() {
 		vec3 bg = textureLod(screen_tex, SCREEN_UV + tang * (1.0 - r) * 0.012 * (1.0 + excite), 1.0).rgb;
 		float body = smoothstep(1.0, 0.75, r);
 		core_c = mix(bg * 0.5, core_c, body * 0.92 + 0.08);
-		core_c *= intensity * (1.0 + excite * 0.5 + hc * 0.3);
+		core_c *= intensity * (1.0 + excite * 0.5 + hc * 0.3) * (1.0 + 0.4 * v_day * body);
 		ALBEDO = mix(core_c, stone, ring);
 		ALPHA = 1.0;
 	}
