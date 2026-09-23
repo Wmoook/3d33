@@ -55,7 +55,11 @@ void fragment() {
 		float mn = texelFetch(fg_mask, ivec2(floor(tc)), 0).r;
 		keep = smoothstep(0.62, 0.9, m) * step(0.5, mn);
 	}
-	keep *= smoothstep(ball_r, ball_r + ball_fade, length(p - ball_pos.xy));
+	// the play area around the ball stays clear: a screen-shaped (super-elliptic) window, so the band only
+	// ever frames the view from its edges and corners
+	vec2 q = abs(p - ball_pos.xy) / vec2(ball_r * 1.75, ball_r);
+	float se = pow(q.x, 4.0) + pow(q.y, 4.0);
+	keep *= smoothstep(1.0, 1.0 + ball_fade, se);
 	keep *= fade;
 	// dithered edge (no transparency sorting; TAA smooths it)
 	if (keep < 0.999 && keep <= h12(FRAGCOORD.xy)) {
@@ -88,13 +92,14 @@ void fragment() {
 		layer = PBR_BARK; sc = 0.5;
 	} else if (id == 12 || id == 13) {
 		layer = PBR_LITTER; sc = 0.45;
+		col *= 0.6;   // near foliage reads as shade
 	} else if (id == 14 || id == 15) {
 		layer = PBR_ASHLAR; sc = 0.5;
 	}
 	col *= (0.9 + 0.2 * hb) * mix(0.4, 1.0, v_ao);
 	// soft bevel on every block edge (a gentle rounded read; the band is out of focus)
 	float e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-	col *= mix(0.78, 1.0, smoothstep(0.0, 0.12, e));
+	col *= mix(0.88, 1.0, smoothstep(0.0, 0.1, e));
 	vec3 n = gn;
 	float rough = 0.9;
 	float ao = 1.0;

@@ -311,6 +311,43 @@ func _sky_luma_check(img: Image, nm: String) -> void:
 	img.save_png("user://world_fv_%s_skyluma.png" % nm)
 	print("SKY LUMA %s: %d / %d sky tiles below 60%% of local sky %s" % [nm, bad, samples.size(), "OK" if bad * 100 <= samples.size() else "CHECK"])
 
+## Readability check (day levels): no air tile in view may render as a black hole - its back wall / backdrop
+## must stay lit (median of 5 samples per tile >= 5% luminance). Marks offenders in blue.
+func _black_air_check(img: Image, nm: String) -> void:
+	var t := world.terrain
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var bad := 0
+	var total := 0
+	for ty in t.H:
+		for tx in t.W:
+			var i := ty * t.W + tx
+			if t.solid[i]:
+				continue
+			var lums := []
+			for o in [Vector2(0.5, 0.5), Vector2(0.25, 0.25), Vector2(0.75, 0.25), Vector2(0.25, 0.75), Vector2(0.75, 0.75)]:
+				var w := Vector3(tx + o.x, -ty - o.y, 0.0)
+				if cam.is_position_behind(w):
+					continue
+				var sp := cam.unproject_position(w) / vp * vs
+				if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+					continue
+				lums.append(img.get_pixelv(Vector2i(sp)).get_luminance())
+			if lums.size() < 5:
+				continue
+			total += 1
+			lums.sort()
+			if lums[2] < 0.05:
+				bad += 1
+				if bad <= 8: print("  black air tile (%d, %d) fg=%d bg=%d" % [tx, ty, world.level.get_fg(tx, ty), world.level.get_bg(tx, ty)])
+				var sp2 := Vector2i(cam.unproject_position(Vector3(tx + 0.5, -ty - 0.5, 0.0)) / vp * vs)
+				for oy in range(-5, 6):
+					for ox in range(-5, 6):
+						if absi(ox) == 5 or absi(oy) == 5:
+							img.set_pixelv((sp2 + Vector2i(ox, oy)).clamp(Vector2i.ZERO, Vector2i(vs) - Vector2i.ONE), Color(0.2, 0.5, 1.0))
+	img.save_png("user://world_fv_%s_blackair.png" % nm)
+	print("BLACK AIR %s: %d / %d air tiles below 5%% luminance %s" % [nm, bad, total, "OK" if bad == 0 else "CHECK"])
+
 func _run() -> void:
 	if _perf:
 		await _run_perf()
@@ -332,5 +369,6 @@ func _run() -> void:
 		img.save_png(path)
 		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
 		if level_id != "odyssey":
+			_black_air_check(img.duplicate() as Image, nm)
 			_sky_luma_check(img, nm)
 	get_tree().quit()

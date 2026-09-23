@@ -217,6 +217,7 @@ void fragment() {
 	float rk = 1.0 - smoothstep(55.0, 95.0, dz);
 	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)) * rk);
 	vec3 skyc = vista_sky(normalize(wp - CAMERA_POSITION_WORLD), sd);
+	vec3 lift = vec3(0.0);
 	{
 		vec3 lum_w = vec3(0.2126, 0.7152, 0.0722);
 		float ndl = max(dot(n, sd), 0.0);
@@ -226,7 +227,14 @@ void fragment() {
 		float target = min_rel * sl * (0.8 + 0.2 * rk);
 		float lit_l = mix(pl, sl, f);
 		if (lit_l < target) {
-			f = clamp((target - pl) / max(sl - pl, 1e-3), f, 1.0);
+			// near: lift with more haze (reads as air). Far: lift with the block's OWN hue (a touch of sky
+			// blue), so distant islands stay colourful instead of milky
+			float fh = clamp((target - pl) / max(sl - pl, 1e-3), f, 1.0);
+			float far_w = 1.0 - rk;
+			f = mix(fh, f, far_w);
+			vec3 hue = albedo / max(dot(albedo, lum_w), 1e-3);
+			hue = mix(hue, skyc / max(sl, 1e-3), 0.3);
+			lift = hue * max(target - mix(pl, sl, f), 0.0) * far_w;
 		}
 	}
 	f = mix(1.0, f, fade);
@@ -235,6 +243,6 @@ void fragment() {
 	SPECULAR = 0.3;
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.35;
-	EMISSION = skyc * f * haze_gain;
+	EMISSION = skyc * f * haze_gain + lift * fade;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

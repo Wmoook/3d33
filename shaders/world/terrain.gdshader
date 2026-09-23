@@ -667,6 +667,11 @@ void fragment() {
 		ao *= mix(0.45, 1.0, smoothstep(-0.05, -1.4, s.x));
 		emit *= 0.3;
 	}
+	if (scroll_rect.x >= 0.0 && layer != 0) {
+		// interior air never reads as a black hole: the recessed wall keeps a soft ambient glow of its own
+		// colour (thin corridors / trial rooms sit in the slab's shadow and SSAO)
+		emit += albedo * 0.45 + vec3(0.010, 0.011, 0.014);
+	}
 	if (layer == 0) {
 		// soft rim of the bevel catches light; tiny cavity darkening at colour boundaries
 		albedo *= mix(1.0, 0.8, boundary);

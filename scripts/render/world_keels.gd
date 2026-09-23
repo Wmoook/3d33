@@ -26,7 +26,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 	for start in W * H:
-		if seen[start] or not terrain.solid[start]:
+		if seen[start] or not _in_mass(start, terrain, dep):
 			continue
 		var comp := PackedInt32Array([start])
 		seen[start] = 1
@@ -45,7 +45,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 					if nx < 0 or ny < 0 or nx >= W or ny >= H:
 						continue
 					var j := ny * W + nx
-					if seen[j] or not terrain.solid[j]:
+					if seen[j] or not _in_mass(j, terrain, dep):
 						continue
 					seen[j] = 1
 					comp.append(j)
@@ -58,7 +58,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 		for i in comp:
 			var x := i % W
 			var y := i / W
-			if y + 1 < H and terrain.sky[(y + 1) * W + x] and not terrain.solid[(y + 1) * W + x]:
+			if y + 1 < H and terrain.sky[(y + 1) * W + x] and not _in_mass((y + 1) * W + x, terrain, dep):
 				bottom[x] = maxi(bottom.get(x, -1), y)
 				x0 = mini(x0, x)
 				x1 = maxi(x1, x)
@@ -75,7 +75,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 			if terrain.mat_ids[i] == WorldPalette.M_MARBLE:
 				marble += 1
 		var pale := marble * 2 > comp.size()
-		var depth := minf(clampf(sqrt(width) * rng.randf_range(1.3, 2.0), 1.0, 6.0), 1.2 * width)
+		var depth := minf(clampf(sqrt(width) * rng.randf_range(1.1, 1.6), 1.0, 4.0), 1.0 * width)
 		if pale:
 			depth = minf(depth, 0.45 * width)
 		var cx := (x0 + x1 + 1) * 0.5
@@ -85,7 +85,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 			for x in bottom:
 				ext = maxf(ext, dep.depth[bottom[x] * W + x])
 		# the tip sits under the middle of the extruded island (the volume's own underside closes the rest)
-		var z_tip := Z_TIP if ext <= 0.0 else Z_TOP - clampf(ext * 0.5, 1.2, 4.0)
+		var z_tip := Z_TIP if ext <= 0.0 else Z_TOP - clampf(ext * 0.5, 1.0, 1.8)
 		_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0, 1.0 if pale else 0.0)
 		var ybot := 0
 		for x in bottom:
@@ -104,6 +104,11 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+
+## Connectivity uses the whole mass (solid + back walls + pockets) when the depth field is known, so wings,
+## bridges and ledges attached to a tower through its back wall are NOT free-floating islands.
+static func _in_mass(i: int, terrain: WorldTerrain, dep: WorldDepth) -> bool:
+	return dep.mass[i] == 1 if dep else terrain.solid[i] == 1
 
 ## Tapered keel: a smooth hull from the cluster's bottom edge (z Z_TOP) down to one tip point (z Z_TIP).
 ## Vertex colour: r = v (0 at the top edge, 1 at the tip), g = random per keel (rune seed).

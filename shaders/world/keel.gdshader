@@ -47,7 +47,7 @@ void fragment() {
 	vec3 c = mix(rock_top, rock_tip, smoothstep(0.1, 0.8, v_v)) * mix(0.75, 1.1, strata) * mix(0.8, 1.1, fbm(p * 2.0));
 	c = mix(c, pale_stone * mix(0.8, 1.05, strata), v_pale);
 	// hazed and lighter toward the tip: the keel belongs to the backdrop, never a dark spike
-	c = mix(c, haze, 0.08 + 0.45 * smoothstep(0.2, 1.0, v_v));
+	c = mix(c, haze, 0.05 + 0.15 * smoothstep(0.3, 1.0, v_v));   // opaque rock, only a mild aerial haze
 	// levitation rune cracks: thin glowing veins, strongest mid-keel, slow pulse
 	float vein = smoothstep(0.98, 0.997, 1.0 - abs(fbm(p * vec2(0.9, 0.45) + v_seed * 17.0) * 2.0 - 1.0));
 	float pulse = 0.55 + 0.45 * sin(TIME * 1.1 + v_seed * 20.0 + p.y * 0.4);

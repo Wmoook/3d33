@@ -19,8 +19,8 @@ const FY0 := -204
 const FNY := 208
 const FZ0 := 1
 const FNZ := 12
-const BALL_R := 6.0             # fully clear radius around the ball (tiles); fades back in over BALL_FADE
-const BALL_FADE := 3.0
+const BALL_R := 5.5             # fully clear radius around the ball (tiles); fades back in over BALL_FADE
+const BALL_FADE := 0.9
 const MARGIN := 0               # mask covers exactly the level; outside it counts as air
 
 var W := 400
@@ -135,7 +135,7 @@ func _column(tx: int, a: int, b: int, ln: int, fn: FastNoiseLite, rng: RandomNum
 	var nh := fn.get_noise_2d(x, 200.0)          # where hangs grow
 	var jag := fn.get_noise_2d(x * 3.0, 50.0)    # edge roughness
 	# near bank: z 1..(2..3), top at 25..70 % of the run height above its floor
-	if nb > -0.05 and ln >= 4:
+	if nb > 0.08 and ln >= 4:
 		var hgt := int(round(ln * clampf(0.3 + nb * 0.6 + jag * 0.12, 0.15, 0.8)))
 		var depth := 2 + (1 if nb > 0.25 else 0)
 		for ty in range(b - hgt + 1, b + 1):
