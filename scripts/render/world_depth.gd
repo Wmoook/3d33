@@ -78,7 +78,11 @@ func _compute_depth() -> void:
 	var n := W * H
 	mass.resize(n)
 	depth.resize(n)
+	var hollow := WorldForest.hollow_mask(terrain)
 	for i in n:
+		if hollow.size() == n and hollow[i] and not terrain.solid[i]:
+			mass[i] = 0   # forest hollow: WorldForest fills the space behind
+			continue
 		mass[i] = 1 if (terrain.solid[i] or (terrain.backwall[i] and not terrain.window[i]) or terrain.pocket[i] == 1) else 0   # windows: holes through the volume (jambs)
 	var rw := PackedInt32Array(); rw.resize(n)
 	var vt := PackedInt32Array(); vt.resize(n)

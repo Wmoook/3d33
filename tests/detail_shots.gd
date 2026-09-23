@@ -13,6 +13,13 @@ const SPOTS_FV := [
 	["falls", Vector2(140, 150)],
 	["keep", Vector2(300, 88)],
 	["keeproom", Vector2(308, 95)],
+	["hollow", Vector2(30, 54)],
+	["pine", Vector2(62, 50)],
+	["spawn2", Vector2(2, 56)],
+	["easthollow", Vector2(382, 104)],
+	["outside_grove", Vector2(20, 68)],
+	["outside_east", Vector2(96, 50)],
+	["canopytop", Vector2(30, 36)],
 	["shrine", Vector2(388, 73)],
 	["eastwood", Vector2(380, 96)],
 ]
@@ -22,7 +29,8 @@ const SPOTS_OD := [
 	["cave", Vector2(210, 110)],
 ]
 var game
-var args := {"level": "forgotten_veil", "only": "", "tag": "", "pbr": "1", "grass": "1", "leaves": "1", "zoom": "30", "hud": "0"}
+var forest_node: Node3D = null
+var args := {"level": "forgotten_veil", "only": "", "tag": "", "pbr": "1", "grass": "1", "leaves": "1", "zoom": "30", "hud": "1"}
 
 func _ready() -> void:
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
@@ -72,14 +80,27 @@ func _ready() -> void:
 	if live:
 		grass.visible = args.grass == "1"
 		foliage.visible = args.leaves == "1"
+	if args.get("forest", "0") == "1":
+		_build_forest(wv)
 	if args.get("depth", "0") == "1":
 		_build_depth_stub(wv)
+	if args.has("hide"):
+		for nm: String in str(args.hide).split(","):
+			var nd := wv.get_node_or_null(nm)
+			if nd is Node3D:
+				(nd as Node3D).visible = false
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
 		game._ui.visible = false
 	game.sim.set_god_mode(true)
 	var spots: Array = SPOTS_FV if args.level == "forgotten_veil" else SPOTS_OD
+	if args.get("regions", "0") == "1":
+		spots = []
+		for r: Rect2i in WorldForest.regions(wv.terrain):
+			# the lowest open floor tile near the region centre
+			var c := Vector2i(r.position.x + r.size.x / 2, r.end.y - 2)
+			spots.append(["region_%d_%d" % [r.position.x, r.position.y], Vector2(c)])
 	var only: PackedStringArray = args.only.split(",", false)
 	for s in spots:
 		if not only.is_empty() and not only.has(s[0]):
@@ -95,6 +116,10 @@ func _ready() -> void:
 			grass.update_focus(ball, 0.016)
 		if foliage:
 			foliage.update_focus(ball, 0.016)
+		var fnode: Node3D = forest_node if forest_node else wv.get("forest")
+		if fnode:
+			for k in 4:
+				fnode.update_focus(ball, 1.0)   # settle the region fades at this spot
 		for i in 3:
 			await get_tree().process_frame
 		var lv := "fv" if args.level == "forgotten_veil" else "od"
@@ -149,7 +174,9 @@ func _probe(t: WorldTerrain, r: String) -> void:
 		var line := "%3d " % y
 		for x in range(int(v[0]), int(v[2])):
 			var i := y * W + x
-			var ch := "."
+			var ch := "." if not WorldForest.hollow_mask(t)[i] else "o"
+			if not t.solid[i] and ch == "." and t.level.bg[i] in [0, 510, 511, 512, 534]:
+				ch = "," if t.pocket[i] == 0 else ";"
 			if t.solid[i]:
 				var m: int = t.mat_ids[i]
 				if WorldGrass.is_leafy(m):
@@ -205,3 +232,51 @@ func _build_depth_stub(wv: WorldView) -> void:
 	wv.add_child(g)
 	g.build_depth(wv.level, t, top_at, mat_at)
 	print("depth green %d ms %s" % [Time.get_ticks_msec() - t0, g.depth_stats])
+
+## WorldForest + the hollow hook proposed to world (terrain discards bg/cave layers on forest-hollow tiles),
+## unless world already wired it (world_view.forest).
+func _build_forest(wv: WorldView) -> void:
+	if wv.get("forest") != null:
+		forest_node = wv.forest
+		print("forest: live integration ", wv.forest.stats)
+		return
+	var mat: ShaderMaterial = wv.terrain.material
+	var code: String = mat.shader.code.replace("
+
+", "
+")
+	if code.find("forest_tex") < 0:
+		var anchor := "	if (layer == 2 && fld.r > 0.5) {"
+		assert(code.find(anchor) >= 0, "forest anchor missing")
+		code = code.replace(anchor, "	if (layer != 0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+		discard;   // forest hollow: WorldForest's deep forest shows through
+	}
+" + anchor)
+		code = code.replace("varying vec3 w_pos;", "uniform sampler2D forest_tex : filter_nearest, repeat_disable;
+varying vec3 w_pos;")
+		var sh := Shader.new()
+		sh.code = code
+		mat.shader = sh
+	var ftex := ImageTexture.create_from_image(WorldForest.hollow_image(wv.terrain))
+	mat.set_shader_parameter("forest_tex", ftex)
+	# world_depth: no back-wall volume in the hollow (its hazed faces were the "blue waterfall" columns)
+	var dv = wv.get("depth")
+	if dv and dv.material:
+		var dm: ShaderMaterial = dv.material
+		var dc: String = dm.shader.code.replace("\r\n", "\n")
+		if dc.find("forest_tex") < 0:
+			var a := "void fragment() {\n"
+			assert(dc.find(a) >= 0, "depth anchor missing")
+			dc = dc.replace(a, a + "\tif (solid_f < 0.5 && texelFetch(forest_tex, clamp(ivec2(floor(tile)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {\n\t\tdiscard;   // forest hollow\n\t}\n")
+			dc = dc.replace("varying vec3 w_pos;", "uniform sampler2D forest_tex : filter_nearest, repeat_disable;\nvarying vec3 w_pos;")
+			var dsh := Shader.new()
+			dsh.code = dc
+			dm.shader = dsh
+		dm.set_shader_parameter("forest_tex", ftex)
+	var t0 := Time.get_ticks_msec()
+	var f := WorldForest.new()
+	f.name = "Forest"
+	wv.add_child(f)
+	f.build(wv.level, wv.terrain)
+	forest_node = f
+	print("forest %d ms %s" % [Time.get_ticks_msec() - t0, f.stats])

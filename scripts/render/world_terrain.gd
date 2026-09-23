@@ -712,6 +712,8 @@ func _classify() -> void:
 			if WorldPalette.is_world_solid(id):
 				solid[i] = 1
 				var m := WorldPalette.material_for(id, x, y, z)
+				if day and WorldForest.is_trunk_tile(level, x, y):
+					m = WorldPalette.M_WOOD   # forest trunk columns (fg 47/48 under a crown): bark
 				mat_ids[i] = m
 				var c := mc
 				if id == 50 or (c.get_luminance() < 0.02 and m != WorldPalette.M_OBSIDIAN):
@@ -1004,6 +1006,7 @@ func _make_material() -> void:
 	material.set_shader_parameter("info_tex", ImageTexture.create_from_image(info_img))
 	if day:
 		material.set_shader_parameter("window_tex", ImageTexture.create_from_image(window_image()))
+		material.set_shader_parameter("forest_tex", ImageTexture.create_from_image(WorldForest.hollow_image(self)))
 	material.set_shader_parameter("tint_tex", ImageTexture.create_from_image(_tint_image()))
 	material.set_shader_parameter("detail_nrm", _noise_tex(0.025, 11, 5, 5.0))
 	material.set_shader_parameter("detail_nrm2", _noise_tex(0.03, 23, 4, 4.0))

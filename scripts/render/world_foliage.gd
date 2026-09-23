@@ -44,6 +44,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 			var i := y * W + x
 			if not canopy[i]:
 				continue
+			if lvl.fg[i] == WorldForest.PINE_ID and WorldForest.is_forest_pine(terrain, x, y):
+				continue   # the grove's pine gets conifer boughs (WorldForest), not broadleaf clusters
 			var base := cols.get_pixel(x, y)
 			# open-air reach in each direction (tiles of leafy/woody mass before air or other terrain)
 			var ext_l := _reach(terrain, canopy, x, y, -1, 0, W, H)

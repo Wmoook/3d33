@@ -6,6 +6,9 @@ shader_type spatial;
 // root) and the instance's z is only an offset from it.
 render_mode cull_disabled, depth_draw_opaque;
 
+#include "res://shaders/world/forest_mask.gdshaderinc"
+uniform float use_mask = 0.0;   // WorldForest undergrowth: clip to the hollow mask, fade with vis
+
 uniform vec3 ball_pos = vec3(-1000.0);
 uniform float ball_radius = 0.95;       // blades inside this are pushed aside / flattened
 uniform float wind_strength = 1.0;
@@ -24,6 +27,7 @@ varying float v_part;
 varying vec4 v_custom;
 varying float v_ao;
 varying float v_snap;
+varying vec3 v_wpos;
 
 float h1(float n) { return fract(sin(n) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -77,6 +81,7 @@ void vertex() {
 	disp.y -= hgt * (1.0 - shrink);
 	wp += disp;
 	VERTEX = (inverse(MODEL_MATRIX) * vec4(wp, 1.0)).xyz;
+	v_wpos = wp;
 	v_tint = INSTANCE_CUSTOM.rgb;
 	v_t = t;
 	v_rnd = COLOR.g;
@@ -86,6 +91,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (use_mask > 0.5 && (vis < 0.01 || !forest_visible(v_wpos, CAMERA_POSITION_WORLD))) {
+		discard;
+	}
 	vec3 base = v_tint;
 	float t = v_t;
 	vec3 col;
@@ -112,7 +120,9 @@ void fragment() {
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
-	ALBEDO = col;
+	float fv = use_mask > 0.5 ? vis : 1.0;
+	ALBEDO = col * fv;
+	BACKLIGHT *= fv;
 	ROUGHNESS = 0.55;
 	SPECULAR = 0.35;
 	AO = v_ao;

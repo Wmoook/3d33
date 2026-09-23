@@ -5,6 +5,7 @@ render_mode cull_disabled, depth_draw_opaque;
 // Tips sway in the wind; same aerial haze as the blocks.
 
 #include "res://shaders/world/vista_common.gdshaderinc"
+#include "res://shaders/world/voxel_forest.gdshaderinc"
 
 uniform vec3 grass_col = vec3(0.06, 0.13, 0.006);
 uniform vec3 grass_b = vec3(0.056, 0.23, 0.005);
@@ -31,6 +32,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (in_forest_hollow(w_pos, CAMERA_POSITION_WORLD)) {
+		discard;
+	}
 	int id = int(kind.x + 0.5);
 	float rnd = kind.y;
 	vec2 uv = UV;

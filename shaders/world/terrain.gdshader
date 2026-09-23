@@ -31,6 +31,7 @@ uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
 uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
 uniform float depth_cont = 0.0;
 uniform float bottom_cut = 0.0;
+uniform sampler2D forest_tex : filter_nearest, repeat_disable;   // FV forest hollows (WorldForest): no back wall
 uniform sampler2D window_tex : filter_linear, repeat_disable;   // day: distance into painted-sky windows (x40), 0 = none
 // backdrop instances (WorldTerrain.backdrop, sky's distant block-built islands): world = level_inv^-1 * tile space
 uniform mat4 level_inv = mat4(1.0);
@@ -183,6 +184,9 @@ void fragment() {
 		layer = (s.y >= -0.13) ? 1 : 2;
 	}
 	if (layer == 1 && s.y < -0.07) { layer = 2; }
+	if (layer != 0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+		discard;   // forest hollow: WorldForest's deep forest shows through
+	}
 	if (layer == 2 && fld.r > 0.5) {
 		discard; // open night sky: the Sky + backdrop show through
 	}

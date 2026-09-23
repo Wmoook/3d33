@@ -101,6 +101,11 @@ var _vista: WorldVista
 ## Phase 2: the foreground band in front of the gameplay plane (occlusion-safe, see WorldVoxelFore).
 var fore: WorldVoxelFore
 var _terrain_mat: ShaderMaterial
+var _sh_block: Shader
+var _sh_water: Shader
+var _sh_plant: Shader
+var _fz := PackedFloat32Array()   # forest-zone weight per voxel column
+var _hollow_img: Image   # detail's deep-forest hollows (FV): my blocks stay out of them in front of z -12.5
 ## OFF by default (lead / user: "random blocks in random places"); tests may set it true before build.
 static var fore_enabled := false
 var _lin_cols := PackedColorArray()
@@ -197,6 +202,10 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 		_lin_cols[id] = (table[id] as Color).srgb_to_linear()
 	_level_colors(terrain)
 	_terrain_mat = terrain.material
+	if not WorldPalette.is_odyssey():
+		_build_forest_zone()
+	if ClassDB.class_exists("WorldForest") or ResourceLoader.exists("res://scripts/render/world_forest.gd"):
+		_hollow_img = WorldForest.hollow_image(terrain)
 	timings["voxel_setup"] = Time.get_ticks_msec() - t0
 
 ## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
@@ -303,6 +312,20 @@ func _run() -> void:
 	_chunks.resize(ncx * ncy * nck)
 	_group(_mesh_task, _chunks.size())
 	timings["voxel_mesh"] = Time.get_ticks_msec() - t1
+	# the 3D block texture is created here too (RenderingServer resource creation is thread-safe), so the
+	# main thread never blocks on the 30 MB upload
+	t1 = Time.get_ticks_msec()
+	vol_tex = ImageTexture3D.new()
+	vol_tex.create(Image.FORMAT_R8, NX, NY, NZ, false, _images)
+	_images.clear()
+	timings["voxel_tex_thread"] = Time.get_ticks_msec() - t1
+	# shaders parse / compile off the main thread too
+	t1 = Time.get_ticks_msec()
+	_sh_block = load("res://shaders/world/voxel_block.gdshader")
+	_sh_water = load("res://shaders/world/voxel_water.gdshader")
+	_sh_plant = load("res://shaders/world/voxel_plant.gdshader")
+	_make_materials()   # new, not yet used resources: safe to set up off the main thread
+	timings["voxel_shader_thread"] = Time.get_ticks_msec() - t1
 	timings["voxel_thread_total"] = Time.get_ticks_msec() - t0
 	if not _abort:
 		call_deferred("_on_generated")
@@ -358,6 +381,8 @@ func _row_task(k: int) -> void:
 		var mask := smoothstep(-0.08, 0.32, nz.mask.get_noise_2d(x, z)) * mtn_env * rim_k
 		var rv := smoothstep(16.0, 52.0, absf(x - riv))
 		mask *= lerpf(1.0, rv, valley) * lerpf(0.45 * smoothstep(60.0, 80.0, d), 1.0, high)
+		# behind the Elder Grove and the Eastern Wood the land continues as FOREST: rolling, no big mountains
+		mask *= 1.0 - 0.85 * _forest_zone(x) * (1.0 - smoothstep(100.0, 140.0, d))
 		var rg := nz.ridge.get_noise_2d(x, z) * 0.5 + 0.5
 		h += mask * (10.0 + 60.0 * rg * rg)
 		# the river valley (continues the falls' pool) and the lake floor
@@ -663,8 +688,30 @@ func _feat_max(i: int, k: int) -> float:
 	return _HMAX[k * NX + i] - 7.0 * (1.0 - smoothstep(38.0, 72.0, k + 0.5))
 
 # ---- trees
+## 1 behind the level's forest regions (WorldForest.RECTS, detail's regions: the Elder Grove, the Eastern
+## Wood, ...; widened, soft edges; the volume beyond the level edge continues the edge region), 0 elsewhere.
+func _forest_zone(x: float) -> float:
+	if _fz.is_empty():
+		return 0.0
+	return _fz[clampi(int(floorf(x)) - X0, 0, NX - 1)]
+
+func _build_forest_zone() -> void:
+	_fz.resize(NX)
+	_fz.fill(0.0)
+	for r: Rect2i in WorldForest.RECTS:
+		var x0 := float(r.position.x)
+		var x1 := float(r.end.x)
+		if x0 <= 0.5:
+			x0 = float(X0)          # the forest continues past the level's left edge
+		if x1 >= W - 0.5:
+			x1 = float(X0 + NX)     # ... and past its right edge
+		for i in NX:
+			var x := X0 + i + 0.5
+			var dout := maxf(x0 - x, x - x1)
+			_fz[i] = maxf(_fz[i], 1.0 - smoothstep(-4.0, 26.0, dout))
+
 func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
-	var cell := 4
+	var cell := 3
 	for ck in range(0, NZ, cell):
 		for cx in range(0, NX, cell):
 			var i := cx + rng.randi_range(0, cell - 1)
@@ -672,8 +719,10 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 			if i >= NX or k >= NZ or k < 18:
 				continue
 			var f := _FOR[k * NX + i]
-			var dens := smoothstep(-0.05, 0.2, f)   # clear forests, open meadows between
-			if rng.randf() > dens * 0.95 + 0.015:
+			var fz := _forest_zone(X0 + i + 0.5)
+			var dens := smoothstep(-0.05, 0.2, f) * 0.55   # clear forests, open meadows between
+			dens = maxf(dens, fz * 0.92)                  # continuous canopy behind the level's forests
+			if rng.randf() > dens + 0.01:
 				continue
 			var j := _col_top(i, k)
 			if j < 0 or _vget(i, j, k) != GRASS and _vget(i, j, k) != SNOW_GRASS:
@@ -681,7 +730,7 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 			var y := Y0 + j + 1.0
 			var room := _feat_max(i, k) - y
 			# the level's trees are round leaf-cluster crowns: mostly crown trees, pines only up high
-			var pine := y > -62.0 + f * 12.0 or _vget(i, j, k) == SNOW_GRASS
+			var pine := (y > -62.0 + f * 12.0 and fz < 0.5) or _vget(i, j, k) == SNOW_GRASS or (fz > 0.5 and rng.randf() < 0.12)
 			if pine:
 				var ph := rng.randi_range(7, 12)
 				if room < ph + 1:
@@ -1100,18 +1149,16 @@ func _on_generated() -> void:
 		_thread.wait_to_finish()
 		_thread = null
 	var t0 := Time.get_ticks_msec()
-	vol_tex = ImageTexture3D.new()
-	vol_tex.create(Image.FORMAT_R8, NX, NY, NZ, false, _images)
-	_images.clear()
-	_make_materials()
-	timings["voxel_upload_tex"] = Time.get_ticks_msec() - t0
+	if fore:
+		fore.upload(sun_dir)
+	timings["voxel_materials_main"] = Time.get_ticks_msec() - t0
 	_upload_i = 0
 	_uploading = true
 	set_process(true)
 
 func _make_materials() -> void:
 	material = ShaderMaterial.new()
-	material.shader = load("res://shaders/world/voxel_block.gdshader")
+	material.shader = _sh_block
 	WorldPbr.bind(material, false, 1.0)
 	# same detail textures as the level's blocks (world's depth volume), and an empty canopy mask
 	if _terrain_mat:
@@ -1122,9 +1169,9 @@ func _make_materials() -> void:
 	material.set_shader_parameter("pbr_canopy_tex", ImageTexture.create_from_image(blank))
 	material.set_shader_parameter("pbr_level_size", Vector2(1, 1))
 	water_material = ShaderMaterial.new()
-	water_material.shader = load("res://shaders/world/voxel_water.gdshader")
+	water_material.shader = _sh_water
 	plant_material = ShaderMaterial.new()
-	plant_material.shader = load("res://shaders/world/voxel_plant.gdshader")
+	plant_material.shader = _sh_plant
 	var cols := PackedVector3Array()
 	cols.resize(N_SOLID)
 	for id in N_SOLID:
@@ -1132,9 +1179,14 @@ func _make_materials() -> void:
 	var g2 := _grass_b if _grass_b.r >= 0.0 else _pal(19, Color8(67, 131, 16)).srgb_to_linear()
 	var wa := _pal(54, Color8(126, 153, 246)).srgb_to_linear()
 	var wd := _pal(10, Color8(53, 82, 168)).srgb_to_linear()
-	if fore:
-		fore.upload(sun_dir)
+	var htex: ImageTexture = null
+	if _hollow_img and not _hollow_img.is_empty():
+		htex = ImageTexture.create_from_image(_hollow_img)
 	for m: ShaderMaterial in [material, water_material, plant_material]:
+		if htex:
+			m.set_shader_parameter("forest_tex", htex)
+			m.set_shader_parameter("has_forest", 1.0)
+			m.set_shader_parameter("forest_size", Vector2(_hollow_img.get_width(), _hollow_img.get_height()))
 		m.set_shader_parameter("vol", vol_tex)
 		m.set_shader_parameter("vol_origin", Vector3(X0, Y0, Z0))
 		m.set_shader_parameter("vol_size", Vector3i(NX, NY, NZ))

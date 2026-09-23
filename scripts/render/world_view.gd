@@ -31,6 +31,7 @@ var vista: WorldVista
 var depth: WorldDepth
 var depth_green: WorldDepthGreen
 var voxel: WorldVoxel
+var forest: WorldForest
 var grass: WorldGrass
 var foliage: WorldFoliage
 var is_built := false
@@ -154,6 +155,8 @@ func _step_decor() -> void:
 		grass.build(level, terrain)
 		foliage = _add(WorldFoliage.new(), "Foliage")
 		foliage.build(level, terrain)
+		forest = _add(WorldForest.new(), "Forest")
+		forest.build(level, terrain)
 		if depth:
 			depth_green = _add(WorldDepthGreen.new(), "DepthGreen")
 			depth_green.build_depth(level, terrain, Callable(depth, "depth_top_y"), Callable(depth, "depth_mat"))
@@ -229,6 +232,8 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 		foliage.update_focus(world_pos, delta)
 	if depth_green:
 		depth_green.update_focus(world_pos, delta)
+	if forest:
+		forest.update_focus(world_pos, delta)
 	backdrop.update_focus(world_pos, delta)
 	if vista:
 		var cam := get_viewport().get_camera_3d()

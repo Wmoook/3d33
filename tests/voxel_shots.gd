@@ -37,7 +37,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 	print("VOXEL ready after %d ms (in game)" % (Time.get_ticks_msec() - t0))
 	vx.finish_fade()
-	var hud := "nohud" in OS.get_cmdline_user_args() or true
+	var hud := "nohud" in OS.get_cmdline_user_args()   # default: HUD + all actors ON (user watches)
 	if hud:
 		for c in game.find_children("*", "CanvasLayer", true, false):
 			(c as CanvasLayer).visible = false

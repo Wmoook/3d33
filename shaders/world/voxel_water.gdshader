@@ -5,6 +5,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back;
 // the same aerial haze as the blocks.
 
 #include "res://shaders/world/vista_common.gdshaderinc"
+#include "res://shaders/world/voxel_forest.gdshaderinc"
 
 uniform sampler3D vol : filter_nearest, repeat_disable;
 uniform vec3 vol_origin = vec3(-104.0, -256.0, 3.0);
@@ -51,6 +52,9 @@ void vertex() {
 
 void fragment() {
 	vec3 wp = w_pos;
+	if (in_forest_hollow(w_pos, CAMERA_POSITION_WORLD)) {
+		discard;
+	}
 	vec3 gn = normalize(w_nrm);
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 sd = normalize(sun_dir);
