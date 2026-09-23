@@ -522,17 +522,25 @@ func _vines(st: SurfaceTool, rng: RandomNumberGenerator, x0: float, x1: float, y
 ## A semicircular arch of voussoirs between two pier tops (x0, x1) springing at height y. Stops after
 ## skip_from stones (a collapsed arch).
 func _arch(st: SurfaceTool, x0: float, x1: float, y: float, z: float, thick: float, dep: float, skip_from: int = 99) -> void:
+	# Minecraft-style stepped arch: block columns across the span, each hanging from the crown line down to
+	# the (quantized) semicircle, so the intrados steps like a block arch. skip_from (of 9) = collapsed:
+	# only the columns nearest the left pier remain.
 	var r := (x1 - x0) * 0.5
 	var cx := (x0 + x1) * 0.5
-	var n := 9
-	for i in n:
-		if i >= skip_from:
-			break
-		var a := PI * (i + 0.5) / n
-		var p := Vector3(cx - cos(a) * (r + thick * 0.5), y + sin(a) * (r + thick * 0.5), z)
-		_box(st, p, Vector3(PI * r / n + 0.6, thick, dep), STONE, Basis(Vector3(0, 0, 1), a - PI * 0.5))
-	if skip_from >= n:
-		_box(st, Vector3(cx, y + r + thick * 0.5 + 1.0, z), Vector3(x1 - x0 + thick, 2.0, dep), STONE_CAP)
+	var bw := maxf(thick, 1.5)
+	var cols := maxi(int(round((x1 - x0) / bw)), 3)
+	bw = (x1 - x0) / cols
+	var crown := y + r + thick
+	var keep := cols if skip_from >= 9 else int(ceil(cols * skip_from / 9.0))
+	for i in keep:
+		var xc := x0 + (i + 0.5) * bw
+		var dx := absf(xc - cx) / r
+		var yi := y + snappedf(sqrt(maxf(1.0 - dx * dx, 0.0)) * r, bw * 0.5)
+		var hgt := crown - yi
+		if hgt > 0.2:
+			_box(st, Vector3(xc, yi + hgt * 0.5, z), Vector3(bw, hgt, dep), STONE)
+	if skip_from >= 9:
+		_box(st, Vector3(cx, crown + 1.0, z), Vector3(x1 - x0 + thick, 2.0, dep), STONE_CAP)
 
 func _ruin_spire(st: SurfaceTool, rng: RandomNumberGenerator, b: Vector3, ht: float, w: float) -> Vector3:
 	var dep := w * 0.8
