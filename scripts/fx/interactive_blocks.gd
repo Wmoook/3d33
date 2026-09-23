@@ -191,7 +191,7 @@ func _build_keys() -> void:
 ## Non-Odyssey art regions where crowns (5) / red keys (6) are the INK of painted lettering
 ## (FV: the Winners' Scroll names and the ΣX logo's gold inlays). [rect (tiles, y down), ids, z, gain]
 const INK_REGIONS := [
-	[Rect2i(350, 0, 48, 72), [5, 6], -0.88, 1.0],   # just above world's flat -0.9 ink floor
+	[Rect2i(350, 0, 48, 72), [5, 6], -0.88, 1.0],   # just above world's flat -0.9 ink floor (confirmed)
 	[Rect2i(300, 14, 46, 29), [5], -0.88, 0.5],    # logo inlays: metal catching light, not ink
 ]
 var _ink_mats: Array[ShaderMaterial] = []

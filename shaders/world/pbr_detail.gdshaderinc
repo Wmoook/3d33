@@ -2,15 +2,15 @@
 // Textures add DETAIL ONLY (luminance, height, AO, roughness, normal); every hue still comes from the
 // painting (the tile's minimap colour), so the canonical art is preserved.
 //
-// Arrays (bound by WorldPbr.bind(material)):
-//   pbr_mat_tex : R = grey-balanced luminance * 0.5 (0.5 = x1.0), G = height, B = AO, A = roughness
-//   pbr_nrm_tex : RGB = OpenGL tangent normal
+// Array (bound by WorldPbr.bind(material)), ONE fetch per sample:
+//   pbr_tex : R = grey-balanced luminance * 0.5 (0.5 = x1.0, cavity AO baked in), G = height,
+//             B/A = OpenGL tangent normal x/y (z reconstructed)
 // All sampling is world-space (1 tile = 1 unit), triplanar with sharpened weights (1-2 planes per pixel),
 // stochastic hex tiling (Mikkelsen 2022) against repetition, RNM normal blending, height-based layer
 // blends and a camera-distance detail fade.
 
-uniform sampler2DArray pbr_mat_tex : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2DArray pbr_nrm_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2DArray pbr_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float pbr_hex_dist = 60.0;     // stochastic (3-tap) tiling only closer than this; plain tiling beyond
 uniform float pbr_strength = 1.0;      // global detail multiplier (0 disables the library's effect)
 uniform float pbr_fade_near = 45.0;    // camera distance where detail starts to fade
 uniform float pbr_fade_far = 110.0;    // camera distance where only a faint residue remains
@@ -54,16 +54,21 @@ vec3 pbr_rnm(vec3 base, vec3 detail) {
 	return t * dot(t, u) / t.z - u;
 }
 
-// One planar hex-tiled sample. uv is in plane space (world units * scale). rot_amt 0 = offsets only
-// (directional textures: strata, bark, ashlar), 1 = full random rotation. Returns mat (lum, h, ao, rough)
+vec3 pbr_unpack_n(vec4 t) {
+	vec2 xy = t.ba * 2.0 - 1.0;
+	return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
+}
+
+// One planar sample, hex-tiled when `hex`. uv is in plane space (world units * scale). rot_amt 0 = offsets
+// only (directional textures: strata, bark, ashlar), 1 = full random rotation. Returns m = (lum*0.5, h, -, -)
 // and the tangent normal in PLANE space (x along uv.x, y along uv.y), z out of the plane.
 void pbr_hex(int layer, vec2 uv, float rot_amt, bool hex, out vec4 m, out vec3 tn) {
 	vec2 dx = dFdx(uv);
 	vec2 dy = dFdy(uv);
 	float lf = float(layer);
 	if (!hex) {
-		m = textureGrad(pbr_mat_tex, vec3(uv, lf), dx, dy);
-		vec3 t = textureGrad(pbr_nrm_tex, vec3(uv, lf), dx, dy).xyz * 2.0 - 1.0;
+		m = textureGrad(pbr_tex, vec3(uv, lf), dx, dy);
+		vec3 t = pbr_unpack_n(m);
 		tn = vec3(t.x, -t.y, t.z);   // GL green = image-up = -v
 		return;
 	}
@@ -76,27 +81,21 @@ void pbr_hex(int layer, vec2 uv, float rot_amt, bool hex, out vec4 m, out vec3 t
 	float s = step(0.0, -tmp.z);
 	float s2 = 2.0 * s - 1.0;
 	vec3 w = vec3(-tmp.z * s2, s - tmp.y * s2, s - tmp.x * s2);
-	vec2 v0 = base + vec2(s, s);
-	vec2 v1 = base + vec2(s, 1.0 - s);
-	vec2 v2 = base + vec2(1.0 - s, s);
+	vec2 vs[3] = vec2[3](base + vec2(s, s), base + vec2(s, 1.0 - s), base + vec2(1.0 - s, s));
 	vec4 ms[3];
 	vec3 ns[3];
-	vec2 vs[3] = vec2[3](v0, v1, v2);
 	for (int k = 0; k < 3; k++) {
 		float a = (pbr_hash(vs[k] + 0.37) - 0.5) * 6.2831853 * rot_amt;
 		float ca = cos(a);
 		float sa = sin(a);
 		mat2 r = mat2(vec2(ca, sa), vec2(-sa, ca));
 		vec2 off = vec2(pbr_hash(vs[k] + 11.7), pbr_hash(vs[k] - 5.3)) * 17.0;
-		vec2 q = r * uv + off;
-		ms[k] = textureGrad(pbr_mat_tex, vec3(q, lf), r * dx, r * dy);
-		vec3 t = textureGrad(pbr_nrm_tex, vec3(q, lf), r * dx, r * dy).xyz * 2.0 - 1.0;
-		vec2 txy = transpose(r) * vec2(t.x, -t.y);
-		ns[k] = vec3(txy, t.z);
+		ms[k] = textureGrad(pbr_tex, vec3(r * uv + off, lf), r * dx, r * dy);
+		vec3 t = pbr_unpack_n(ms[k]);
+		ns[k] = vec3(transpose(r) * vec2(t.x, -t.y), t.z);
 	}
 	// height-aware, contrast-sharpened blend: the higher texel wins at hex borders (no ghosting)
-	vec3 hw = vec3(ms[0].g, ms[1].g, ms[2].g);
-	vec3 bw = pow(w, vec3(3.0)) * exp(hw * 7.0);
+	vec3 bw = pow(w, vec3(3.0)) * exp(vec3(ms[0].g, ms[1].g, ms[2].g) * 7.0);
 	bw /= (bw.x + bw.y + bw.z);
 	m = ms[0] * bw.x + ms[1] * bw.y + ms[2] * bw.z;
 	tn = normalize(ns[0] * bw.x + ns[1] * bw.y + ns[2] * bw.z);
@@ -107,11 +106,13 @@ void pbr_hex(int layer, vec2 uv, float rot_amt, bool hex, out vec4 m, out vec3 t
 PbrS pbr_tri(int layer, vec3 wp, vec3 n, float scale, float rot_amt, bool hex) {
 	vec3 bw = pow(abs(n), vec3(8.0));
 	bw /= (bw.x + bw.y + bw.z);
+	bw = max(bw - 0.06, vec3(0.0));   // drop weak planes (1 plane on flats, 2 only on real bends)
+	bw /= (bw.x + bw.y + bw.z);
 	vec3 an = abs(n);
 	vec3 sg = vec3(n.x < 0.0 ? -1.0 : 1.0, n.y < 0.0 ? -1.0 : 1.0, n.z < 0.0 ? -1.0 : 1.0);
 	vec4 m = vec4(0.0);
 	vec3 wn = vec3(0.0);
-	if (bw.x > 0.02) {
+	if (bw.x > 0.0) {
 		vec4 mm; vec3 tn;
 		pbr_hex(layer, vec2(wp.z * sg.x, -wp.y) * scale, rot_amt, hex, mm, tn);   // side cliffs
 		tn = vec3(tn.x, -tn.y, tn.z);                                              // uv.y = -world y
@@ -120,7 +121,7 @@ PbrS pbr_tri(int layer, vec3 wp, vec3 n, float scale, float rot_amt, bool hex) {
 		m += mm * bw.x;
 		wn += vec3(tn.z, tn.y, tn.x * sg.x) * bw.x;
 	}
-	if (bw.y > 0.02) {
+	if (bw.y > 0.0) {
 		vec4 mm; vec3 tn;
 		pbr_hex(layer, vec2(wp.x, wp.z) * scale, rot_amt, hex, mm, tn);            // tops / ceilings
 		tn = pbr_rnm(vec3(n.x, n.z, an.y), tn);
@@ -128,7 +129,7 @@ PbrS pbr_tri(int layer, vec3 wp, vec3 n, float scale, float rot_amt, bool hex) {
 		m += mm * bw.y;
 		wn += vec3(tn.x, tn.z, tn.y) * bw.y;
 	}
-	if (bw.z > 0.02) {
+	if (bw.z > 0.0) {
 		vec4 mm; vec3 tn;
 		pbr_hex(layer, vec2(wp.x * sg.z, -wp.y) * scale, rot_amt, hex, mm, tn);   // front faces (upright image)
 		tn = vec3(tn.x, -tn.y, tn.z);
@@ -137,13 +138,11 @@ PbrS pbr_tri(int layer, vec3 wp, vec3 n, float scale, float rot_amt, bool hex) {
 		m += mm * bw.z;
 		wn += vec3(tn.x * sg.z, tn.y, tn.z) * bw.z;
 	}
-	float tot = (bw.x > 0.02 ? bw.x : 0.0) + (bw.y > 0.02 ? bw.y : 0.0) + (bw.z > 0.02 ? bw.z : 0.0);
-	m /= max(tot, 1e-4);
 	PbrS r;
 	r.lum = m.r * 2.0;
 	r.h = m.g;
-	r.ao = m.b;
-	r.rough = m.a;
+	r.ao = mix(0.6, 1.0, smoothstep(0.0, 0.55, m.g));   // cavities (low height) darker
+	r.rough = clamp(0.62 + (1.0 - r.lum) * 0.22 + (0.5 - m.g) * 0.2, 0.2, 1.0);
 	r.n = normalize(wn);
 	return r;
 }
@@ -201,82 +200,90 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	if (pbr_strength <= 0.0) {
 		return 0.0;
 	}
+	float dist = length(cam - wp);
 	float fade = pbr_fade(wp, cam, 0.35) * pbr_strength;
 	float up = clamp(gn.y, 0.0, 1.0);
-	bool near = length(cam - wp) < pbr_fade_far;   // far away: plain tiling (cheaper, mips hide repeats)
-	// low-frequency world-space masks for layer mixing (no tile grid: warped value noise)
+	bool hex = dist < pbr_hex_dist;   // far away: plain tiling (mips hide repeats, 1 tap instead of 3)
+	// low-frequency world-space patch mask for secondary layers (smooth value noise, no tile grid)
 	vec2 q = p * 0.23 + vec2(sin(p.y * 0.17), cos(p.x * 0.13)) * 1.3;
-	float mn = pbr_hash(floor(q)) * 0.5 + pbr_hash(floor(q * 2.3 + 7.0)) * 0.5;
-	vec2 fq = fract(q);
-	float patchv = mix(mix(pbr_hash(floor(q)), pbr_hash(floor(q) + vec2(1.0, 0.0)), smoothstep(0.0, 1.0, fq.x)),
-		mix(pbr_hash(floor(q) + vec2(0.0, 1.0)), pbr_hash(floor(q) + vec2(1.0, 1.0)), smoothstep(0.0, 1.0, fq.x)), smoothstep(0.0, 1.0, fq.y));
-	bool canopy = (mat == PBR_M_FOLIAGE || mat == PBR_M_GRASS) && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5;
-	if (canopy) {
+	vec2 qi = floor(q);
+	vec2 fq = smoothstep(0.0, 1.0, fract(q));
+	float patchv = mix(mix(pbr_hash(qi), pbr_hash(qi + vec2(1.0, 0.0)), fq.x),
+		mix(pbr_hash(qi + vec2(0.0, 1.0)), pbr_hash(qi + vec2(1.0, 1.0)), fq.x), fq.y);
+	bool leafy = mat == PBR_M_FOLIAGE || mat == PBR_M_GRASS;
+	if (leafy && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5) {
 		// tree crowns: dense leaf scan, big leaves, strong relief
-		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, near);
+		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, hex);
 		pbr_apply(l, 1.0 * fade, 0.9 * fade, 0.6, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
-	if (mat == PBR_M_GRASS || mat == PBR_M_FOLIAGE) {
-		PbrS g = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, near);
-		// mossy / leaf-litter patches break the lawn up
-		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, near);
-		float t = pbr_hblend(g.h, l.h, smoothstep(0.35, 0.8, patchv) * 0.55, 0.25);
-		PbrS s = pbr_mix(g, l, t);
+	if (leafy) {
+		// lawn, broken up by leaf-litter patches (secondary layer only where the patch mask is on)
+		PbrS s = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, hex);
+		float cov = smoothstep(0.45, 0.85, patchv) * 0.6;
+		if (cov > 0.01) {
+			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
+			s = pbr_mix(s, l, pbr_hblend(s.h, l.h, cov, 0.25));
+		}
 		pbr_apply(s, 1.0 * fade, 0.85 * fade, 0.6, 0.1, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_RUIN) {
-		PbrS r = pbr_tri(PBR_ROCK, wp, gn, 0.33, 1.0, near);
-		PbrS m = pbr_tri(PBR_LICHEN, wp, gn, 0.4, 1.0, near);
-		float t = pbr_hblend(r.h, m.h, smoothstep(0.3, 0.9, patchv) * 0.6 + up * 0.25, 0.2);
-		PbrS s = pbr_mix(r, m, t);
+		// weathered stone with lichen crusts (more on the tops)
+		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.33, 1.0, hex);
+		float cov = smoothstep(0.4, 0.9, patchv) * 0.6 + up * 0.2;
+		if (cov > 0.01) {
+			PbrS m = pbr_tri(PBR_LICHEN, wp, gn, 0.4, 1.0, false);
+			s = pbr_mix(s, m, pbr_hblend(s.h, m.h, cov, 0.2));
+		}
+		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
+		return 1.0;
+	}
+	if (mat == PBR_M_EARTH) {
+		// soil with embedded stones; Odyssey's earth uses the red laterite scan (still tinted by the painting)
+		PbrS s = pbr_tri(pbr_level == 1 ? PBR_REDEARTH : PBR_SOIL, wp, gn, 0.4, 1.0, hex);
+		float cov = smoothstep(0.6, 0.95, patchv) * 0.5;
+		if (cov > 0.01) {
+			PbrS r = pbr_tri(PBR_ROCK, wp, gn, 0.25, 1.0, false);
+			s = pbr_mix(s, r, pbr_hblend(s.h, r.h, cov, 0.2));
+		}
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_CRAG) {
-		PbrS s = pbr_tri(PBR_STRATA, wp, gn, 0.2, 0.0, near);
+		PbrS s = pbr_tri(PBR_STRATA, wp, gn, 0.2, 0.0, hex);
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_STONE || mat == PBR_M_METAL || mat == PBR_M_BONE) {
-		PbrS s = pbr_tri(mat == PBR_M_BONE ? PBR_MARBLE : PBR_ROCK, wp, gn, 0.35, 1.0, near);
+		PbrS s = pbr_tri(mat == PBR_M_BONE ? PBR_MARBLE : PBR_ROCK, wp, gn, 0.35, 1.0, hex);
 		pbr_apply(s, 0.8 * fade, 0.75 * fade, mat == PBR_M_METAL ? 0.0 : 0.4, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
-	if (mat == PBR_M_EARTH) {
-		// soil; Odyssey's red earth layer uses the red laterite scan's structure (still tinted by the painting)
-		int lay = pbr_level == 1 ? PBR_REDEARTH : PBR_SOIL;
-		PbrS s = pbr_tri(lay, wp, gn, 0.4, 1.0, near);
-		PbrS r = pbr_tri(PBR_ROCK, wp, gn, 0.25, 1.0, near);
-		float t = pbr_hblend(s.h, r.h, smoothstep(0.55, 0.95, patchv) * 0.5, 0.2);
-		pbr_apply(pbr_mix(s, r, t), 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
-		return 1.0;
-	}
 	if (mat == PBR_M_SAND) {
-		PbrS s = pbr_tri(PBR_SAND, wp, gn, 0.5, 1.0, near);
+		PbrS s = pbr_tri(PBR_SAND, wp, gn, 0.5, 1.0, hex);
 		pbr_apply(s, 0.6 * fade, 0.6 * fade, 0.4, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_WOOD) {
-		PbrS s = pbr_tri(PBR_BARK, wp, gn, 0.5, 0.0, near);
+		PbrS s = pbr_tri(PBR_BARK, wp, gn, 0.5, 0.0, hex);
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_MARBLE) {
-		PbrS s = pbr_tri(PBR_MARBLE, wp, gn, 0.3, 1.0, near);
+		PbrS s = pbr_tri(PBR_MARBLE, wp, gn, 0.3, 1.0, hex);
 		pbr_apply(s, 0.35 * fade, 0.3 * fade, 0.0, 0.0, albedo, n, rough, ao);
 		return 1.0;
 	}
 	if (mat == PBR_M_OBSIDIAN) {
 		// normals only: keeps the glassy near-black readable
-		PbrS s = pbr_tri(PBR_BASALT, wp, gn, 0.4, 1.0, near);
+		PbrS s = pbr_tri(PBR_BASALT, wp, gn, 0.4, 1.0, false);
 		n = normalize(mix(n, s.n, 0.35 * fade));
 		return 1.0;
 	}
 	if (mat == -1) {
-		// back walls: subtle rock grain (the wall pattern itself is world's)
-		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.3, 1.0, near);
+		// back walls: subtle rock grain (the wall pattern itself is world's); plain tiling is enough
+		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.3, 1.0, false);
 		pbr_apply(s, 0.55 * fade, 0.55 * fade, 0.3, 0.05, albedo, n, rough, ao);
 		return 1.0;
 	}

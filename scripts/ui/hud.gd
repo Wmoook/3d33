@@ -41,6 +41,18 @@ func caption(text: String) -> void:
 	_caption = text
 	_caption_t = 0.0
 
+## Live-update the visible toast's text without restarting it; hold_left caps the remaining time (s).
+func toast_update(title_s: String, text: String, hold_left: float = -1.0) -> void:
+	if _toast_t < 0.0:
+		return
+	_toast_title = title_s
+	_toast_text = text
+	if hold_left >= 0.0:
+		_toast_len = minf(_toast_len, _toast_t + hold_left)
+
+func toast_active() -> bool:
+	return _toast_t >= 0.0
+
 ## Small one-off message pill (e.g. "COIN DOOR  needs 16 gold coins"), top-center under the god pill.
 func toast(title_s: String, text: String, secs: float = 4.0) -> void:
 	_toast_title = title_s

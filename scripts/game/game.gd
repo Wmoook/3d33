@@ -617,6 +617,11 @@ var _piano_cell := Vector2i(-1, -1)
 var _sim_piano_events := false
 var _coin_doors: Array = []        # [Vector2i tile, int needed] of gold coin doors/gates (43/165)
 var _coin_door_seen := false
+var _door_toast_need := 0
+var _door_toast_open := false
+
+func _door_toast_text() -> String:
+	return "needs %d gold %s  -  you have %d" % [_door_toast_need, "coin" if _door_toast_need == 1 else "coins", int(sim.coins)]
 func _check_piano() -> void:
 	if _sim_piano_events:
 		return
@@ -853,8 +858,18 @@ func _update_hud() -> void:
 		for cd in _coin_doors:
 			if vr.has_point(Vector2(cd[0]) + Vector2(0.5, 0.5)) and sim.is_tile_solid_now(cd[0].x, cd[0].y):
 				_coin_door_seen = true
-				hud.toast("COIN DOOR", "needs %d gold %s  -  you have %d" % [cd[1], "coin" if cd[1] == 1 else "coins", int(sim.coins)], 5.0)
+				_door_toast_need = int(cd[1])
+				_door_toast_open = false
+				hud.toast("COIN DOOR", _door_toast_text(), 5.0)
 				break
+	# live coin count in the coin-door pill (same source as the HUD); flips to OPEN when you have enough
+	if _door_toast_need > 0 and hud.toast_active():
+		if int(sim.coins) >= _door_toast_need:
+			if not _door_toast_open:
+				_door_toast_open = true
+				hud.toast_update("COIN DOOR OPEN", "", 1.6)
+		else:
+			hud.toast_update("COIN DOOR", _door_toast_text())
 	var ptile := Vector2(_render_pos.x, -_render_pos.y)
 	var cf := Vector2(rig.focus.x, -rig.focus.y)
 	minimap.set_player(ptile, Rect2(cf - he, he * 2.0))

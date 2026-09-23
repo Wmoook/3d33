@@ -45,6 +45,7 @@ const SPOTS := [
 	["sky_birds", Vector2(20, 12)],
 	["qa_bridges", Vector2(225, 64)],
 	["qa_keep", Vector2(300, 90)],
+	["qa_keep_r", Vector2(312, 90)],
 	["qa_hall", Vector2(350, 95)],
 	["qa_sanctum", Vector2(300, 140)],
 	["qa_halls", Vector2(85, 90)],

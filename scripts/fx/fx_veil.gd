@@ -424,55 +424,66 @@ func _leaf_emitter(width: float, n: int) -> GPUParticles3D:
 
 # ------------------------------------------------------------------------------------------ dappled light
 
-const DAPPLE_CHUNK := 14
+const DAPPLE_CHUNK := 10
 
 ## Leaf-light under canopies: per canopy chunk two drifting decals (a shade pattern with light holes that
 ## darkens albedo + warm emissive sun flecks) projected onto the terrain and back walls below it.
 ## cull_mask = 1 (terrain) so the ball is never dappled.
 func _build_dapples() -> void:
+	# light only falls through a canopy that is actually overhead: count open (non-leaf) air tiles that have
+	# leaf-painted tiles within 6 tiles above them; each chunk of such under-canopy air gets its decals
 	var bins := {}
 	for y in range(2, H - 1):
 		for x in W:
-			if is_foliage(x, y) and (sunny(x, y - 1) or sunny(x, y - 2)):
-				var k := Vector2i(x / DAPPLE_CHUNK, y / DAPPLE_CHUNK)
-				bins[k] = bins.get(k, 0) + 1
+			if not FxOverlayMaps.is_open(lvl, x, y) or is_foliage(x, y):
+				continue
+			var under := false
+			for k in range(1, 7):
+				if is_foliage(x, y - k):
+					under = true
+					break
+			if not under:
+				continue
+			var key := Vector2i(x / DAPPLE_CHUNK, y / DAPPLE_CHUNK)
+			if not bins.has(key):
+				bins[key] = {"n": 0, "sum": Vector2.ZERO}
+			bins[key].n += 1
+			bins[key].sum += Vector2(x + 0.5, y + 0.5)
 	if bins.is_empty():
 		return
 	var shade_tex := _dapple_texture(false)
 	var fleck_tex := _dapple_texture(true)
 	for k: Vector2i in bins:
-		if bins[k] < 10:
+		if bins[k].n < 12:
 			continue
-		var cx := (k.x + 0.5) * DAPPLE_CHUNK
-		var cy := (k.y + 0.5) * DAPPLE_CHUNK + 4.0   # light falls through onto what lies beneath
+		var c: Vector2 = bins[k].sum / bins[k].n
 		for layer in 2:
 			var d := Decal.new()
 			d.name = "Dapple"
-			var sz := DAPPLE_CHUNK + 6.0 + layer * 3.0
+			var sz := DAPPLE_CHUNK + 2.0 + layer * 2.0
 			d.size = Vector3(sz, 8.0, sz)
 			d.rotation.x = PI * 0.5            # project along -z (onto the terrain face and back walls)
 			d.texture_albedo = shade_tex
 			if layer == 0:
-				d.texture_emission = fleck_tex   # sun flecks only on the main layer
-				d.emission_energy = 0.8
-			d.albedo_mix = 1.0 if layer == 0 else 0.6
-			d.modulate = Color(1.0, 1.0, 1.0)
+				d.texture_emission = fleck_tex   # soft warm-white sun flecks, main layer only
+				d.emission_energy = 0.32
+			d.albedo_mix = 0.6 if layer == 0 else 0.35
 			d.upper_fade = 0.2
 			d.lower_fade = 0.2
 			d.cull_mask = 1   # (no distance fade: the gameplay camera sits ~40 units away; _process culls by focus)
 			d.visible = false
-			var base := Vector3(cx, -cy, 0.0)
+			var base := Vector3(c.x, -c.y, 0.0)
 			d.position = base
 			add_child(d)
 			var h := FxInteractiveBlocks._tile_hash(k + Vector2i(layer * 17, 3))
-			_dapples.append({"node": d, "center": Vector2(cx, cy), "base": base, "ph": h.x * TAU,
+			_dapples.append({"node": d, "center": c, "base": base, "ph": h.x * TAU,
 				"amp": 0.35 + layer * 0.25, "rot": 0.02 + h.y * 0.03})
 
 func _dapple_texture(flecks: bool) -> ImageTexture:
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_CELLULAR
 	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
-	n.frequency = 0.045
+	n.frequency = 0.075   # smaller flecks
 	n.seed = 7
 	var n2 := FastNoiseLite.new()
 	n2.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -487,8 +498,8 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 	# thresholds by percentile, so ~35% of the pattern is light holes whatever the noise range is
 	var sorted := vals.duplicate()
 	sorted.sort()
-	var t0 := sorted[int(S * S * 0.22)]
-	var t1 := sorted[int(S * S * 0.46)]
+	var t0 := sorted[int(S * S * 0.12)]
+	var t1 := sorted[int(S * S * 0.42)]   # wide ramp = feathered edges
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
 	for y in S:
 		for x in S:
@@ -498,7 +509,7 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 			var hole := 1.0 - smoothstep(t0, t1, vals[y * S + x])
 			if flecks:
 				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
-				img.set_pixel(x, y, Color(1.0 * a, 0.78 * a, 0.4 * a, a))
+				img.set_pixel(x, y, Color(1.0 * a, 0.96 * a, 0.86 * a, a)   # warm white, barely warmer than the sun)
 			else:
 				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.75))
 	img.generate_mipmaps()

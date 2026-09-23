@@ -2,10 +2,17 @@
 
 importer="2d_array_texture"
 type="CompressedTexture2DArray"
+uid="uid://cwffgymbk7i8i"
+path.bptc="res://.godot/imported/pbr_detail.png-7c060453fb1e531e885a0fad346c9a5f.bptc.ctexarray"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
 
 [deps]
 
 source_file="res://assets/world/pbr/pbr_detail.png"
+dest_files=["res://.godot/imported/pbr_detail.png-7c060453fb1e531e885a0fad346c9a5f.bptc.ctexarray"]
 
 [params]
 

@@ -473,14 +473,18 @@ void fragment() {
 			float streak = smoothstep(0.55, 0.9, fbm2(vec2(p.x * 5.0, p.y * 0.35 - t * 4.5)) * 0.5 + 0.5);
 			float foamE = 1.0 - smoothstep(0.0, 0.3, s.w);
 			flow = max(flow, streak);
-			float fr = pow(1.0 - clamp(dot(n, vd), 0.0, 1.0), 2.5);
-			vec3 deep = srgb_to_lin(vec3(0.12, 0.36, 0.78));
-			albedo = deep * mix(0.35, 0.6, flow) * (1.0 - fr * 0.5);
-			float spark = smoothstep(0.985, 1.0, ridge(p * 1.2 + wob * 2.0 + vec2(0.0, t * 0.6)));
-			emit = srgb_to_lin(vec3(0.25, 0.55, 1.0)) * (0.08 + 0.2 * flow) + vec3(0.8, 0.92, 1.0) * (fr * 0.6 + spark * 0.35 + streak * 0.25);
-			albedo = mix(albedo, vec3(0.85, 0.92, 1.0), foamE * (0.4 + 0.4 * streak));
-			rough = 0.03;
-			spec = 1.0;
+			// fresnel only on the front face (vertical cube sides must not glow white)
+			float fr = pow(1.0 - clamp(dot(n, vd), 0.0, 1.0), 3.0) * smoothstep(0.5, 0.9, gn.z) * 0.4;
+			vec3 deep = srgb_to_lin(vec3(0.05, 0.22, 0.6));
+			float streak2 = smoothstep(0.45, 0.85, fbm2(vec2(p.x * 3.5 + wob.x, p.y * 0.25 - t * 5.5)) * 0.5 + 0.5);
+			albedo = deep * mix(0.3, 0.75, max(flow * 0.6, streak2));
+			float spark = smoothstep(0.99, 1.0, ridge(p * 1.2 + wob * 2.0 + vec2(0.0, t * 0.6)));
+			emit = srgb_to_lin(vec3(0.15, 0.45, 1.0)) * (0.05 + 0.18 * streak2) + vec3(0.7, 0.85, 1.0) * (fr + spark * 0.2 + streak2 * 0.12);
+			// foam only along top edges
+			float topE = foamE * smoothstep(0.35, 0.8, gn.y);
+			albedo = mix(albedo, vec3(0.8, 0.88, 0.95), topE * (0.5 + 0.4 * streak));
+			rough = mix(0.12, 0.4, topE);
+			spec = 0.4;
 		}
 	} else if (mat == M_CORRUPT) {
 		float vein = smoothstep(0.975, 0.997, ridge(p * 0.32 + fbm2(p * 0.21) * 1.4));

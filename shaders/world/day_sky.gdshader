@@ -204,14 +204,14 @@ void sky() {
 				float depthb = pl.y - top;
 				// sunlit east faces / shaded west faces near the crest, fading to even tone lower down
 				float face = smoothstep(-0.4, 0.4, slope * 2.0 + (fbm(pl * 0.35) - 0.5) * 0.6);
-				float sunlit = mix(0.55, mix(0.25, 1.0, face), exp(-depthb * 0.07));
+				float sunlit = mix(0.45, mix(0.12, 1.0, face), exp(-depthb * 0.05));
 				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
 				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 0.4 + pl.y * 0.2, pl.y * 0.3)));
 				vec3 rock = mix(vec3(0.04, 0.06, 0.13), vec3(0.14, 0.18, 0.32), sunlit) * (1.0 - gully * 0.25);
-				vec3 sn = mix(vec3(0.55, 0.64, 0.86), vec3(1.0, 0.97, 0.93), sunlit) * (1.0 - gully * 0.15);
+				vec3 sn = mix(vec3(0.28, 0.36, 0.6), vec3(1.2, 1.15, 1.08), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);
-				mcol = mix(mcol, horizon_haze, L == 0 ? 0.35 : 0.15);
-				mcol = mix(mcol, horizon_haze, smoothstep(10.0, 45.0, pl.y - top) * 0.5);   // foot dissolves into haze
+				mcol = mix(mcol, horizon_haze, L == 0 ? 0.14 : 0.06);
+				mcol = mix(mcol, horizon_haze, smoothstep(14.0, 50.0, pl.y - top) * 0.3);   // foot dissolves into haze
 				c = mix(c, mcol, cov);
 			}
 		}
@@ -233,15 +233,16 @@ void sky() {
 			vec2 wm = anchor + (cam2.xy - anchor) * 0.5 + (hit - cam2.xy) * 1.15;
 			vec2 pm = vec2(wm.x, -wm.y);
 			float lit; float fall;
-			float rc = ruins(pm, 160.0, lit, fall);
-			vec3 rcol = mix(vec3(0.34, 0.42, 0.55), vec3(0.62, 0.64, 0.66), lit * 0.8);
-			rcol = mix(rcol, vec3(0.25, 0.4, 0.33), smoothstep(-1.0, 3.0, pm.y - (160.0 - 6.0 * fbm(vec2(pm.x * 0.03, 11.0)))) * 0.5);
-			rcol = mix(rcol, haze, 0.28);
+			float mbase = -cam2.y + 14.0;   // ground line of the mid layer sits in the lower third of the view
+			float rc = ruins(pm, mbase, lit, fall);
+			vec3 rcol = mix(vec3(0.1, 0.13, 0.2), vec3(0.32, 0.32, 0.33), lit * 0.8);
+			rcol = mix(rcol, vec3(0.12, 0.22, 0.14), smoothstep(-1.0, 3.0, pm.y - (mbase - 6.0 * fbm(vec2(pm.x * 0.03, 11.0)))) * 0.6);
+			rcol = mix(rcol, haze, 0.12);
 			c = mix(c, rcol, rc);
 			float fs = fall * (0.6 + 0.4 * n2(vec2(pm.x * 3.0, pm.y * 0.5 - TIME * 3.0)));
 			c = mix(c, vec3(0.85, 0.92, 1.0), fs * 0.7);
 			// valley mist below the mid layer
-			c = mix(c, haze, smoothstep(166.0, 195.0, pm.y) * 0.75);
+			c = mix(c, haze, smoothstep(mbase + 6.0, mbase + 35.0, pm.y) * 0.4);
 		}
 		// soft cumulus: blurred painted cloud mask as density hint + billowing fbm, sun-lit tops,
 		// shaded bellies, slow drift

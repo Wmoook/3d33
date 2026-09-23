@@ -74,9 +74,9 @@ var FOG := {
 	WorldPalette.Z_TORNADO: [Color(0.8, 0.82, 0.9), 0.07, Color(0.01, 0.01, 0.014), 0.06],
 	WorldPalette.Z_BONES: [Color(0.85, 0.7, 0.5), 0.05, Color(0.012, 0.007, 0.003), 0.05],
 	WorldPalette.Z_DEEP: [Color(0.9, 0.45, 0.45), 0.055, Color(0.02, 0.004, 0.004), 0.05],
-	WorldPalette.Z_DAY: [Color(0.85, 0.9, 1.0), 0.004, Color(0.0, 0.0, 0.0), 0.0],
+	WorldPalette.Z_DAY: [Color(0.85, 0.9, 1.0), 0.0015, Color(0.0, 0.0, 0.0), 0.0],
 	WorldPalette.Z_RUINS: [Color(0.75, 0.78, 0.82), 0.016, Color(0.0, 0.0, 0.0), 0.02],
-	WorldPalette.Z_WATERWAY: [Color(0.7, 0.85, 0.95), 0.022, Color(0.004, 0.01, 0.014), 0.08],
+	WorldPalette.Z_WATERWAY: [Color(0.7, 0.85, 0.95), 0.009, Color(0.004, 0.01, 0.014), 0.03],
 }
 
 func build(lvl: EELevel, terrain: WorldTerrain, lights: WorldLights, zones: WorldZones) -> void:

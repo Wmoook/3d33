@@ -4,20 +4,16 @@ extends RefCounted
 ## The arrays hold detail only (grey-balanced luminance, height, AO, roughness, normal); every hue stays
 ## the painting's. See assets/world/pbr/LICENSES.md (all CC0, Poly Haven).
 
-const MAT_TEX := "res://assets/world/pbr/pbr_mat.png"
-const NRM_TEX := "res://assets/world/pbr/pbr_nrm.png"
+const DETAIL_TEX := "res://assets/world/pbr/pbr_detail.png"   # Texture2DArray, 13 layers (see the include)
 
-static var _mat: TextureLayered
-static var _nrm: TextureLayered
+static var _tex: TextureLayered
 
 ## odyssey: selects the red-earth soil scan for the Odyssey earth layer. terrain (optional): builds the
 ## per-tile canopy mask so tree crowns get the leaf scan and ground mantles the lawn scan.
 static func bind(material: ShaderMaterial, odyssey := false, strength := 1.0, terrain: WorldTerrain = null) -> void:
-	if _mat == null:
-		_mat = load(MAT_TEX)
-		_nrm = load(NRM_TEX)
-	material.set_shader_parameter("pbr_mat_tex", _mat)
-	material.set_shader_parameter("pbr_nrm_tex", _nrm)
+	if _tex == null:
+		_tex = load(DETAIL_TEX)
+	material.set_shader_parameter("pbr_tex", _tex)
 	material.set_shader_parameter("pbr_level", 1 if odyssey else 0)
 	material.set_shader_parameter("pbr_strength", strength)
 	if terrain:
