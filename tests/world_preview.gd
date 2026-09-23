@@ -261,13 +261,29 @@ func _run_perf() -> void:
 ## Readability check (day levels): behind every sky-connected air tile in view, the backdrop must stay
 ## >= 60% of the local sky luminance (max over a 21x21-tile window of sky tiles), so open air never reads
 ## as a dark wall.
+## Tiles visible at the gameplay plane (z = 0) plus a 2-tile margin (keeps the per-view checks fast).
+func _view_rect() -> Rect2i:
+	var t := world.terrain
+	var vp := get_viewport().get_visible_rect().size
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for c in [Vector2.ZERO, Vector2(vp.x, 0), Vector2(0, vp.y), vp]:
+		var o := cam.project_ray_origin(c)
+		var d := cam.project_ray_normal(c)
+		var w := o + d * (-o.z / d.z)
+		lo = lo.min(Vector2(w.x, -w.y))
+		hi = hi.max(Vector2(w.x, -w.y))
+	var r := Rect2i(Vector2i(lo.floor()) - Vector2i(2, 2), Vector2i((hi - lo).ceil()) + Vector2i(5, 5))
+	return r.intersection(Rect2i(0, 0, t.W, t.H))
+
 func _sky_luma_check(img: Image, nm: String) -> void:
 	var t := world.terrain
 	var vs := Vector2(img.get_width(), img.get_height())
 	var vp := get_viewport().get_visible_rect().size
 	var samples := {}
-	for ty in t.H:
-		for tx in t.W:
+	var vr := _view_rect()
+	for ty in range(vr.position.y, vr.end.y):
+		for tx in range(vr.position.x, vr.end.x):
 			var i := ty * t.W + tx
 			if not t.sky[i] or t.solid[i]:
 				continue
@@ -319,8 +335,9 @@ func _black_air_check(img: Image, nm: String) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	var bad := 0
 	var total := 0
-	for ty in t.H:
-		for tx in t.W:
+	var vr := _view_rect()
+	for ty in range(vr.position.y, vr.end.y):
+		for tx in range(vr.position.x, vr.end.x):
 			var i := ty * t.W + tx
 			if t.solid[i]:
 				continue
@@ -359,8 +376,9 @@ func _sky_in_structure_check(img: Image, nm: String) -> void:
 	var bad := 0
 	var total := 0
 	var mk := img.duplicate() as Image
-	for ty in t.H:
-		for tx in t.W:
+	var vr := _view_rect()
+	for ty in range(vr.position.y, vr.end.y):
+		for tx in range(vr.position.x, vr.end.x):
 			var i := ty * t.W + tx
 			var c := t.wall_code[i]
 			if t.solid[i] or c < 5 or c >= 20 or (world.depth and world.depth.win.size() == t.W * t.H and world.depth.win[i]):
@@ -395,8 +413,9 @@ func _seam_check(img: Image, nm: String) -> void:
 	var total := 0
 	var hol := WorldForest.hollow_mask(t)
 	var mk := img.duplicate() as Image
-	for ty in range(1, t.H - 1):
-		for tx in range(1, t.W - 1):
+	var vr := _view_rect()
+	for ty in range(maxi(1, vr.position.y), mini(t.H - 1, vr.end.y)):
+		for tx in range(maxi(1, vr.position.x), mini(t.W - 1, vr.end.x)):
 			var i := ty * t.W + tx
 			if t.solid[i] or t.sky[i] or (world.depth and world.depth.win.size() == t.W * t.H and world.depth.win[i]):
 				continue

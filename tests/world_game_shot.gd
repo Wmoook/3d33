@@ -11,6 +11,7 @@ func _ready() -> void:
 	var at := Vector2i(145, 50)
 	var nm := "tunnel"
 	var key := ""
+	var zoom := 0.0
 	var lvl_id := "odyssey"
 	var q := 3
 	for a in OS.get_cmdline_user_args():
@@ -27,6 +28,8 @@ func _ready() -> void:
 			WorldView.depth_enabled = false
 		elif a == "novoxel":
 			WorldVoxel.enabled = false
+		elif a.begins_with("zoom="):
+			zoom = float(a.substr(5))
 		elif a == "noglass":
 			WorldDepth.debug_no_glass = true
 		elif a.begins_with("q="):
@@ -53,6 +56,16 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	if key != "":
 		sim._set_key(StringName(key), true)
+	if zoom > 0.0:
+		var rig = game.find_child("CameraRig", true, false)
+		if rig == null:
+			for c in game.find_children("*", "", true, false):
+				if c.get("target_zoom") != null:
+					rig = c
+					break
+		if rig:
+			rig.target_zoom = zoom
+			rig.zoom = zoom
 	await _wait(2.5)
 	game.collision_overlay.visible = false
 	await _wait(0.3)

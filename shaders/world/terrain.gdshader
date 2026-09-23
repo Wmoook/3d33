@@ -153,6 +153,27 @@ float triplanar_h(sampler2D t, vec3 pos, vec3 n, float scale) {
 	return texture(t, pos.zy * scale).r * bw.x + texture(t, pos.xz * scale).r * bw.y + texture(t, pos.xy * scale).r * bw.z;
 }
 
+// A recess fragment belongs to a WorldDepth room if its tile is a room tile, or it is the rounded corner of a
+// solid tile bordering one (otherwise a sliver of the shallow slab back wall shows at the room's edges).
+bool room_near(vec2 p) {
+	ivec2 t = ivec2(floor(p));
+	ivec2 mx = ivec2(level_size) - 1;
+	if (texelFetch(window_tex, clamp(t, ivec2(0), mx), 0).r * 255.0 > 1.5) {
+		return true;
+	}
+	if (texelFetch(info_tex, clamp(t, ivec2(0), mx), 0).r < 0.9) {
+		return false;
+	}
+	for (int dy = -1; dy <= 1; dy++) {
+		for (int dx = -1; dx <= 1; dx++) {
+			if (texelFetch(window_tex, clamp(t + ivec2(dx, dy), ivec2(0), mx), 0).r * 255.0 > 1.5) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 void fragment() {
 	vec3 cam_t = (level_inv * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	float t = TIME * time_scale;
@@ -184,8 +205,8 @@ void fragment() {
 		layer = (s.y >= -0.13) ? 1 : 2;
 	}
 	if (layer == 1 && s.y < -0.07) { layer = 2; }
-	if (depth_cont > 0.5 && layer != 0 && texelFetch(window_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r * 255.0 > 4.5) {
-		discard;   // structure interior: WorldDepth draws the recessed room (back wall, side walls, windows)
+	if (depth_cont > 0.5 && layer != 0 && room_near(p)) {
+		discard;   // structure interior / earth tunnel: WorldDepth draws the recessed room
 	}
 	if (layer != 0 && texelFetch(forest_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
 		discard;   // forest hollow: WorldForest's deep forest shows through

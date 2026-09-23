@@ -224,9 +224,20 @@ func _keep_out_image(terrain: WorldTerrain, depth: WorldDepth) -> Image:
 				b[i] = 63
 	if depth and depth.room.size() == b.size():
 		var rooms := 0
+		var H2 := terrain.H
 		for i in b.size():
 			if depth.room[i] != 0:
-				b[i] = maxi(b[i], clampi(int(ceil(2.6 + depth.room_r[i])), 1, 255))
+				var v := clampi(int(ceil(2.6 + depth.room_r[i])), 1, 255)
+				# dilated 1 tile: rays grazing past the slab's rounded corners around a room showed voxel slivers
+				var x := i % W2
+				var y := i / W2
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						var nx := x + dx
+						var ny := y + dy
+						if nx >= 0 and ny >= 0 and nx < W2 and ny < H2:
+							var j := ny * W2 + nx
+							b[j] = maxi(b[j], v)
 				rooms += 1
 		print("WorldVoxel keep-out: %d room tiles" % rooms)
 	return Image.create_from_data(W2, terrain.H, false, Image.FORMAT_R8, b)

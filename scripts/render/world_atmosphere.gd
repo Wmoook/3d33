@@ -258,7 +258,8 @@ func _particle_system(pname: String, amount: int, color: Color, energy: float, s
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	mat.vertex_color_use_as_albedo = true
-	mat.albedo_color = Color(color.r * energy, color.g * energy, color.b * energy)
+	var e := energy * (0.4 if day else 1.0)
+	mat.albedo_color = Color(color.r * e, color.g * e, color.b * e)
 	mat.albedo_texture = _soft_dot()
 	mat.disable_receive_shadows = true
 	mesh.material = mat
@@ -364,6 +365,8 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 	for pn in particles:
 		var p: GPUParticles3D = particles[pn]
 		var r: float = clampf(parts.get(pn, 0.0) * 1.3, 0.0, 1.0)
+		if day:
+			r *= lerpf(0.4, 1.0, clampf(surf, 0.0, 1.0))   # day level caves / tunnels: sparse motes (read as snow)
 		p.amount_ratio = r
 		p.emitting = r > 0.02
 		p.global_position = Vector3(world_pos.x, world_pos.y, 0.5)

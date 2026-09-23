@@ -592,7 +592,8 @@ const ROOM_WALL := 1.2          # thickness of a room's back wall block
 const RWIN_PITCH := 7           # rhythmic windows: one bay every this many columns ...
 const RWIN_ROWS := 11           # ... and one storey every this many rows
 var room := PackedInt32Array()      # per tile: room id + 1 (0 = not a room tile)
-var room_r := PackedFloat32Array()  # per tile: the room's back-wall depth (d)
+var room_r := PackedFloat32Array()
+var room_earth := PackedByteArray()   # per tile: 1 = earth cave (dirt back wall, no windows)  # per tile: the room's back-wall depth (d)
 var win := PackedByteArray()        # per tile: 1 = window opening (painted sky window or a rhythmic one)
 var windows: Array = []             # [{rect: Rect2i, r: float, stained: bool}]
 
@@ -605,11 +606,20 @@ func _make_rooms() -> void:
 	var n := W * H
 	room.resize(n); room.fill(0)
 	room_r.resize(n); room_r.fill(0.0)
+	room_earth.resize(n); room_earth.fill(0)
 	win.resize(n); win.fill(0)
 	var code: PackedByteArray = terrain.wall_code
 	if code.size() != n:
 		return
-	var is_room := func(i: int) -> bool: return code[i] >= 5 and not terrain.solid[i]   # rooms win over forest hollows
+	# stone interiors (code >= 5, win over forest hollows) and earth tunnels (code 2, not inside a forest
+	# hollow) are both recessed rooms; one component spans both so neighbouring earth / stone share R
+	var hol := WorldForest.hollow_mask(terrain)
+	var is_room := func(i: int) -> bool:
+		if terrain.solid[i]:
+			return false
+		if code[i] >= 5:
+			return true
+		return code[i] == 2 and not (hol.size() == n and hol[i] == 1)
 	var rid := 0
 	for start in n:
 		if room[start] or not is_room.call(start):
@@ -635,6 +645,7 @@ func _make_rooms() -> void:
 		var ag := _above_ground(comp)
 		for i in comp:
 			room_r[i] = r
+			room_earth[i] = 1 if code[i] < 5 else 0
 			if code[i] >= 20 and ag:
 				win[i] = 1   # painted sky in a structure: a window only where the room can see out
 		if comp.size() >= 80 and ag:
@@ -660,7 +671,10 @@ func _make_rooms() -> void:
 				if nx < 0 or ny < 0 or nx >= W or ny >= H:
 					continue
 				var j := ny * W + nx
-				if terrain.solid[j]:
+				if room[j] == 0 and (terrain.solid[j] or mass[j]):
+					depth[j] = maxf(depth[j], r + ROOM_WALL)   # every neighbouring mass closes the room's sides
+				elif room[j] == 0 and not terrain.solid[j] and not terrain.sky[j]:
+					mass[j] = 1   # non-sky air beside a room (a stray speck): a closed block, never a slit
 					depth[j] = maxf(depth[j], r + ROOM_WALL)
 	# window list for glass panes / shafts (one per connected window patch)
 	var seen := PackedByteArray(); seen.resize(n)
@@ -721,6 +735,15 @@ func _drop_tiny_windows() -> void:
 				win[i] = 0
 	timings["tiny_windows_dropped"] = dropped
 
+func _touches_room(x: int, y: int) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var nx := x + dx
+			var ny := y + dy
+			if nx >= 0 and ny >= 0 and nx < W and ny < H and room[ny * W + nx] != 0:
+				return true
+	return false
+
 func _hollow(i: int) -> bool:
 	var h := WorldForest.hollow_mask(terrain)
 	return h.size() == W * H and h[i] == 1
@@ -759,7 +782,7 @@ func _rhythm_windows(comp: PackedInt32Array, rid: int) -> void:
 					ok = false
 					break
 				var j := ny * W + nx
-				if room[j] != rid or terrain.wall_code[j] >= 20 or WorldPalette.is_world_solid(terrain.level.fg[j]) or WorldPalette.is_key_door(terrain.level.fg[j]):
+				if room[j] != rid or terrain.wall_code[j] >= 20 or terrain.wall_code[j] < 5 or WorldPalette.is_world_solid(terrain.level.fg[j]) or WorldPalette.is_key_door(terrain.level.fg[j]):
 					ok = false
 					break
 			if not ok:
@@ -770,11 +793,25 @@ func _rhythm_windows(comp: PackedInt32Array, rid: int) -> void:
 			for dx in 2:
 				win[(y + dy) * W + x + dx] = 2   # rhythmic lancet (frosted glass: may sit behind glyphs)
 
-## +z faces of the room back walls (kind 4) at d = R.
+## +z faces of the room back walls (kind 4) at d = R, plus an opaque front cap (kind 5, just behind the slab)
+## on every solid tile touching a room: the slab's rounded corners otherwise open slits onto what lies behind.
 func _build_room_backs(buckets: Dictionary) -> void:
 	for y in H:
 		for x in W:
 			var i := y * W + x
+			if room[i] == 0 and terrain.solid[i] and _touches_room(x, y):
+				var kc := Vector2i(x / CHUNK, y / CHUNK)
+				if not buckets.has(kc):
+					buckets[kc] = Bucket.new()
+				var bc: Bucket = buckets[kc]
+				var zc := Z_FRONT - 0.02
+				var pc := [Vector3(x, -y, zc), Vector3(x + 1, -y, zc), Vector3(x + 1, -y - 1, zc), Vector3(x, -y - 1, zc)]
+				for j in [0, 1, 2, 0, 2, 3]:
+					bc.v.append(pc[j])
+					bc.n.append(Vector3(0, 0, 1))
+					bc.uv.append(Vector2(x + 0.5, y + 0.5))
+					bc.uv2.append(Vector2(1.0, 5.0))
+				continue
 			if room[i] == 0 or win[i]:
 				continue
 			var key := Vector2i(x / CHUNK, y / CHUNK)
@@ -787,7 +824,7 @@ func _build_room_backs(buckets: Dictionary) -> void:
 				b.v.append(p[j])
 				b.n.append(Vector3(0, 0, 1))
 				b.uv.append(Vector2(x + 0.5, y + 0.5))
-				b.uv2.append(Vector2(0.0, 4.0))
+				b.uv2.append(Vector2(float(room_earth[i]), 4.0))   # x = 1: earth cave back wall
 
 ## Glass panes in every window opening + one soft light shaft per window falling into the room.
 func _build_room_extras() -> void:

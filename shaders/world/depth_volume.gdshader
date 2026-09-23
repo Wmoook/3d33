@@ -89,6 +89,7 @@ void vertex() {
 }
 
 void fragment() {
+	float sf = solid_f;
 	vec3 wp = w_pos;
 	vec3 gn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	float d = -1.2 - wp.z;
@@ -102,16 +103,24 @@ void fragment() {
 		ps.y += jn * 1.4;
 	}
 	ivec2 ti = clamp(ivec2(floor(ps)), ivec2(0), ivec2(level_size) - 1);
-	vec4 c = solid_f > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
-	int mat = solid_f > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
+	vec4 c = sf > 0.5 ? texelFetch(fgcol_tex, ti, 0) : texelFetch(bgcol_tex, ti, 0);
+	int mat = sf > 0.5 ? int(texelFetch(fgcol_tex, ivec2(floor(tile)), 0).a * 255.0 + 0.5) : -1;
 	vec3 albedo = c.rgb;
 	bool back = kind > 3.5 && kind < 4.5;   // a room's recessed back wall
+	bool earth_back = back && sf > 0.5;   // (UV2.x = 1 on a back wall: an earth cave, not masonry)
+	back = back && !earth_back;
+	if (earth_back) {
+		sf = 0.0;
+	}
 	// side faces bordering a room tile are the room's receding side walls / floor / ceiling
 	ivec2 tcell = ivec2(floor(tile));
 	int sidei = int(kind + 0.5);
 	ivec2 across = sidei == 0 ? ivec2(-1, 0) : (sidei == 1 ? ivec2(1, 0) : (sidei == 2 ? ivec2(0, -1) : ivec2(0, 1)));
 	float nstart = kind < 3.5 ? texelFetch(depth_tex, clamp(tcell + across, ivec2(0), ivec2(level_size) - 1), 0).g : 0.0;
 	bool inroom = kind < 3.5 && nstart > 2.5 && nstart < 7.5;
+	// any face of a solid that looks into non-sky air (a room, a recess, a pocket): it is the solid's own
+	// shadowed rock / dirt - never sky-lit, no sky reflection
+	bool inner = kind < 3.5 && sf > 0.5 && nstart < 50.0;
 	vec3 emit_x = vec3(0.0);
 	bool lip = kind > 9.5 && kind < 11.5;
 	bool skin = kind > 11.5;
@@ -151,6 +160,39 @@ void fragment() {
 		albedo *= mix(0.84, 1.08, sin(sy * 3.1) * 0.25 + 0.5 + (h21(vec2(floor(sy), 7.0)) - 0.5) * 0.5);
 	} else if (mat == -1 && !back) {
 		albedo *= 0.8;   // interior walls: the painted back-wall colour, a little shaded
+	}
+	if (earth_back) {
+		// ---- earth cave back wall: packed dirt in the painted colour, strata, damp, pebbles, roots, darkness ----
+		vec2 p = vec2(wp.x, -wp.y);
+		float lum_c = dot(c.rgb, vec3(0.3, 0.55, 0.15));
+		vec3 dirt = mix(vec3(0.13, 0.085, 0.045), vec3(0.19, 0.13, 0.07), vnoise(p * 0.35));
+		albedo = mix(dirt * (0.6 + lum_c * 2.5), c.rgb * 0.7, 0.3);
+		float sy = p.y * 1.3 + vnoise(p * vec2(0.12, 0.4)) * 1.6;
+		albedo *= mix(0.75, 1.06, smoothstep(0.2, 0.8, fract(sy)));
+		albedo *= 1.0 - smoothstep(0.55, 0.85, vnoise(p * 0.22 + 9.0)) * 0.3;
+		vec2 pc = p * 2.3;
+		vec2 pci = floor(pc);
+		vec2 pcf = fract(pc) - 0.5 - (vec2(h21(pci), h21(pci + 3.1)) - 0.5) * 0.5;
+		float peb = (1.0 - smoothstep(0.12, 0.2, length(pcf))) * step(0.8, h21(pci + 7.7));
+		albedo = mix(albedo, vec3(0.24, 0.21, 0.18) * mix(0.8, 1.2, h21(pci + 1.3)), peb);
+		n = normalize(vec3(pcf * 2.0 * peb * 0.8, 1.0));
+		float rootl = abs(fract(p.x * 0.7 + vnoise(p * vec2(0.5, 0.15)) * 2.0) - 0.5);
+		float root = (1.0 - smoothstep(0.02, 0.05, rootl)) * smoothstep(0.4, 0.7, vnoise(p * vec2(0.3, 0.1) + 5.0));
+		albedo = mix(albedo, vec3(0.07, 0.045, 0.025), root * 0.8);
+		mat = M_EARTH;
+		rough = 0.97;
+		vec2 fcell = p - floor(p);
+		float edge_ao = 1.0;
+		for (int k = 0; k < 4; k++) {
+			ivec2 o = k == 0 ? ivec2(-1, 0) : (k == 1 ? ivec2(1, 0) : (k == 2 ? ivec2(0, -1) : ivec2(0, 1)));
+			vec2 nv = texelFetch(depth_tex, clamp(tcell + o, ivec2(0), ivec2(level_size) - 1), 0).rg;
+			float dist = k == 0 ? fcell.x : (k == 1 ? 1.0 - fcell.x : (k == 2 ? fcell.y : 1.0 - fcell.y));
+			if (nv.g < 2.5) {
+				edge_ao = min(edge_ao, mix(0.45, 1.0, smoothstep(0.0, 0.9, dist)));
+			}
+		}
+		ao *= edge_ao;
+		emit_x = albedo * 0.08;
 	}
 	if (back) {
 		// ---- the room's back wall: warm dressed stone, pilasters, string courses, blind arches, moss ----
@@ -221,9 +263,9 @@ void fragment() {
 	}
 	{
 		// big rock lumps so the receding faces aren't flat planes (the slab front is sculpted)
-		vec3 U = back ? vec3(1.0, 0.0, 0.0) : (horiz ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0));
+		vec3 U = (back || earth_back) ? vec3(1.0, 0.0, 0.0) : (horiz ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0));
 		vec3 V = horiz ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
-		vec2 luv = back ? wp.xy : (horiz ? wp.xz : wp.zy);
+		vec2 luv = (back || earth_back) ? wp.xy : (horiz ? wp.xz : wp.zy);
 		vec3 t1 = texture(detail_nrm2, luv * 0.18).xyz * 2.0 - 1.0;
 		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
 		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
@@ -264,8 +306,12 @@ void fragment() {
 		albedo *= 0.7;
 	}
 	ALBEDO = albedo * ao * (1.0 - hz);
+	if (inner || earth_back) {
+		ALBEDO *= 0.75;
+		rough = 1.0;
+	}
 	ROUGHNESS = rough;
-	SPECULAR = 0.35;
+	SPECULAR = (inner || earth_back || back) ? 0.08 : 0.35;
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.4;
 	EMISSION = hcol * hz * haze_emit + emit_x * ao * (1.0 - hz);
