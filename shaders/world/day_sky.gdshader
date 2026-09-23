@@ -257,36 +257,17 @@ void sky() {
 			vec3 cc = mix(vec3(0.62, 0.68, 0.84), vec3(1.0, 0.98, 0.94), lit2);
 			c = mix(c, cc, dens * 0.95);
 		}
-		// NEAR DEPTH: the level's own masses continue back into the backdrop - receding silhouettes at
-		// increasing depth, and rock falling away beneath every mass into mist
-		for (int S = 2; S >= 0; S--) {   // far to near
-			float D = S == 0 ? 3.0 : (S == 1 ? 8.0 : 18.0);
-			float tt = (cam2.z + D) / max(-d.z, 0.05);
-			vec2 hp = cam2.xy + d.xy * tt;
-			vec2 lp = vec2(hp.x, -hp.y) / level_size;
-			vec2 dm = texture(depth_mask, lp).rg;
-			float body = smoothstep(0.35, 0.6, dm.r);
-			// backing shell: rock / ruin walls stepping back behind every structure, broken, fading to mist
-			float sh = S == 0 ? 0.0 : smoothstep(0.18 + 0.1 * float(S), 0.4 + 0.1 * float(S), dm.g + (fbm(hp * 0.12) - 0.5) * 0.3);
-			float cover = max(body, sh);
-			float a = cover * (S == 0 ? 0.7 : (S == 1 ? 0.95 : 0.8)) * inside_level(lp);
-			// shell material: weathered rock strata with moss, cooler and hazier with depth
-			float strata = sin(hp.y * 1.3 + fbm(hp * 0.2) * 3.0) * 0.5 + 0.5;
-			float moss = smoothstep(0.5, 0.8, fbm(hp * 0.3 + 4.0));
-			vec3 rockc = mix(vec3(0.07, 0.068, 0.065), vec3(0.15, 0.14, 0.125), strata);   // linear
-			rockc = mix(rockc, vec3(0.05, 0.1, 0.03), moss * 0.6);
-			// wet grotto cliff behind the waterfall
-			float wet = (1.0 - smoothstep(8.0, 24.0, abs(hp.x - 138.0))) * smoothstep(118.0, 126.0, -hp.y) * (1.0 - smoothstep(175.0, 182.0, -hp.y));
-			// grotto: dark wet rock with moss pads and bright trickling wet glints
-			vec3 wetrock = mix(vec3(0.018, 0.03, 0.035), vec3(0.03, 0.07, 0.025), smoothstep(0.45, 0.7, fbm(hp * 0.45)));
-			float glint = smoothstep(0.82, 0.98, fbm(vec2(hp.x * 2.5, hp.y * 0.4 - TIME * 0.8))) * smoothstep(0.4, 0.6, fbm(hp * 0.3));
-			wetrock += vec3(0.5, 0.6, 0.65) * glint * 0.35;
-			rockc = mix(rockc, wetrock, wet);
-			float sunf = smoothstep(-0.2, 0.8, fbm(hp * 0.07));
-			rockc *= mix(0.7, 1.15, sunf);
-			vec3 dcol = mix(rockc, haze * 0.6, (S == 2 ? 0.28 : (S == 1 ? 0.06 : 0.03)) * (1.0 - wet * 0.8));
-			dcol = mix(dcol, haze * 0.7, (1.0 - smoothstep(0.35, 0.75, dm.g)) * 0.25 * float(S > 0));
-			c = mix(c, dcol, clamp(a, 0.0, 1.0));
+		// MIST BANK: soft sunlit valley cloud layer at the bottom of the view, where the echo foundations
+		// fade out (camera-relative, gentle parallax)
+		{
+			vec2 wb = anchor + (cam2.xy - anchor) * 0.7 + (hit - cam2.xy) * 1.1;
+			float by = -wb.y;                        // tile-space y of this sky point
+			float base = -cam2.y + 10.0;             // bank top ~10 tiles below the camera
+			float billow = fbm(vec2(wb.x * 0.08 + TIME * 0.02, by * 0.15)) * 5.0;
+			float bank = smoothstep(base - 2.0 + billow, base + 7.0 + billow, by);
+			float lit3 = 1.0 - smoothstep(0.0, 12.0, by - base - billow);
+			vec3 mcol2 = mix(vec3(0.7, 0.76, 0.88), vec3(1.05, 1.0, 0.94), lit3);
+			c = mix(c, mcol2, bank * 0.9);
 		}
 		float wisp = n2(vec2(w.x * 0.04 + TIME * 0.01, w.y * 0.1)) * n2(vec2(w.x * 0.09 - TIME * 0.006, w.y * 0.18 + 3.0));
 		c = mix(c, vec3(0.95, 0.97, 1.0), smoothstep(0.25, 0.8, wisp) * 0.1);

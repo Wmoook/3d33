@@ -22,6 +22,7 @@ var decor: WorldDecor
 var backdrop: WorldBackdrop
 var zones: WorldZones
 var trials: WorldTrials
+var echo: WorldEcho
 var is_built := false
 var build_ms := 0
 var timings := {}
@@ -65,6 +66,7 @@ func _steps(lvl: EELevel) -> Array:
 		["Charting the depths", _step_zones],
 		["Marking the trial chambers", _step_trials],
 		["Raising the far hills", _step_backdrop],
+		["Echoing the ruins into the distance", _step_echo],
 		["Growing grass and roots", _step_decor],
 		["Lighting the fires", _step_lights],
 		["Breathing in the air", _step_atmosphere],
@@ -100,6 +102,15 @@ func _step_trials() -> void:
 	_add(trials, "Trials")
 	trials.build(level, terrain)
 	timings["trials"] = Time.get_ticks_msec() - t
+
+func _step_echo() -> void:
+	if not is_day():
+		return
+	var t := Time.get_ticks_msec()
+	echo = WorldEcho.new()
+	_add(echo, "Echo")
+	echo.build(level, terrain)
+	timings["echo"] = Time.get_ticks_msec() - t
 
 func _step_backdrop() -> void:
 	var t := Time.get_ticks_msec()
