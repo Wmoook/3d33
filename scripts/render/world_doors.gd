@@ -6,12 +6,16 @@ extends Node3D
 ## translucent "passable" ghost. Without a sim: doors closed, gates open (EE initial state).
 
 const VPT := 12
+## key colours whose ART doors WorldDoors renders itself in both states (terrain always hides them)
+const TAKEOVER_ART := {&"blue": true}
 const KEY_RGB := {&"red": Color(1.0, 0.18, 0.22), &"green": Color(0.25, 1.0, 0.3), &"blue": Color(0.25, 0.45, 1.0),
 	&"purple": Color(0.7, 0.35, 1.0), &"magenta": Color(1.0, 0.25, 0.9)}
 
 var sim: Object
 var regions: Array = []      # [{node, tile: Vector2i, id, solid_mat, ghost_mat, solid: bool}]
 var sdf_tex: Texture2D
+var code_tex: Texture2D
+const CODES := {23: 1, 24: 2, 25: 3, 26: 4, 27: 5, 28: 6, 184: 7, 185: 8, 1006: 9}
 var _level: EELevel
 var terrain_ref: WorldTerrain
 var _keys_state := [false, false, false]
@@ -36,6 +40,13 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	if sdf_img == null:
 		return   # headless (no RenderingDevice): nothing to draw
 	sdf_tex = ImageTexture.create_from_image(sdf_img)
+	# per-tile door code: adjacent doors of different ids share the SDF, so each region's mesh must not
+	# draw its neighbour's tiles (that z-fought: a blue door-25 drawn over green door-24 tiles)
+	var codes := PackedByteArray()
+	codes.resize(W * H)
+	for i in W * H:
+		codes[i] = _code(lvl.fg[i]) * 20
+	code_tex = ImageTexture.create_from_image(Image.create_from_data(W, H, false, Image.FORMAT_R8, codes))
 	var mats := {}
 	var seen := PackedByteArray()
 	seen.resize(W * H)
@@ -75,11 +86,14 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		mi.material_override = mats[id][0]
 		mi.name = "Door%d_%d_%d" % [id, mn.x, mn.y]
 		add_child(mi)
-		var art := terrain.art_door[start] != 0
+		# art doors are drawn by the terrain while closed, except blue ones (the terrain's glassy blue-pond
+		# art bloomed into white blobs): WorldDoors draws those in both states
+		var art := terrain.art_door[start] != 0 and not TAKEOVER_ART.has(WorldPalette.key_color_of(id))
 		regions.append({"node": mi, "tile": Vector2i(start % W, start / W), "id": id, "art": art,
 			"solid_mat": mats[id][0], "ghost_mat": mats[id][1], "solid": true})
 		if art:
 			mi.visible = false   # the terrain draws it while closed
+	_push_keys()
 
 func _materials(id: int, terrain: WorldTerrain) -> Array:
 	var col := Color8(156, 45, 70)
@@ -98,6 +112,8 @@ func _materials(id: int, terrain: WorldTerrain) -> Array:
 		m.set_shader_parameter("channel", 1 if WorldPalette.is_gate(id) else 0)
 		m.set_shader_parameter("base_color", col)
 		m.set_shader_parameter("key_color", Vector3(kc.r, kc.g, kc.b))
+		m.set_shader_parameter("door_code", code_tex)
+		m.set_shader_parameter("my_code", _code(id))
 		out.append(m)
 	return out
 
@@ -129,6 +145,9 @@ func _grid(tw: int, th: int) -> ArrayMesh:
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return m
 
+static func _code(id: int) -> int:
+	return CODES.get(id, 0)
+
 ## Region solidity right now (all tiles of a region share id -> share state).
 func _region_solid(r: Dictionary) -> bool:
 	var t: Vector2i = r["tile"]
@@ -141,7 +160,7 @@ func _process(_delta: float) -> void:
 		var k := [sim.is_key_active(&"red"), sim.is_key_active(&"green"), sim.is_key_active(&"blue")]
 		if k != _keys_state:
 			_keys_state = k
-			terrain_ref.set_keys_open(k[0], k[1], k[2])
+			_push_keys()
 	for r in regions:
 		var s := _region_solid(r)
 		if s == r["solid"]:
@@ -152,6 +171,11 @@ func _process(_delta: float) -> void:
 		if r["art"]:
 			mi.visible = not s
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if s else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _push_keys() -> void:
+	if terrain_ref:
+		terrain_ref.set_keys_open(_keys_state[0] or TAKEOVER_ART.has(&"red"), _keys_state[1] or TAKEOVER_ART.has(&"green"),
+				_keys_state[2] or TAKEOVER_ART.has(&"blue"))
 
 func set_mask_mode(on: bool) -> void:
 	for r in regions:

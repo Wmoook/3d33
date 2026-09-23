@@ -7,6 +7,15 @@ uniform vec3 base_color : source_color = vec3(0.61, 0.18, 0.27);
 uniform vec3 key_color = vec3(1.0, 0.2, 0.25);
 uniform float time_offset = 0.0;
 uniform bool mask_mode = false;       // solidity check: pure white where the door covers the plane
+uniform sampler2D door_code : filter_nearest, repeat_disable;   // per-tile door code * 20 (R8)
+uniform int my_code = 0;
+
+// true where this fragment belongs to ANOTHER door id (a neighbouring region sharing the SDF)
+bool foreign_door(vec2 p) {
+	ivec2 tp = clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1);
+	int c = int(texelFetch(door_code, tp, 0).r * 255.0 / 20.0 + 0.5);
+	return c != 0 && c != my_code;
+}
 
 
 float door_sd(vec2 p) {
