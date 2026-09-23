@@ -857,12 +857,14 @@ func _fill_layers(floor_key: int) -> void:
 		x += 5 + _rng.randi() % 4
 	# whatever far-layer air is left becomes dark foliage: the far layer is a closed wall of trunks and leaves,
 	# so the light backstop never shows through as teal rectangles
+	# (below the floor: dark earth, so pockets in the forest floor see soil, not the lit haze floor)
 	var dark := Color(0.13, 0.26, 0.08).srgb_to_linear()
-	for y in range(floor_key - 2, hi.y + 1):
+	var soil := Color(0.2, 0.14, 0.09).srgb_to_linear()
+	for y in range(lo.y, hi.y + 1):
 		for xx in range(lo.x, hi.x + 1):
 			var k := Vector3i(xx, y, 2)
 			if not _grid.has(k):
-				_grid[k] = [WorldPalette.M_FOLIAGE, 1.0, dark]
+				_grid[k] = [WorldPalette.M_FOLIAGE, 1.0, dark] if y >= floor_key - 2 else [WorldPalette.M_EARTH, 1.0, soil]
 
 ## Greedy-merges each layer's same-material, same-depth cells into boxes (row runs, then stacked while the run
 ## below matches), one colour per (layer, material) so merged faces never step in tone. Returns

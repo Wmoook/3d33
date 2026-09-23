@@ -49,6 +49,17 @@ float fb_noise(float x) {
 	return mix(fb_hash(i), fb_hash(i + 1.0), f * f * (3.0 - 2.0 * f));
 }
 
+float fb_noise2(vec2 x) {
+	vec2 i = floor(x);
+	vec2 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = fb_hash(i.x + i.y * 57.0);
+	float b = fb_hash(i.x + 1.0 + i.y * 57.0);
+	float c = fb_hash(i.x + (i.y + 1.0) * 57.0);
+	float d = fb_hash(i.x + 1.0 + (i.y + 1.0) * 57.0);
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 void fragment() {
 	if (vis < 0.01 || !forest_visible(v_wp, CAMERA_POSITION_WORLD)) {
 		discard;
@@ -111,6 +122,11 @@ void fragment() {
 		vec2 lu = (wq + warp) * 0.33 + vec2(v_wp.z * 0.37, 0.0);
 		vec4 l1 = texture(leaf_tex, lu);
 		vec4 l2 = texture(leaf_tex, mat2(vec2(0.799, 0.602), vec2(-0.602, 0.799)) * (wq - warp) * 0.47 + vec2(0.31, 0.57));
+		// a third cluster layout (-71 degrees, larger clusters) swapped in by a broad world-space mask: the
+		// repeat never lines up across a crown, and nothing steps at slab joins (all of it is continuous)
+		vec4 l3 = texture(leaf_tex, mat2(vec2(0.326, -0.946), vec2(0.946, 0.326)) * (wq + warp.yx) * 0.26 + vec2(0.71, 0.13));
+		float sw = smoothstep(0.35, 0.65, fb_noise2(wq * 0.07 + float(layer) * 3.1));
+		l1 = mix(l1, l3, sw);
 		float l1v = dot(l1.rgb, vec3(0.3, 0.55, 0.15));
 		float l2v = dot(l2.rgb, vec3(0.3, 0.55, 0.15));
 		float leaf = max(l1.a * (0.55 + l1v * 1.6), l2.a * (0.4 + l2v * 1.3));
@@ -118,6 +134,7 @@ void fragment() {
 		albedo *= mix(0.35, 1.0, cover) * mix(0.8, 1.35, clamp(leaf, 0.0, 1.0));
 		mass = mix(0.55, 1.2, cover * clamp(leaf, 0.0, 1.0));
 		albedo *= mix(1.0, 0.8, smoothstep(0.6, 1.0, edge));
+		albedo *= mix(vec3(0.84, 0.9, 0.8), vec3(1.1, 1.08, 0.92), fb_noise2(wq * 0.11 + 17.0));   // subtle tone drift
 	}
 	ao *= 1.0 - smoothstep(0.7, 1.0, edge) * 0.45;              // contact shadow at the silhouette only
 	// canopy light: brighter up under the crowns (and more so under a gap), darker toward the floor
@@ -137,7 +154,8 @@ void fragment() {
 	vec3 mist = mix(fc, haze_col, fz) * mix(0.55, 1.1, h);      // the mist itself is lit by the canopy
 	ALBEDO = mix(col, mist * 0.35, fog) * mix(0.15, 1.0, vis) * mix(1.0, 0.5, side_face);
 	vec3 e = mist * fog * 0.55 * mass;
-	e += sun_col * shaft * (0.03 + 0.1 * fog);
+	// shafts light the mist; on bark they are capped (a far trunk inside a shaft went pale khaki)
+	e += sun_col * shaft * (0.03 + 0.1 * fog) * (mat == 13 ? 0.3 : 1.0);
 	e += sun_col * rim * 0.03 * (1.0 - fog) * (0.5 + 0.5 * h);     // barely-there rim; silhouettes read by shadow
 	EMISSION = e * vis + vec3(0.02, 0.035, 0.022) * vis + shade_floor(ALBEDO);   // never black
 	ROUGHNESS = rough;
