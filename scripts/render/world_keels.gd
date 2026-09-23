@@ -62,6 +62,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		if bottom.is_empty():
 			continue
 		var width := float(x1 - x0 + 1)
+		if width < 2.0:
+			continue   # a lone floating block with a dark spike under it reads as a hazard
 		var depth := clampf(sqrt(width) * rng.randf_range(1.3, 2.0), 1.6, 7.0)
 		var cx := (x0 + x1 + 1) * 0.5
 		var tip_x := cx + rng.randf_range(-0.2, 0.2) * width

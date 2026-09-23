@@ -72,6 +72,8 @@ func _ready() -> void:
 	if live:
 		grass.visible = args.grass == "1"
 		foliage.visible = args.leaves == "1"
+	if args.get("depth", "0") == "1":
+		_build_depth_stub(wv)
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
@@ -170,3 +172,36 @@ func _probe(t: WorldTerrain, r: String) -> void:
 				var k := "%d/m%d" % [t.level.fg[i], t.mat_ids[i]]
 				hist[k] = hist.get(k, 0) + 1
 	print("ids ", hist)
+
+## WorldDepthGreen against world's API if present (terrain.depth_top_y / depth_mat), else a stub surface:
+## each sky-exposed column's top continued flat backward.
+func _build_depth_stub(wv: WorldView) -> void:
+	var t: WorldTerrain = wv.terrain
+	var top_at: Callable
+	var mat_at: Callable
+	if t.has_method("depth_top_y") and t.has_method("depth_mat"):
+		top_at = Callable(t, "depth_top_y")
+		mat_at = Callable(t, "depth_mat")
+		print("depth: using world's API")
+	else:
+		var tops := PackedInt32Array()
+		tops.resize(t.W)
+		for x in t.W:
+			tops[x] = -1
+			for y in t.H:
+				if t.solid[y * t.W + x]:
+					tops[x] = y
+					break
+		top_at = func(x: float, _z: float) -> float:
+			var c := clampi(int(x), 0, t.W - 1)
+			return NAN if tops[c] < 0 else -float(tops[c])
+		mat_at = func(x: float, _z: float) -> int:
+			var c := clampi(int(x), 0, t.W - 1)
+			return -1 if tops[c] < 0 else int(t.mat_ids[tops[c] * t.W + c])
+		print("depth: stub surface")
+	var t0 := Time.get_ticks_msec()
+	var g := WorldDepthGreen.new()
+	g.name = "DepthGreen"
+	wv.add_child(g)
+	g.build_depth(wv.level, t, top_at, mat_at)
+	print("depth green %d ms %s" % [Time.get_ticks_msec() - t0, g.depth_stats])
