@@ -98,6 +98,9 @@ var _upload_i := 0
 var _uploading := false
 var _fade_t := -1.0
 var _vista: WorldVista
+## Phase 2: the foreground band in front of the gameplay plane (occlusion-safe, see WorldVoxelFore).
+var fore: WorldVoxelFore
+var _lin_cols := PackedColorArray()
 var _shrine := Vector2(-10000.0, 0.0)   # level-specific keep-out (FV: the summit shrine), world x / y
 var _rim := PackedFloat32Array()   # vista island_edge (depth of the home island rim) per G3 x column
 
@@ -113,12 +116,12 @@ class Noises:
 	var cave := FastNoiseLite.new()
 
 	func _init() -> void:
-		_cfg(hill, 101, 0.028, 4, FastNoiseLite.FRACTAL_FBM)
+		_cfg(hill, 101, 0.014, 4, FastNoiseLite.FRACTAL_FBM)
 		_cfg(detail, 102, 0.11, 2, FastNoiseLite.FRACTAL_FBM)
 		_cfg(mask, 103, 0.0085, 3, FastNoiseLite.FRACTAL_FBM)
-		_cfg(ridge, 104, 0.019, 4, FastNoiseLite.FRACTAL_RIDGED)
-		_cfg(cliff, 105, 0.021, 2, FastNoiseLite.FRACTAL_FBM)
-		_cfg(forest, 106, 0.03, 3, FastNoiseLite.FRACTAL_FBM)
+		_cfg(ridge, 104, 0.011, 4, FastNoiseLite.FRACTAL_RIDGED)
+		_cfg(cliff, 105, 0.012, 2, FastNoiseLite.FRACTAL_FBM)
+		_cfg(forest, 106, 0.016, 3, FastNoiseLite.FRACTAL_FBM)
 		_cfg(under, 107, 0.07, 3, FastNoiseLite.FRACTAL_RIDGED)
 		_cfg(biome, 108, 0.014, 2, FastNoiseLite.FRACTAL_FBM)
 		_cfg(cave, 109, 0.06, 3, FastNoiseLite.FRACTAL_FBM)
@@ -176,9 +179,17 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 			for x in W:
 				_dtop[k * W + x] = depth.depth_top_y(x + 0.5, z)
 	_has_vista = vista != null
+	fore = WorldVoxelFore.new()
+	fore.name = "Fore"
+	add_child(fore)
+	fore.setup(terrain)
 	if not WorldPalette.is_odyssey():
 		_shrine = Vector2(WorldPalette.FV_SHRINE.x + 0.5, -float(WorldPalette.FV_SHRINE.y))
 	_load_palette(terrain.ref_dir)
+	_lin_cols.resize(N_SOLID)
+	var table := _color_table()
+	for id: int in table:
+		_lin_cols[id] = (table[id] as Color).srgb_to_linear()
 	timings["voxel_setup"] = Time.get_ticks_msec() - t0
 
 ## The vista's macro landform on a G3 grid (worker thread: WorldVista.sample() only reads its built state).
@@ -269,6 +280,9 @@ func _run() -> void:
 	t1 = Time.get_ticks_msec()
 	_stamp_features()
 	timings["voxel_features"] = Time.get_ticks_msec() - t1
+	t1 = Time.get_ticks_msec()
+	fore.generate(_lin_cols)
+	timings["voxel_fore"] = Time.get_ticks_msec() - t1
 	if _abort: return
 	# P5: texture slices + meshes
 	t1 = Time.get_ticks_msec()
@@ -304,12 +318,13 @@ func _row_task(k: int) -> void:
 			m = minf(m, _ab[q])
 		cl[x] = m
 	# above the local air bottom only well behind the plane, rising like a hillside (never a wall)
-	var rise := maxf(d - 30.0, 0.0) * 0.75
+	# the sky stays dominant: low for the first ~32 units, gentle rise, real height only far back (z < -60)
+	var rise := maxf(d - 32.0, 0.0) * 0.45 + maxf(d - 60.0, 0.0) * 0.65
 	var riv := _river[k]
 	var shrine_x := _shrine.x
 	var shrine_y := _shrine.y
 	var env_h := smoothstep(18.0, 40.0, d) * (1.0 - smoothstep(NZ - 12.0, NZ - 2.0, d))
-	var mtn_env := smoothstep(34.0, 62.0, d) * (1.0 - smoothstep(NZ - 16.0, NZ - 2.0, d))
+	var mtn_env := smoothstep(58.0, 95.0, d) * (1.0 - smoothstep(NZ - 16.0, NZ - 2.0, d))
 	for i in NX:
 		var x := X0 + i + 0.5
 		var lx := clampi(int(floorf(x)), 0, W - 1)
@@ -330,13 +345,13 @@ func _row_task(k: int) -> void:
 		var gx := clampi(int(float(i) / G3 + 0.5), 0, _vgx - 1)
 		var rim_k := smoothstep(6.0, 40.0, _rim[gx] - (d + Z0))
 		var h := base
-		h += nz.hill.get_noise_2d(x, z) * 6.0 * env_h * rim_k
-		h += nz.detail.get_noise_2d(x, z) * 1.4 * env_h
+		h += nz.hill.get_noise_2d(x, z) * 9.0 * env_h * rim_k
+		h += nz.detail.get_noise_2d(x, z) * 0.7 * env_h
 		var mask := smoothstep(-0.08, 0.32, nz.mask.get_noise_2d(x, z)) * mtn_env * rim_k
 		var rv := smoothstep(16.0, 52.0, absf(x - riv))
 		mask *= lerpf(1.0, rv, valley) * lerpf(0.45 * smoothstep(60.0, 80.0, d), 1.0, high)
 		var rg := nz.ridge.get_noise_2d(x, z) * 0.5 + 0.5
-		h += mask * (8.0 + 42.0 * rg * rg)
+		h += mask * (10.0 + 60.0 * rg * rg)
 		# the river valley (continues the falls' pool) and the lake floor
 		if valley > 0.2:
 			var rd := absf(x - riv)
@@ -345,7 +360,7 @@ func _row_task(k: int) -> void:
 		# readability clamp with an irregular ceiling (hillsides, not a regular staircase), then cliffs
 		var hn := nz.hill.get_noise_2d(x * 1.7 + 311.0, z * 1.7) * 0.5 + 0.5
 		h = minf(h, hmax - hn * 5.0 * smoothstep(20.0, 40.0, d))
-		var cliffy := smoothstep(0.05, 0.4, nz.cliff.get_noise_2d(x, z)) * env_h
+		var cliffy := smoothstep(0.3, 0.55, nz.cliff.get_noise_2d(x, z)) * env_h
 		if cliffy > 0.0:
 			var tstep := 6.0
 			var q := h / tstep
@@ -371,7 +386,7 @@ func _row_task(k: int) -> void:
 			b = INF
 		else:
 			h = maxf(h, b + 2.0)
-		var amp := (mask * 0.9 + cliffy * 0.6) * 7.0 * smoothstep(28.0, 40.0, d)
+		var amp := mask * 5.0 * smoothstep(60.0, 80.0, d)
 		amp = clampf(minf(amp, hmax - h - 1.0), 0.0, 9.0)
 		hs[i] = h
 		bs[i] = b
@@ -413,11 +428,11 @@ func _place_islands() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242
 	var tries := 0
-	while _islands.size() < 22 and tries < 2500:
+	while _islands.size() < 12 and tries < 2500:
 		tries += 1
 		var cx := rng.randf_range(-70.0, 470.0)
 		var style := rng.randi_range(0, 2)
-		var R := rng.randf_range(5.0, 10.0) if _islands.size() > 4 else rng.randf_range(13.0, 18.0)
+		var R := rng.randf_range(6.0, 11.0) if _islands.size() > 3 else rng.randf_range(13.0, 18.0)
 		var Rz := R * rng.randf_range(0.55, 0.85)
 		var ck := rng.randf_range(maxf(46.0 + Rz * 0.5, 118.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
 		var D := R * rng.randf_range(1.3, 1.9) * (0.7 if style == 1 else (1.5 if style == 2 else 1.0))
@@ -514,7 +529,7 @@ func _fill_task(k: int) -> void:
 		var hf := _H[ci - NX] if k > 0 else h
 		var hb := _H[ci + NX] if k < NZ - 1 else h
 		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
-		var snow_y := -52.0 + nz.biome.get_noise_2d(x, z) * 9.0
+		var snow_y := -26.0 + nz.biome.get_noise_2d(x, z) * 6.0
 		if h < b:
 			var any_isl := false
 			for isl: PackedFloat32Array in _islands:
@@ -646,8 +661,8 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 			if i >= NX or k >= NZ or k < 18:
 				continue
 			var f := _FOR[k * NX + i]
-			var dens := smoothstep(-0.25, 0.3, f)
-			if rng.randf() > dens * 0.95 + 0.04:
+			var dens := smoothstep(-0.05, 0.2, f)   # clear forests, open meadows between
+			if rng.randf() > dens * 0.95 + 0.015:
 				continue
 			var j := _col_top(i, k)
 			if j < 0 or _vget(i, j, k) != GRASS and _vget(i, j, k) != SNOW_GRASS:
@@ -1074,22 +1089,12 @@ func _make_materials() -> void:
 	plant_material.shader = load("res://shaders/world/voxel_plant.gdshader")
 	var cols := PackedVector3Array()
 	cols.resize(N_SOLID)
-	var table := {
-		GRASS: _pal(35, Color8(69, 99, 19)), DIRT: _pal(45, Color8(114, 97, 75)), DIRT_L: _pal(47, Color8(142, 115, 79)),
-		CLAY: _pal(48, Color8(127, 79, 43)).lerp(_pal(45, Color8(114, 97, 75)), 0.45), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
-		STONE_L: _pal(86, Color8(134, 134, 134)), SAND: _pal(88, Color8(108, 79, 44)).lerp(Color8(196, 170, 120), 0.45),
-		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(84, 58, 38), 0.65),
-		LEAVES: _pal(14, Color8(66, 168, 54)), PINE: _pal(19, Color8(67, 131, 16)).lerp(Color8(24, 60, 30), 0.5),
-		RUIN: _pal(42, Color8(153, 153, 153)).lerp(_pal(9, Color8(110, 110, 110)), 0.5), RUIN_MOSS: Color8(96, 118, 62),
-		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(62, 44, 30), 0.7),
-	}
-	for id: int in table:
-		var c: Color = table[id]
-		c = c.srgb_to_linear()
-		cols[id] = Vector3(c.r, c.g, c.b)
+	for id in N_SOLID:
+		cols[id] = Vector3(_lin_cols[id].r, _lin_cols[id].g, _lin_cols[id].b)
 	var g2 := _pal(19, Color8(67, 131, 16)).srgb_to_linear()
 	var wa := _pal(54, Color8(126, 153, 246)).srgb_to_linear()
 	var wd := _pal(10, Color8(53, 82, 168)).srgb_to_linear()
+	fore.upload(sun_dir)
 	for m: ShaderMaterial in [material, water_material, plant_material]:
 		m.set_shader_parameter("vol", vol_tex)
 		m.set_shader_parameter("vol_origin", Vector3(X0, Y0, Z0))
@@ -1102,6 +1107,18 @@ func _make_materials() -> void:
 	water_material.set_shader_parameter("water_d", Vector3(wd.r, wd.g, wd.b))
 	plant_material.set_shader_parameter("grass_col", cols[GRASS])
 	plant_material.set_shader_parameter("grass_b", Vector3(g2.r, g2.g, g2.b))
+
+## Block colours (sRGB) from the level palette.
+func _color_table() -> Dictionary:
+	return {
+		GRASS: _pal(35, Color8(69, 99, 19)), DIRT: _pal(45, Color8(114, 97, 75)), DIRT_L: _pal(47, Color8(142, 115, 79)),
+		CLAY: _pal(48, Color8(127, 79, 43)).lerp(_pal(45, Color8(114, 97, 75)), 0.45), STONE: _pal(9, Color8(110, 110, 110)), STONE_W: _pal(46, Color8(110, 107, 96)),
+		STONE_L: _pal(86, Color8(134, 134, 134)), SAND: _pal(88, Color8(108, 79, 44)).lerp(Color8(196, 170, 120), 0.45),
+		SNOW: Color8(236, 242, 250), SNOW_GRASS: Color8(228, 236, 246), LOG: _pal(16, Color8(139, 62, 9)).lerp(Color8(84, 58, 38), 0.65),
+		LEAVES: _pal(14, Color8(66, 168, 54)), PINE: _pal(19, Color8(67, 131, 16)).lerp(Color8(24, 60, 30), 0.5),
+		RUIN: _pal(42, Color8(153, 153, 153)).lerp(_pal(9, Color8(110, 110, 110)), 0.5), RUIN_MOSS: Color8(96, 118, 62),
+		GRAVEL: _pal(46, Color8(110, 107, 96)), PINE_LOG: _pal(48, Color8(127, 79, 43)).lerp(Color8(62, 44, 30), 0.7),
+	}
 
 func _process(delta: float) -> void:
 	if _uploading:
@@ -1125,9 +1142,16 @@ func _process(delta: float) -> void:
 		var f := smoothstep(0.0, 1.0, _fade_t / FADE_TIME)
 		for m: ShaderMaterial in [material, water_material, plant_material]:
 			m.set_shader_parameter("fade", f)
+		fore.set_fade(f)
 		if _fade_t >= FADE_TIME:
 			_fade_t = -1.0
-			set_process(false)
+	if fore:
+		fore.fallback_from_camera(get_viewport().get_camera_3d())
+
+## WorldView.update_focus(): the ball's interpolated world centre (keeps the foreground clear around it).
+func update_focus(world_pos: Vector3, _delta: float) -> void:
+	if fore:
+		fore.set_ball(world_pos)
 
 ## Tests: skip the fade.
 func finish_fade() -> void:

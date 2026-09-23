@@ -218,6 +218,8 @@ func set_sim(s) -> void:
 func update_focus(world_pos: Vector3, delta: float) -> void:
 	if not is_built:
 		return
+	if voxel:
+		voxel.update_focus(world_pos, delta)
 	atmosphere.update_focus(world_pos, delta)
 	lights.update_focus(world_pos, delta)
 	decor.update_focus(world_pos, delta)

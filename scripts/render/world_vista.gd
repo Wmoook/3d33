@@ -949,7 +949,7 @@ func _make_home_keel() -> void:
 	_setup_instance(mi, "VistaHomeKeel")
 	# the level's water spilling off the underside (hanging roots removed: detached from world's lip,
 	# they read as floating poles)
-	_make_falls([[Vector3(150.0, -197.0, -4.0), 6.0], [Vector3(358.0, -197.0, -4.0), 4.0], [Vector3(8.0, -197.0, -4.0), 3.5]])
+	_make_falls([[Vector3(150.0, -197.0, -3.2), 6.0], [Vector3(358.0, -197.0, -3.2), 4.0], [Vector3(8.0, -197.0, -3.2), 3.5]])
 
 # ------------------------------------------------------------------ block-built scenery
 ## Distant pieces painted with the level's own blocks (WorldVistaBlocks): kind, map top-left world x/y, z,
