@@ -12,6 +12,7 @@ const SPOTS_FV := [
 	["spire", Vector2(200, 30)],
 	["falls", Vector2(140, 150)],
 	["keep", Vector2(300, 88)],
+	["keeproom", Vector2(308, 95)],
 	["shrine", Vector2(388, 73)],
 	["eastwood", Vector2(380, 96)],
 ]
@@ -71,6 +72,8 @@ func _ready() -> void:
 	if live:
 		grass.visible = args.grass == "1"
 		foliage.visible = args.leaves == "1"
+	if args.has("debug"):
+		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
 		game._ui.visible = false
 	game.sim.set_god_mode(true)

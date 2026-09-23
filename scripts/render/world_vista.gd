@@ -41,6 +41,7 @@ var _pines: Array[Transform3D] = []
 var _pine_c: Array[Color] = []
 var _broad: Array[Transform3D] = []
 var _broad_c: Array[Color] = []
+var _vcount := {}                   # SurfaceTool instance id -> vertices added (indexed islands)
 var _ruin_sites: Array = []          # [x, ground_y, z, height, width] ruins standing on island tops
 
 ## sky_ids: background ids that paint the open sky in this level (FV: 531 pastel sky, 540 clouds/snow).
@@ -192,6 +193,8 @@ func sample(x: float, z: float) -> Vector4:
 	var above := clampf((g - FLOOR_Y) / 50.0, 0.0, 1.0)
 	var hn := _fn_hill.get_noise_2d(x, z)
 	var h := g + hn * lerpf(3.0, 22.0, above) * (0.35 + 0.65 * away) + _fn_big.get_noise_2d(x, z) * 16.0 * away * above
+	# right behind the level the highlands sit a little below the level's own skyline (never edge-on at it)
+	h -= 16.0 * above * (1.0 - smoothstep(20.0, 110.0, dz))
 	# the island top rounds down toward its rim
 	var inside := minf(island_edge(x) - dz, minf(x + 70.0 + 25.0 * _fn_hill.get_noise_1d(dz * 1.3), 470.0 - x + 25.0 * _fn_hill.get_noise_1d(dz * 1.3 + 77.0)))
 	h -= (1.0 - smoothstep(0.0, 45.0, inside)) * 14.0
@@ -221,6 +224,7 @@ func sample(x: float, z: float) -> Vector4:
 		h = maxf(h, lerpf(UNDER_Y, hm, m))
 		mtn = m
 	var fo := smoothstep(-0.15, 0.25, _fn_forest.get_noise_2d(x, z)) * smoothstep(FLOOR_Y + 2.0, FLOOR_Y + 10.0, h)
+	fo = maxf(fo, above * 0.85 * (1.0 - smoothstep(60.0, 140.0, dz)))
 	fo = maxf(fo * (1.0 - mtn) * (1.0 - cliff) * smoothstep(2.0, 10.0, inside), 0.0)
 	return Vector4(h, water, fo, mtn)
 
@@ -454,6 +458,175 @@ func _box(st: SurfaceTool, c: Vector3, s: Vector3, col: Color) -> void:
 		st.add_vertex(p[f[0]]); st.add_vertex(p[f[1]]); st.add_vertex(p[f[2]])
 		st.add_vertex(p[f[0]]); st.add_vertex(p[f[2]]); st.add_vertex(p[f[3]])
 
+# ------------------------------------------------------------------ floating islands
+## MIDGROUND islands right behind the level (x, top y, z, radius, depth, ruin fragments): real 3D masses
+## near the big structures at their heights, so the level's own masses have neighbours in depth.
+const MID_ISLANDS := [
+	[150.0, -80.0, -36.0, 11.0, 16.5, false],
+	[233.0, -121.0, -50.0, 10.0, 15.0, true],
+	[281.0, -40.0, -44.0, 11.0, 16.5, true],
+	[108.0, -30.0, -58.0, 15.0, 22.5, false],
+	[342.0, -66.0, -26.0, 8.0, 12.0, false],
+	[172.0, -141.0, -30.0, 9.0, 13.5, true],
+	[62.0, -13.0, -46.0, 10.0, 15.0, false],
+	[383.0, -104.0, -56.0, 12.0, 18.0, true],
+	[259.0, -160.0, -58.0, 12.0, 18.0, false],
+	[305.0, -152.0, -21.0, 7.0, 10.5, false],
+	[200.0, -12.0, -52.0, 9.0, 13.5, false],
+]
+## DISTANT islands (x, top y, z, radius, depth, waterfall, ruin tower height or 0).
+const FAR_ISLANDS := [
+	[60.0, -150.0, -140.0, 24.0, 45.6, true, 0.0],
+	[335.0, -178.0, -165.0, 28.0, 53.2, true, 0.0],
+	[212.0, -62.0, -225.0, 20.0, 38.0, false, 70.0],
+	[-45.0, -92.0, -265.0, 38.0, 72.2, true, 0.0],
+	[470.0, -42.0, -300.0, 34.0, 64.6, false, 95.0],
+	[140.0, -12.0, -390.0, 44.0, 83.6, true, 120.0],
+	[385.0, -122.0, -420.0, 52.0, 98.8, true, 0.0],
+	[-170.0, -32.0, -480.0, 58.0, 110.2, false, 110.0],
+	[630.0, -84.0, -520.0, 58.0, 110.2, true, 0.0],
+	[255.0, 18.0, -610.0, 50.0, 95.0, false, 0.0],
+]
+
+func _make_islands() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 909
+	var mid := SurfaceTool.new()
+	mid.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var far := SurfaceTool.new()
+	far.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var frag := SurfaceTool.new()
+	frag.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var stone := Color(0.54, 0.54, 0.55, 0.0)
+	var k := 0
+	for d in MID_ISLANDS:
+		var c := Vector3(d[0], d[1], d[2])
+		var R: float = d[3]
+		_island(mid, c, R, d[4], k)
+		_island_trees(rng, c, R, 0.55)
+		if d[5]:
+			# ruin fragments: a broken column pair and a fallen lintel
+			var ox := rng.randf_range(-0.3, 0.3) * R
+			var h1 := rng.randf_range(0.5, 0.9) * R
+			var h2 := h1 * rng.randf_range(0.4, 0.8)
+			_box(frag, c + Vector3(ox - R * 0.18, h1 * 0.5 - 0.5, 0.0), Vector3(1.6, h1, 1.6), stone)
+			_box(frag, c + Vector3(ox + R * 0.18, h2 * 0.5 - 0.5, 0.0), Vector3(1.6, h2, 1.6), stone)
+			_box(frag, c + Vector3(ox + R * 0.05, 0.4, 1.5), Vector3(R * 0.45, 1.0, 1.4), stone)
+		k += 1
+	var falls: Array = []
+	for d in FAR_ISLANDS:
+		var c := Vector3(d[0], d[1], d[2])
+		var R: float = d[3]
+		_island(far, c, R, d[4], k)
+		_island_trees(rng, c, R, 0.4 if d[6] > 0.0 else 0.8)
+		if d[6] > 0.0:
+			_ruin_sites.append([c.x + R * 0.15, c.y + R * 0.06, c.z - R * 0.1, d[6], clampf(R * 0.4, 12.0, 24.0)])
+		if d[5]:
+			falls.append([c + Vector3(R * rng.randf_range(-0.35, 0.35), -R * 0.04, R * 0.93), clampf(R * 0.12, 2.5, 7.0)])
+		k += 1
+	for pair in [[mid, "VistaMidIslands", 0.2], [far, "VistaFarIslands", 0.12]]:
+		var st: SurfaceTool = pair[0]
+		st.generate_normals()
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		var m := _mat("res://shaders/world/vista_prop.gdshader")
+		m.set_shader_parameter("kind", 2)
+		m.set_shader_parameter("fog_near", pair[2])
+		mi.material_override = m
+		_setup_instance(mi, pair[1])
+	frag.generate_normals()
+	var fm := MeshInstance3D.new()
+	fm.mesh = frag.commit()
+	var fmat := _mat("res://shaders/world/vista_prop.gdshader")
+	fmat.set_shader_parameter("kind", 0)
+	fmat.set_shader_parameter("fog_near", 0.3)
+	fm.material_override = fmat
+	_setup_instance(fm, "VistaMidRuins")
+	_make_falls(falls)
+
+## A floating island: domed grassy top with a noisy rim, a rocky underside tapering to a keel tip.
+func _island(st: SurfaceTool, c: Vector3, R: float, depth: float, seed_i: int) -> void:
+	var fn := FastNoiseLite.new()
+	fn.seed = 300 + seed_i
+	fn.frequency = 0.9
+	fn.fractal_octaves = 3
+	var NA := 44
+	var NT := 4          # top rings (centre..rim)
+	var NU := 12         # underside rings (rim..tip)
+	var base: int = _vcount.get(st.get_instance_id(), 0)
+	var rows := NT + NU + 1
+	_vcount[st.get_instance_id()] = base + rows * NA
+	var lean := Vector2(fn.get_noise_1d(50.0), fn.get_noise_1d(90.0)) * R * 0.5
+	for row in rows:
+		for a in NA:
+			var th := TAU * a / NA
+			var rim := 1.0 + 0.24 * fn.get_noise_2d(cos(th) * 1.3, sin(th) * 1.3) + 0.08 * fn.get_noise_2d(cos(th) * 4.0 + 9.0, sin(th) * 4.0)
+			var p: Vector3
+			var col: Color
+			if row <= NT:
+				var r := float(row) / NT
+				var y := c.y + (1.0 - r * r) * R * 0.07 + fn.get_noise_2d(cos(th) * r * 2.0 + 20.0, sin(th) * r * 2.0) * R * 0.04
+				if row == NT:
+					y -= R * 0.05
+				p = Vector3(c.x + cos(th) * R * rim * r, y, c.z + sin(th) * R * rim * r * 0.8)
+				col = Color(0.33, 0.50, 0.19, 1.0) if row < NT else Color(0.36, 0.40, 0.2, 1.0)
+			else:
+				var t := float(row - NT) / NU
+				# rugged keel: vertical rock ribs (angular noise that persists down the keel), lumpy
+				# ledges, and a few hanging spurs that reach deeper than the rest
+				var rib := fn.get_noise_3d(cos(th) * 3.2, sin(th) * 3.2, t * 0.8)
+				var lump := fn.get_noise_3d(cos(th) * 1.4 + 7.0, sin(th) * 1.4, t * 3.5)
+				var f := pow(1.0 - t, 0.62) * (1.0 + 0.32 * rib + 0.22 * lump)
+				f *= 1.0 - 0.25 * smoothstep(0.12, 0.2, t) * (1.0 - smoothstep(0.2, 0.3, t))   # undercut lip
+				var spur := maxf(fn.get_noise_2d(cos(th) * 1.8 + 30.0, sin(th) * 1.8), 0.0)
+				var y := c.y - R * 0.12 - depth * pow(t, 1.1) * (0.8 + 0.9 * spur * t)
+				p = Vector3(c.x + cos(th) * R * rim * f + lean.x * t * t, y, c.z + sin(th) * R * rim * f * 0.8 + lean.y * t * t * 0.5)
+				col = Color(0.42, 0.33, 0.25, 0.0).lerp(Color(0.33, 0.31, 0.32, 0.0), smoothstep(0.1, 0.5, t)).darkened(0.2 * t)
+			st.set_color(col)
+			st.add_vertex(p)
+	for row in rows - 1:
+		for a in NA:
+			var i0 := base + row * NA + a
+			var i1 := base + row * NA + (a + 1) % NA
+			var j0 := i0 + NA
+			var j1 := i1 + NA
+			st.add_index(i0); st.add_index(j0); st.add_index(i1)
+			st.add_index(i1); st.add_index(j0); st.add_index(j1)
+
+func _island_trees(rng: RandomNumberGenerator, c: Vector3, R: float, density: float) -> void:
+	var n := int(R * R * 0.05 * density) + 1
+	for i in n:
+		var th := rng.randf() * TAU
+		var r := sqrt(rng.randf()) * 0.75
+		var px := c.x + cos(th) * R * r
+		var pz := c.z + sin(th) * R * r * 0.8
+		_add_tree(rng, px, c.y + (1.0 - r * r) * R * 0.07 - 0.3, pz, clampf(R / 30.0, 0.45, 1.3))
+
+## Waterfalls pouring off island rims down into the cloud sea: world quads facing +z.
+func _make_falls(falls: Array) -> void:
+	var sh := load("res://shaders/world/vista_falls.gdshader")
+	var k := 0
+	for f in falls:
+		var top: Vector3 = f[0]
+		var w: float = f[1]
+		var h := top.y - (CLOUD_BASE + 4.0)
+		var q := QuadMesh.new()
+		q.size = Vector2(w, h)
+		var mi := MeshInstance3D.new()
+		mi.mesh = q
+		mi.position = top + Vector3(0, -h * 0.5, 0.6)
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("sun_dir", sun_dir)
+		m.set_shader_parameter("noise_tex", noise_tex)
+		m.set_shader_parameter("seed", float(k) * 3.1)
+		m.set_shader_parameter("height", h)
+		m.render_priority = -95
+		_mats.append(m)
+		mi.material_override = m
+		_setup_instance(mi, "VistaFalls%d" % k)
+		k += 1
+
 # ------------------------------------------------------------------ clouds
 ## (x, y_base, z, width, height, flat_base): world-placed cumulus.
 const CUMULUS := [
@@ -473,9 +646,11 @@ const CUMULUS := [
 	[322.0, -88.0, -100.0, 56.0, 16.0, 0.8],
 	[404.0, -82.0, -118.0, 64.0, 18.0, 0.8],
 	# towers rising out of the cloud sea
-	[205.0, -126.0, -300.0, 90.0, 52.0, 0.9],
-	[60.0, -126.0, -370.0, 100.0, 58.0, 0.9],
-	[390.0, -126.0, -340.0, 95.0, 55.0, 0.9],
+	[205.0, -238.0, -300.0, 90.0, 52.0, 0.9],
+	[60.0, -238.0, -370.0, 100.0, 58.0, 0.9],
+	[390.0, -238.0, -340.0, 95.0, 55.0, 0.9],
+	[-120.0, -238.0, -240.0, 90.0, 46.0, 0.9],
+	[520.0, -238.0, -260.0, 90.0, 46.0, 0.9],
 ]
 
 func _make_cumulus() -> void:

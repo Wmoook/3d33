@@ -10,7 +10,7 @@ uniform vec3 sun_dir = vec3(-0.30, 0.67, 0.68);
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform float fog_density = 0.0011;
 uniform float fog_near = 0.2;
-uniform float snow_line = -70.0;
+uniform float snow_line = -175.0;
 uniform float water_y = -172.0;
 
 varying vec3 v_wpos;
@@ -57,7 +57,7 @@ void fragment() {
 	vec3 col = mix(meadow, wood, smoothstep(0.25, 0.6, forest + (h0 - 0.5) * 0.4));
 	col = mix(col, rock, smoothstep(0.35, 0.6, slope) * (1.0 - mtn));
 	// mountains: rock with strata, alpine meadow at the feet, snow above the snow line
-	vec3 mc = mix(mix(vec3(0.30, 0.40, 0.24), mrock, smoothstep(-150.0, -115.0, wp.y + (mid - 0.5) * 30.0)), mrock, smoothstep(0.25, 0.5, slope));
+	vec3 mc = mix(mix(vec3(0.30, 0.40, 0.24), mrock, smoothstep(-260.0, -230.0, wp.y + (mid - 0.5) * 30.0)), mrock, smoothstep(0.25, 0.5, slope));
 	float sl = snow_line + (big - 0.5) * 55.0 + (h0 - 0.5) * 12.0;
 	float snow = smoothstep(sl - 4.0, sl + 4.0, wp.y) * (1.0 - smoothstep(0.55, 0.8, slope + (h0 - 0.5) * 0.25));
 	snow = max(snow, smoothstep(sl + 30.0, sl + 45.0, wp.y) * 0.85);

@@ -10,6 +10,8 @@ const SPOTS := [
 	["eastwood", Vector2(380, 96)],
 	["falls", Vector2(140, 150)],
 	["grove_far", Vector2(40, 45)],
+	["keep", Vector2(300, 88)],
+	["ruins", Vector2(40, 92)],
 ]
 var game
 var args := {"only": "", "zoom": "30", "frames": "90"}

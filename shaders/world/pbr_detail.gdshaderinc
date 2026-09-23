@@ -307,9 +307,21 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	}
 	if (mat == PBR_M_RUIN) {
 		// weathered stone with lichen crusts (more on the tops)
-		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.33, 1.0, hex);
+		// plain tiling for the base scan: the finer second scale + lichen patches already break repetition
+		// (saves the 3-tap hex on the level's most common material)
+		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.33, 1.0, false);
+		if (hex) {
+			// finer secondary stone scale (~0.8 tile repeat): chips, hairline cracks and grain inside every block,
+			// so the big blocks don't read as one repeating cobble
+			PbrS f = pbr_tri(PBR_ROCK, wp, gn, 1.25, 1.0, false);
+			float crack = smoothstep(0.16, 0.04, f.h);
+			float chip = smoothstep(0.82, 0.96, f.h);
+			s.lum *= mix(1.0, f.lum, 0.45) * (1.0 - crack * 0.35) * (1.0 + chip * 0.15);
+			s.n = normalize(s.n + (f.n - gn) * 0.55);
+			s.h = mix(s.h, f.h, 0.3);
+		}
 		float cov = smoothstep(0.4, 0.9, patchv) * 0.6 + up * 0.2;
-		if (cov > 0.01) {
+		if (cov > 0.06) {
 			PbrS m = pbr_tri(PBR_LICHEN, wp, gn, 0.4, 1.0, false);
 			s = pbr_mix(s, m, pbr_hblend(s.h, m.h, cov, 0.2));
 		}
@@ -380,9 +392,11 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 		return 1.0;
 	}
 	if (mat == -1) {
-		// back walls: subtle rock grain (the wall pattern itself is world's); plain tiling is enough
+		// back walls: only a faint, flat grain. Recessed walls must read as BEHIND the gameplay plane, so no
+		// relief is re-added on top of world's recess darkening (low contrast, nearly flat normals).
 		PbrS s = pbr_tri(PBR_ROCK, wp, gn, 0.3, 1.0, false);
-		pbr_apply(s, 0.55 * fade, 0.55 * fade, 0.3, 0.05, albedo, n, rough, ao);
+		s.lum = mix(1.0, s.lum, 0.5);
+		pbr_apply(s, 0.3 * fade, 0.08 * fade, 0.15, 0.05, albedo, n, rough, ao);
 		return 1.0;
 	}
 	return 0.0;

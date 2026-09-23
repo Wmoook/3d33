@@ -58,34 +58,44 @@ func _wait(s: float) -> void:
 		await get_tree().process_frame
 
 func _diag(wv) -> void:
-	for c in wv.get_children():
-		print("WV child ", c.name, " ", c.get_class(), " kids=", c.get_child_count())
-		for g in c.get_children():
-			if g is GeometryInstance3D:
-				var gi: GeometryInstance3D = g
-				var ab := gi.get_aabb() if gi is VisualInstance3D else AABB()
-				print("   ", g.name, " ", g.get_class(), " vis=", gi.visible, " aabb_z=", ab.position.z, "..", ab.end.z)
-	var t: Vector2i = SPOTS["falls"]
+	var t: Vector2i = SPOTS["keep"]
 	for i in 20:
 		game.sim.px = t.x * 16.0; game.sim.py = t.y * 16.0
 		game.sim.prev_px = game.sim.px; game.sim.prev_py = game.sim.py
 		await get_tree().physics_frame
-	await _wait(2.0)
+	await _wait(3.0)
 	var env: Environment = wv.get_environment()
-	print("env fog=", env.fog_enabled, " vfog=", env.volumetric_fog_enabled, " dens=", env.volumetric_fog_density, " expo=", env.tonemap_exposure, " sat=", env.adjustment_saturation, " glow=", env.glow_intensity)
-	await _shot("diag_base")
+	var cam := get_viewport().get_camera_3d()
+	print("cam env ", cam.environment, " attrs ", cam.attributes, " world env ", env)
+	await _shot("d0_base")
+	var atm: Node = wv.get_node("Atmosphere")
+	for c in atm.get_children():
+		print("atm child ", c.name, " ", c.get_class())
+	var fv := atm.get_node_or_null("ZoneFog")
+	if fv:
+		fv.visible = false
+		await _shot("d1_nozonefog")
 	env.volumetric_fog_enabled = false
-	await _shot("diag_novfog")
-	env.fog_enabled = false
+	await _shot("d2_novfog")
 	env.glow_enabled = false
-	await _shot("diag_noglow")
-	var ca = get_viewport().get_camera_3d().attributes
-	print("cam attrs ", ca)
-	if ca:
-		ca.set("dof_blur_far_enabled", false)
-	await _shot("diag_nodof")
+	await _shot("d3_noglow")
+	for c in atm.get_children():
+		if c is CanvasLayer:
+			c.visible = false
+	await _shot("d4_nopost")
+	if cam.attributes:
+		cam.attributes.set("dof_blur_far_enabled", false)
+	await _shot("d5_nodof")
 
 func _shot(n: String) -> void:
-	await _wait(0.6)
+	await _wait(0.8)
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png("user://sky_vista_%s.png" % n)
+	var img := get_viewport().get_texture().get_image()
+	img.resize(960, 513)
+	img.save_png("user://sky_vista_%s.png" % n)
+	var sum := Vector3.ZERO
+	for y in range(260, 480, 4):
+		for x in range(100, 860, 4):
+			var c := img.get_pixel(x, y)
+			sum += Vector3(c.r, c.g, c.b)
+	print(n, " mean ", sum / (55.0 * 190.0))

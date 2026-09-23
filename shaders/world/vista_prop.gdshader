@@ -46,10 +46,25 @@ void fragment() {
 			float arch = step(length(vec2((cell.x - 0.5) / 0.14, (cell.y - 0.7) / 0.1)), 1.0) * step(0.7, cell.y);
 			col = mix(col, vec3(0.05, 0.06, 0.07), max(win, arch) * 0.85);
 		}
+	} else if (kind == 2) {
+		// floating island: grassy top, earthy lip, layered rock underside with streaks
+		float nb = texture(noise_tex, wp.xz * 0.02 + wp.y * 0.013).r;
+		float ns = texture(noise_tex, vec2(wp.x * 0.012 + wp.z * 0.01, wp.y * 0.06)).g;
+		if (v_col.a > 0.5 || n.y > 0.8) {
+			col = mix(vec3(0.27, 0.44, 0.15), vec3(0.42, 0.55, 0.2), nb);
+		} else {
+			col *= 0.78 + 0.45 * ns;
+			col *= 1.0 - 0.14 * smoothstep(0.55, 0.62, fract(wp.y * 0.09 + nb * 0.8));
+			col = mix(col, vec3(0.26, 0.36, 0.17), smoothstep(0.7, 0.85, texture(noise_tex, wp.xy * 0.05).b) * 0.6 * step(-0.2, n.y));
+		}
 	} else {
 		float nf = texture(noise_tex, wp.xy * 0.25 + wp.z * 0.07).r;
 		col *= 0.75 + 0.5 * nf;
 	}
 	vec3 lit = vista_light(col, n, sd, 1.15, 0.62);
+	if (kind == 2) {
+		// light bounced up from the sunlit cloud sea onto the undersides
+		lit += col * vec3(0.95, 0.9, 0.82) * max(-n.y, 0.0) * 0.42;
+	}
 	ALBEDO = vista_fog(lit, wp, cam, sd, fog_density, fog_near);
 }
