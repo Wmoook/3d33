@@ -129,6 +129,8 @@ vec2 bg_space_dist(vec2 p, vec2 level_sz) {
 // Dramatic interior lighting for a recessed back wall: light spills in from the nearest openings (warm
 // daylight, falling off over ~6 tiles), the depths fall into a class-tinted gloom, corners against the
 // surrounding mass are occluded. Modifies albedo, returns emission to add.
+uniform float bg_space_pools = 1.0;   // 0: the checkpoint's flat spill only (A/B)
+
 vec3 bg_space_light(vec2 p, vec2 level_sz, int cls, inout vec3 albedo, inout float ao) {
 	vec2 d = bg_space_dist(p, level_sz);
 	float spill = exp(-d.y / 6.0);
@@ -138,32 +140,25 @@ vec3 bg_space_light(vec2 p, vec2 level_sz, int cls, inout vec3 albedo, inout flo
 	// gloom only deep inside (>= ~5 tiles from any opening): narrow shafts and cave mouths stay readable
 	float deepin = smoothstep(4.0, 12.0, d.y);
 	float fog = deepin * mix(0.25, 0.5, wob) * (cls == 6 ? 1.4 : 1.0);
-	albedo = mix(albedo, gloom, clamp(fog, 0.0, 0.5));
-	ao *= corner;
 	vec3 day = vec3(1.0, 0.86, 0.62);
-	return albedo * day * spill * 0.8 + day * spill * spill * 0.03;
-}
-
-// Blocky strata ledges (FV earth caves): WorldDepth recesses each back-wall tile to one of a few steps
-// (depth_tex .g = where the tile's volume starts). Lit lips where the band above is deeper, shadowed
-// overhangs where it is nearer, darker deeper steps: the carved relief reads at a glance.
-vec3 bg_space_ledges(vec2 p, sampler2D dtex, vec2 level_sz, vec3 albedo) {
-	ivec2 t = clamp(ivec2(floor(p)), ivec2(0), ivec2(level_sz) - 1);
-	float s0 = texelFetch(dtex, t, 0).g;
-	float su = texelFetch(dtex, clamp(t + ivec2(0, -1), ivec2(0), ivec2(level_sz) - 1), 0).g;
-	float sd = texelFetch(dtex, clamp(t + ivec2(0, 1), ivec2(0), ivec2(level_sz) - 1), 0).g;
-	float fy = fract(p.y);
-	vec3 a = albedo;
-	if (su > 2.5 && su < 9.0) {
-		float lip = 1.0 - smoothstep(0.0, 0.22, fy);
-		if (su > s0 + 0.3) {
-			a *= 1.0 + lip * 0.9;        // the ledge lip catches the light from above
-		} else if (su < s0 - 0.3) {
-			a *= 1.0 - (1.0 - smoothstep(0.0, 0.45, fy)) * 0.6;   // under an overhang: shadow
-		}
+	if (bg_space_pools < 0.5) {
+		albedo = mix(albedo, gloom, clamp(fog, 0.0, 0.5));
+		ao *= corner;
+		return albedo * day * spill * 0.8 + day * spill * spill * 0.03;
 	}
-	if (sd > 2.5 && sd < 9.0 && sd < s0 - 0.3) {
-		a *= 1.0 - smoothstep(0.75, 1.0, fy) * 0.35;   // the step below comes forward: contact shadow
+	// directional pools: daylight falls DOWN from openings (sampled up the wall), slanting with the sun,
+	// widening as it falls -> bright cones and pools on the back wall under every opening
+	float fall = 0.0;
+	for (int k = 1; k <= 6; k++) {
+		float fk = float(k);
+		vec2 q = p + vec2(fk * 0.35, -fk);
+		float dk = bg_space_dist(q, level_sz).y;
+		fall = max(fall, exp(-dk / (1.2 + fk * 0.35)) * (1.0 - fk * 0.11));
 	}
-	return a;
+	float lit = clamp(max(spill, fall), 0.0, 1.0);
+	// value contrast: lit stretches brighter, the rest sinks (floor kept: never a black hole)
+	albedo *= mix(0.62, 1.3, lit);
+	albedo = mix(albedo, gloom, clamp(fog * (1.0 - lit), 0.0, 0.55));
+	ao *= corner;
+	return albedo * day * (spill * 0.7 + fall * 1.5) + day * fall * fall * 0.04;
 }

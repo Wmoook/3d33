@@ -308,7 +308,6 @@ void fragment() {
 			n = bn;
 			ao *= bao;
 			mat = bgc == 2 ? M_FOLIAGE : M_EARTH;
-			albedo = bg_space_ledges(bp, depth_tex, level_size, albedo);
 		}
 		emit_x = bg_space_light(bp, level_size, bgc, albedo, ao);
 	}
@@ -405,9 +404,15 @@ void fragment() {
 		if (inroom && (mat == M_GRASS || mat == M_FOLIAGE)) {
 			// a crown's side / underside seen inside the shaft (the forest floor over its mouth): its own lit
 			// leaves, not a near-black panel (the leafy x0.62 / underside x0.72 are undone, full spill)
-			ALBEDO /= (horiz ? 1.0 : 0.62) * (gn.y < -0.5 ? 0.72 : 1.0);
-			spill = 1.0;
-			crown_in = 1.0;
+			// (user: these read as flat plastic lime planes) -> a recessed crown side: the shaded leaf tone
+			// broken into world-space leaf clusters, only a little spill, no emission boost
+			vec2 lq = horiz ? wp.xz : (abs(gn.x) > 0.5 ? wp.zy : wp.xy);
+			float cl = vnoise(lq * 1.6) * 0.6 + vnoise(lq * 3.7 + 5.0) * 0.4;
+			float clumps = smoothstep(0.35, 0.7, cl);
+			ALBEDO *= mix(0.62, 1.05, clumps) * mix(0.85, 1.0, vnoise(lq * 9.0));
+			ALBEDO /= gn.y < -0.5 ? 0.72 : 1.0;   // undersides: shaded leaves, never a black slit
+			spill = 0.6;
+			crown_in = 0.0;
 		}
 		ALBEDO *= mix(1.0, 1.8, spill);
 	}
