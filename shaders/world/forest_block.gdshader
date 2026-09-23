@@ -31,6 +31,10 @@ void fragment() {
 		discard;
 	}
 	vec3 gn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// top / bottom faces are only ever seen as thin slivers from the straight-on camera: shade them like the
+	// front faces (no dark underside lines where a whole block row sits near eye height)
+	float horiz = smoothstep(0.5, 0.9, abs(gn.y));
+	gn = normalize(mix(gn, vec3(0.0, 0.0, 1.0), horiz * 0.85));
 	// block bevel: normals round off within 0.12 of each edge (like the terrain's pillow bevel)
 	vec3 a = abs(v_local) * 2.0;             // 0 centre .. 1 face
 	vec3 bev = smoothstep(0.76, 1.0, a) * sign(v_local);

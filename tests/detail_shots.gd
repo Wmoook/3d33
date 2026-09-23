@@ -18,6 +18,10 @@ const SPOTS_FV := [
 	["spawn2", Vector2(2, 56)],
 	["walkstart", Vector2(14, 56)],
 	["walk8", Vector2(8, 56)],
+	["user7", Vector2(11, 56)],
+	["far_grove", Vector2(35, 50)],
+	["far_keep", Vector2(320, 100)],
+	["far_east", Vector2(385, 100)],
 	["easthollow", Vector2(382, 104)],
 	["outside_grove", Vector2(20, 68)],
 	["outside_east", Vector2(96, 50)],
@@ -96,7 +100,7 @@ func _ready() -> void:
 	if args.has("tileinfo"):
 		var v := str(args.tileinfo).split(",")
 		var ti := int(v[1]) * wv.terrain.W + int(v[0])
-		print("TILE ", v, " fg ", wv.level.fg[ti], " bg ", wv.level.bg[ti], " solid ", wv.terrain.solid[ti], " pocket ", wv.terrain.pocket[ti], " mat ", wv.terrain.mat_ids[ti], " hollow ", WorldForest.hollow_mask(wv.terrain)[ti])
+		print("TILE ", v, " fg ", wv.level.fg[ti], " bg ", wv.level.bg[ti], " solid ", wv.terrain.solid[ti], " pocket ", wv.terrain.pocket[ti], " mat ", wv.terrain.mat_ids[ti], " hollow ", WorldForest.hollow_mask(wv.terrain)[ti], " wall_code ", wv.terrain.wall_code[ti] if wv.terrain.wall_code.size() > ti else -1)
 	if args.has("tree"):
 		for c in wv.get_children():
 			print("WV ", c.name, " ", c.get_class())
@@ -107,6 +111,18 @@ func _ready() -> void:
 	if args.has("findat"):
 		var v := str(args.findat).split(",")
 		_find_at(Vector2(float(v[0]), float(v[1])), float(v[2]) if v.size() > 2 else 1.2)
+	if args.get("nolightfade", "0") == "1":
+		var nl := 0
+		for n in get_tree().root.find_children("*", "Light3D", true, false):
+			(n as Light3D).distance_fade_enabled = false
+			nl += 1
+		print("light distance fade off on ", nl, " lights")
+	if args.get("nossao", "0") == "1":
+		var env: Environment = wv.get_environment()
+		env.ssao_enabled = false
+		env.ssil_enabled = false
+		env.sdfgi_enabled = false
+		print("ssao/ssil/sdfgi off")
 	if args.has("debug"):
 		wv.set_debug_mode(int(args.debug))
 	if args.hud != "1" and game.get("_ui"):
@@ -136,8 +152,12 @@ func _ready() -> void:
 			foliage.update_focus(ball, 0.016)
 		var fnode: Node3D = forest_node if forest_node else wv.get("forest")
 		if fnode:
+			var fball := ball
+			if args.has("fadefrom"):
+				var fv := str(args.fadefrom).split(",")
+				fball = Vector3(float(fv[0]) + 0.5, -float(fv[1]) - 0.5, 0.0)   # the player is elsewhere (zoomed-out view)
 			for k in 4:
-				fnode.update_focus(ball, 1.0)   # settle the region fades at this spot
+				fnode.update_focus(fball, 1.0)   # settle the region fades at this spot
 		for i in 3:
 			await get_tree().process_frame
 		var lv := "fv" if args.level == "forgotten_veil" else "od"
@@ -332,6 +352,7 @@ func _sky_check(img: Image, wv: WorldView) -> Dictionary:
 	var sy := vs.y / img.get_height()
 	var n_hollow := 0
 	var n_sky := 0
+	var lum_sum := 0.0
 	for py in range(0, img.get_height(), 3):
 		for px in range(0, img.get_width(), 3):
 			var o := cam.project_ray_origin(Vector2(px * sx, py * sy))
@@ -354,11 +375,12 @@ func _sky_check(img: Image, wv: WorldView) -> Dictionary:
 				continue
 			n_hollow += 1
 			var c := img.get_pixel(px, py)
+			lum_sum += c.get_luminance()
 			if c.b > c.g and c.g > c.r and c.b > 0.45 and c.b - c.r > 0.12:
 				n_sky += 1
 				if n_sky <= 6:
 					print("  sky px at ", Vector2i(px, py), " tile ", Vector2i(tx, ty), " ", c)
-	return {"hollow_px": n_hollow, "sky_px": n_sky}
+	return {"hollow_px": n_hollow, "sky_px": n_sky, "mean_lum": lum_sum / maxf(n_hollow, 1.0)}
 
 ## Proposed to world: inside forest regions (the dilated hollow tex covers the solids bordering a hollow) the
 ## depth volume's faces haze into the dark forest fog instead of the pale sky, so trunk / pocket side faces

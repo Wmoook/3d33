@@ -678,6 +678,29 @@ func window_image() -> Image:
 			b[i] = 2 if _earth_wall(i) else 6
 		else:
 			b[i] = 0
+	# a 1-3 tile "stone interior" speck (e.g. FV's spawn tile, bg 547 inside the grove) is not a room: it
+	# kept a stone room block + backdrop hole in the middle of the forest hollow
+	var seen := PackedByteArray(); seen.resize(W * H)
+	for start in W * H:
+		if seen[start] or b[start] < 5:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var ci := 0
+		while ci < comp.size():
+			var i := comp[ci]; ci += 1
+			for k in 4:
+				var nx := i % W + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := i / W + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if b[j] >= 5 and not seen[j]:
+					seen[j] = 1
+					comp.append(j)
+		if comp.size() <= 3:
+			for i in comp:
+				b[i] = 0
 	wall_code = b
 	return Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
 

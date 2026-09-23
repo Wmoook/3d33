@@ -33,6 +33,7 @@ const BARK_512 := Color(0.47, 0.37, 0.23)
 const BARK_511 := Color(0.33, 0.14, 0.13)
 const FADE_IN := 2.0      # tiles outside the region where the fade starts
 const FADE_OUT := 8.0     # ... and where it reaches 0
+const FAR_VIS := 0.6      # the fade's floor: faded regions keep a dim forest
 
 var stats := {}
 var region_list: Array[Rect2i] = []
@@ -293,12 +294,14 @@ func _set_vis(reg: Dictionary, v: float) -> void:
 	if absf(v - float(reg.vis)) < 0.0005 and v != 0.0 and v != 1.0:
 		return
 	reg.vis = v
+	# out of range the forest stays a dim but real forest (never a black hole in the zoomed-out view); only the
+	# moving extras (fireflies, pollen) switch off
+	var shown := maxf(v, FAR_VIS)
 	for m: ShaderMaterial in reg.mats:
-		m.set_shader_parameter("vis", v)
+		m.set_shader_parameter("vis", shown)
 	for p: GPUParticles3D in reg.particles:
 		p.emitting = v > 0.05
 		p.visible = v > 0.01
-	(reg.layers as Node3D).visible = v > 0.01   # far card stays (the deep shade), the rest can hide
 
 func _mat(shader_path: String) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
@@ -404,7 +407,9 @@ func _build_region(lvl: EELevel, terrain: WorldTerrain, hm: PackedByteArray, r: 
 				ceil_rows.append(y)
 	floor_rows.sort()
 	ceil_rows.sort()
-	var floor_y := -float(floor_rows[floor_rows.size() / 2]) if not floor_rows.is_empty() else -float(r.end.y)
+	# the deep floor lies at the region's LOWEST forest floor: a median floor floated in mid-air above the lower
+	# floors and read as a dark horizontal line across the whole backdrop when seen edge-on
+	var floor_y := -float(floor_rows[floor_rows.size() - 1]) if not floor_rows.is_empty() else -float(r.end.y)
 	var canopy_y := -float(ceil_rows[ceil_rows.size() / 2]) + 0.5 if not ceil_rows.is_empty() else -float(r.position.y)
 	m_trunk.set_shader_parameter("canopy_y", canopy_y)
 	var m_deep := _mat("res://shaders/world/forest_deep.gdshader")
@@ -481,7 +486,11 @@ func _far_quad(st: SurfaceTool, lvl: EELevel, terrain: WorldTerrain, hm: PackedB
 	var f := Vector2(y1 + 1, y0)
 	# the lowest hollow tile of a span: a continuous forest floor from the play strip back to the far card
 	# (mossy, darker with depth), so no sky / pale gap shows at the ground line between trunks
-	if y == y1:
+	# only over the real forest floor (ground below, not a crown / pine / trunk / pocket bottom): a strip
+	# anywhere higher is a thin horizontal plane that reads as a dark line when seen edge-on at eye height
+	var below := i + W
+	var ground := y + 1 < H and terrain.solid[below] and not WorldGrass.canopy_map(terrain)[below] 		and lvl.fg[below] != PINE_ID and not is_trunk_tile(lvl, x, y + 1)
+	if y == y1 and ground:
 		var fy := -float(y1 + 1) - 0.02
 		var fc := Color(0.08, 0.13, 0.05).srgb_to_linear()
 		var fl := [Vector3(x - 0.6, fy, -1.85), Vector3(x + 1.6, fy, -1.85), Vector3(x + 1.6, fy - 0.3, -10.0),
