@@ -654,6 +654,7 @@ func _trial_complete() -> void:
 var _trial_cur := 0
 var _trial_cand := 0
 var _trial_cand_t := 0.0
+var _trials_seen := {}
 func _update_trial_caption(delta: float) -> void:
 	if world == null or not world.has_method(&"get_trial_at"):
 		return
@@ -664,7 +665,8 @@ func _update_trial_caption(delta: float) -> void:
 	_trial_cand_t += delta
 	if t != _trial_cur and _trial_cand_t > 0.4:
 		_trial_cur = t
-		if t > 0:
+		if t > 0 and not _trials_seen.has(t):
+			_trials_seen[t] = true   # the "TRIAL n OF XVI" caption only on a trial's FIRST visit per run
 			var total: int = int(world.trial_count()) if world.has_method(&"trial_count") else _coins_total
 			hud.caption("TRIAL %s  OF  %s" % [roman(t), roman(total)])
 
