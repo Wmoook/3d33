@@ -874,8 +874,8 @@ void fragment() {
 		// heavy undersides over open sky: shadowed, a touch of moss/damp - masses feel grounded
 		float skyb = field_at(p + vec2(0.0, 0.8)).r;
 		float under = smoothstep(-0.25, -0.8, gn.y) * skyb;
-		albedo = mix(albedo, albedo * vec3(0.42, 0.45, 0.4), under);
-		ao *= 1.0 - under * 0.35;
+		albedo = mix(albedo, albedo * vec3(0.62, 0.65, 0.6), under);   // shadowed but never a black rim against the sky
+		ao *= 1.0 - under * 0.2;
 	}
 	if (scroll_rect.x >= 0.0 && layer == 0) {
 		// silhouettes against the sky: warm sun rim on sunward (upper-left) edges, cool sky rim elsewhere

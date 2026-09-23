@@ -146,7 +146,9 @@ func _voxel_keel(b: WorldDepth.Bucket, x0: int, x1: int, ybot: int, rows: int, t
 		var y := ybot + 1 + k
 		var src_x := clampi(int(cx), x0, x1)
 		var src_y: int = bottom.get(src_x, ybot)
-		_box(b, float(a), float(a) + w, -float(y), -float(y) - 1.0, Z_TOP - 0.05, Z_TOP - 0.05 - e, Vector2(src_x + 0.5, src_y + 0.5))
+		# the first slab tucks 0.03 up into the island (its top face would be coplanar with the island's own
+		# depth-volume underside and z-fight / flicker); lower slabs overlap the one above the same way
+		_box(b, float(a), float(a) + w, -float(y) + 0.03, -float(y) - 1.0, Z_TOP - 0.05, Z_TOP - 0.05 - e, Vector2(src_x + 0.5, src_y + 0.5))
 
 func _box(b: WorldDepth.Bucket, xa: float, xb: float, ya: float, yb: float, za: float, zb: float, uv: Vector2) -> void:
 	var c := [Vector3(xa, yb, zb), Vector3(xb, yb, zb), Vector3(xb, ya, zb), Vector3(xa, ya, zb),
