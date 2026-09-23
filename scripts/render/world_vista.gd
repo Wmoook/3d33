@@ -394,13 +394,28 @@ func _make_trees() -> void:
 				_add_tree(rng, px, s.x, pz, rng.randf_range(0.8, 1.25) * (1.0 + (-pz) / 500.0))
 			x += step * (1.0 + (-z) / 260.0)
 		z -= step * (1.0 + (-z) / 260.0)
-	var cone := CylinderMesh.new()
-	cone.top_radius = 0.0
-	cone.bottom_radius = 1.0
-	cone.height = 1.0
-	cone.radial_segments = 7
-	cone.rings = 1
-	cone.cap_bottom = false
+	# pines: three stacked drooping tiers (reads as a conifer, not a cone, even up close)
+	var pst := SurfaceTool.new()
+	pst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seg := 9
+	for tier in 3:
+		var base_y := -0.5 + tier * 0.27
+		var top_y := base_y + 0.5
+		var r := 1.0 - tier * 0.27
+		var skirt := base_y - 0.06
+		for a in seg:
+			var t0 := TAU * a / seg
+			var t1 := TAU * (a + 1) / seg
+			var p0 := Vector3(cos(t0) * r, skirt, sin(t0) * r)
+			var p1 := Vector3(cos(t1) * r, skirt, sin(t1) * r)
+			var m0 := Vector3(cos(t0) * r * 0.55, base_y + 0.08, sin(t0) * r * 0.55)
+			var m1 := Vector3(cos(t1) * r * 0.55, base_y + 0.08, sin(t1) * r * 0.55)
+			var apex := Vector3(0, top_y, 0)
+			for tri in [[p0, p1, m0], [p1, m1, m0], [m0, m1, apex]]:
+				for v in tri:
+					pst.add_vertex(v)
+	pst.generate_normals()
+	var cone := pst.commit()
 	var blob := SphereMesh.new()
 	blob.radius = 0.5
 	blob.height = 1.0

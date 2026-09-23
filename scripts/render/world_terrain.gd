@@ -636,6 +636,7 @@ func _classify() -> void:
 	for x in W:
 		if not solid[x] and sky[W + x]:
 			sky[x] = 1
+	_sky_flood = sky.duplicate()   # open air reached from the top (before painted-sky windows join the sky)
 	if day:
 		_mark_crags(fgb)
 		for i in n:
@@ -649,6 +650,7 @@ func _classify() -> void:
 				bgb[i * 4] = bc.r8; bgb[i * 4 + 1] = bc.g8; bgb[i * 4 + 2] = bc.b8; bgb[i * 4 + 3] = 255
 				has_bgc[i] = 1
 				backwall[i] = 1
+		_classify_bg_regions(has_bgc)
 	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
 	_dilate(fgb, has_fg)
@@ -679,6 +681,78 @@ func _classify() -> void:
 		inf[i * 4 + 2] = zones[i]
 		inf[i * 4 + 3] = 255 if sky[i] else 0
 	info_img.set_data(W, H, false, Image.FORMAT_RGBA8, inf)
+
+## Day levels: the painter put bg blocks behind floating structures for the 2D image; in 3D they would hang
+## in the open sky as recessed walls. Every connected back-wall region is classified by its perimeter:
+## INTERIOR (enclosed: < 30% of its boundary edges open to sky air) keeps the recessed wall, EXTERIOR
+## (decorative, open to the sky) becomes plain sky. bg_region: 0 none, 1 interior, 2 exterior.
+const BG_OPEN_MAX := 0.3
+var bg_region := PackedByteArray()
+var _sky_flood := PackedByteArray()
+
+func _classify_bg_regions(has_bgc: PackedByteArray) -> void:
+	var n := W * H
+	bg_region.resize(n)
+	bg_region.fill(0)
+	var seen := PackedByteArray(); seen.resize(n)
+	var converted := false
+	for start in n:
+		if seen[start] or not backwall[start] or solid[start]:
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		var perim := 0
+		var open := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					perim += 1   # the EE border is solid
+					continue
+				var j := ny * W + nx
+				if backwall[j] and not solid[j]:
+					if not seen[j]:
+						seen[j] = 1
+						comp.append(j)
+					continue
+				perim += 1
+				if _sky_flood[j]:
+					open += 1
+		var exterior := perim > 0 and float(open) / perim >= BG_OPEN_MAX
+		for i in comp:
+			bg_region[i] = 2 if exterior else 1
+			if exterior:
+				backwall[i] = 0
+				has_bgc[i] = 0
+				converted = true
+	if converted:
+		_compute_sky()
+		for i in n:
+			if sky[i]:
+				zones[i] = WorldPalette.Z_DAY
+
+## Overview for the lead: solid grey, interior walls green, exterior (now sky) red, sky black. 1 px / tile.
+func bg_region_image() -> Image:
+	var img := Image.create(W, H, false, Image.FORMAT_RGB8)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			var c := Color(0, 0, 0)
+			if solid[i]:
+				c = Color(0.35, 0.35, 0.35)
+			elif bg_region[i] == 1:
+				c = Color(0.1, 0.8, 0.2)
+			elif bg_region[i] == 2:
+				c = Color(0.9, 0.15, 0.1)
+			elif not sky[i]:
+				c = Color(0.1, 0.2, 0.5)
+			img.set_pixel(x, y, c)
+	return img
 
 ## Multi-source BFS: copies the nearest filled tile's rgba into unfilled tiles (keeps colour sampling
 ## at solid boundaries free of "air" colour).

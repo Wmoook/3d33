@@ -159,6 +159,11 @@ func _ready() -> void:
 	add_child(world)
 	world.set_level_config(cfg)
 	world.build(lvl)
+	if world.is_day():
+		# bg-wall region overview: grey solid, green interior walls, red exterior (rendered as sky), blue enclosed air
+		var bgi := world.terrain.bg_region_image()
+		bgi.resize(bgi.get_width() * 4, bgi.get_height() * 4, Image.INTERPOLATE_NEAREST)
+		bgi.save_png("user://world_bgregions.png")
 	sim = EESim.new(lvl)
 	world.set_sim(sim)
 	if _redkey:
