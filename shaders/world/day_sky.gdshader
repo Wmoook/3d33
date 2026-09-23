@@ -276,11 +276,15 @@ void sky() {
 			vec3 rockc = mix(vec3(0.07, 0.068, 0.065), vec3(0.15, 0.14, 0.125), strata);   // linear
 			rockc = mix(rockc, vec3(0.05, 0.1, 0.03), moss * 0.6);
 			// wet grotto cliff behind the waterfall
-			float wet = (1.0 - smoothstep(6.0, 20.0, abs(hp.x - 135.0))) * step(120.0, -hp.y) * step(-hp.y, 180.0);
-			rockc = mix(rockc, vec3(0.02, 0.045, 0.06), wet * 0.7);
+			float wet = (1.0 - smoothstep(8.0, 24.0, abs(hp.x - 138.0))) * smoothstep(118.0, 126.0, -hp.y) * (1.0 - smoothstep(175.0, 182.0, -hp.y));
+			// grotto: dark wet rock with moss pads and bright trickling wet glints
+			vec3 wetrock = mix(vec3(0.018, 0.03, 0.035), vec3(0.03, 0.07, 0.025), smoothstep(0.45, 0.7, fbm(hp * 0.45)));
+			float glint = smoothstep(0.82, 0.98, fbm(vec2(hp.x * 2.5, hp.y * 0.4 - TIME * 0.8))) * smoothstep(0.4, 0.6, fbm(hp * 0.3));
+			wetrock += vec3(0.5, 0.6, 0.65) * glint * 0.35;
+			rockc = mix(rockc, wetrock, wet);
 			float sunf = smoothstep(-0.2, 0.8, fbm(hp * 0.07));
 			rockc *= mix(0.7, 1.15, sunf);
-			vec3 dcol = mix(rockc, haze * 0.6, S == 2 ? 0.28 : (S == 1 ? 0.06 : 0.03));
+			vec3 dcol = mix(rockc, haze * 0.6, (S == 2 ? 0.28 : (S == 1 ? 0.06 : 0.03)) * (1.0 - wet * 0.8));
 			dcol = mix(dcol, haze * 0.7, (1.0 - smoothstep(0.35, 0.75, dm.g)) * 0.25 * float(S > 0));
 			c = mix(c, dcol, clamp(a, 0.0, 1.0));
 		}
