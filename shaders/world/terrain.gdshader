@@ -885,6 +885,7 @@ void fragment() {
 		float under = smoothstep(-0.25, -0.8, gn.y) * skyb;
 		albedo = mix(albedo, albedo * vec3(0.62, 0.65, 0.6), under);   // shadowed but never a black rim against the sky
 		ao *= 1.0 - under * 0.2;
+		emit = max(emit, max(albedo, vec3(0.03, 0.035, 0.025)) * 0.18 * under);   // (a crown's underside over the sky at the pine read exact black)
 	}
 	if (scroll_rect.x >= 0.0 && layer == 0) {
 		// silhouettes against the sky: warm sun rim on sunward (upper-left) edges, cool sky rim elsewhere
@@ -907,6 +908,9 @@ void fragment() {
 		// shadow still reads as dark shaded rock, the same floor depth_volume uses
 		if (any(isnan(albedo)) || any(isinf(albedo))) { albedo = vec3(0.35, 0.33, 0.3); }
 		if (isnan(ao) || isinf(ao)) { ao = 0.8; }
+		if (isnan(rough) || isinf(rough)) { rough = 0.85; }
+		if (isnan(metal) || isinf(metal)) { metal = 0.0; }
+		if (isnan(spec) || isinf(spec)) { spec = 0.3; }
 		if (any(isnan(emit)) || any(isinf(emit))) { emit = vec3(0.0); }
 		if (any(isnan(n)) || dot(n, n) < 1e-8) { n = (any(isnan(gn)) || dot(gn, gn) < 1e-8) ? vec3(0.0, 0.0, 1.0) : gn; }
 		albedo = max(albedo, vec3(0.0));
