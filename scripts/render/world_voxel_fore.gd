@@ -98,7 +98,7 @@ func generate(cols: PackedColorArray) -> void:
 	var fn := FastNoiseLite.new()
 	fn.seed = 313
 	fn.frequency = 0.35
-	var step := 9
+	var step := 6
 	for gy in range(2, H - 2, step):
 		for gx in range(0, W, step):
 			var tx := gx + rng.randi_range(0, step - 1)
@@ -106,7 +106,7 @@ func generate(cols: PackedColorArray) -> void:
 			if tx >= W or ty >= H:
 				continue
 			var d := dist[ty * W + tx]
-			if d < 3 or rng.randf() > 0.42:
+			if d < 1 or rng.randf() > (0.35 if d < 2 else 0.6):
 				continue
 			var r := rng.randf()
 			if d >= 6 and r < 0.26:
@@ -151,7 +151,7 @@ func _vrun(tx: int, ty: int) -> Vector2i:
 	return Vector2i(a, b)
 
 func _boulder(tx: int, ty: int, d: int, rng: RandomNumberGenerator, fn: FastNoiseLite) -> void:
-	var r := rng.randf_range(1.3, minf(3.2, d * 0.45))
+	var r := rng.randf_range(1.0, maxf(1.2, minf(3.2, d * 0.6)))
 	var cz := 1.0 + r + rng.randf_range(0.0, 3.0)
 	var c := Vector3(tx + 0.5, -ty - 0.5, cz)
 	var ri := int(ceil(r)) + 1
@@ -269,6 +269,7 @@ func _build_mesh() -> void:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
 	var idx := PackedInt32Array()
 	# faces: normal, then two in-face axes (cell space)
 	var dirs := [
@@ -310,8 +311,8 @@ func _build_mesh() -> void:
 						var ao := 0.0 if s1 + s2 > 1.5 else (3.0 - s1 - s2 - cc) / 3.0
 						verts.append(p)
 						norms.append(Vector3(n))
-						var shade := 0.45 + 0.55 * ao
-						colors.append(Color(bc.r * shade, bc.g * shade, bc.b * shade, float(id) / 255.0))
+						colors.append(Color(bc.r, bc.g, bc.b, float(id) / 255.0))
+						uvs.append(Vector2(ao, 0.0))
 					var nf := Vector3(n)
 					var fl := Vector3(a).cross(Vector3(b)).dot(nf) > 0.0
 					idx.append_array(PackedInt32Array([base, base + (2 if fl else 1), base + (1 if fl else 2),
@@ -321,6 +322,7 @@ func _build_mesh() -> void:
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = colors
+	arr[Mesh.ARRAY_TEX_UV] = uvs
 	arr[Mesh.ARRAY_INDEX] = idx
 	_arrays = arr
 
@@ -335,6 +337,12 @@ func upload(sun_dir: Vector3) -> void:
 	material.set_shader_parameter("ball_r", BALL_R)
 	material.set_shader_parameter("sun_dir", sun_dir)
 	material.set_shader_parameter("fade", 0.0)
+	WorldPbr.bind(material, false, 1.0)
+	if _cols.size() > WorldVoxel.GRASS:
+		var dc := _cols[WorldVoxel.DIRT]
+		var gc := _cols[WorldVoxel.GRASS]
+		material.set_shader_parameter("dirt_col", Vector3(dc.r, dc.g, dc.b))
+		material.set_shader_parameter("grass_col", Vector3(gc.r, gc.g, gc.b))
 	var verts: PackedVector3Array = _arrays[Mesh.ARRAY_VERTEX] if not _arrays.is_empty() else PackedVector3Array()
 	if verts.is_empty():
 		return
@@ -363,6 +371,11 @@ func fallback_from_camera(cam: Camera3D) -> void:
 	var p := cam.global_position
 	material.set_shader_parameter("ball_pos", Vector3(p.x, p.y, 0.0))
 	material.set_shader_parameter("ball_r", 5.0)
+
+## Tests: flat magenta output for the safety check.
+func set_debug_mask(on: bool) -> void:
+	if material:
+		material.set_shader_parameter("debug_mask", 1.0 if on else 0.0)
 
 func set_fade(f: float) -> void:
 	if material:

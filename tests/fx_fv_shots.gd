@@ -41,6 +41,8 @@ const SPOTS := [
 	["logo_close", Vector2(318, 30)],
 	["logo_noactors", Vector2(318, 30)],
 	["veils", Vector2(245, 84)],
+	["veils_close", Vector2(245, 84)],
+	["veils_sky", Vector2(2, 47)],
 	["rainbow", Vector2(141, 164)],
 	["updraft", Vector2(200, 64)],
 	["aqueduct", Vector2(360, 180)],
@@ -145,6 +147,9 @@ func _ready() -> void:
 				await get_tree().process_frame
 		if game.rig and s[0] != "scroll_far":
 			game.rig.set("target_zoom", 30.0)
+		if s[0] == "veils_close" and game.rig:
+			game.rig.set("target_zoom", 14.0); game.rig.set("zoom", 14.0)
+			await _wait(1.0)
 		if s[0] == "scroll_far" and game.rig:
 			game.rig.set("target_zoom", 70.0); game.rig.set("zoom", 70.0)
 			await _wait(1.5)

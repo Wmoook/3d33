@@ -52,6 +52,8 @@ func _ready() -> void:
 		for s in 3:
 			await _place(Vector2(t) + Vector2(2.0 * (s + 1), 0.0))
 			await _wait(0.5)
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png("user://voxel_fore_%s_move%d.png" % [n, s])
 			await _check("%s_move%d" % [n, s])
 	print("FORE SAFETY TOTAL: %d bad samples %s" % [total_bad, "OK" if total_bad == 0 else "FAIL"])
 	get_tree().quit()
@@ -67,13 +69,22 @@ func _ball() -> Vector3:
 	return Vector3(game.sim.px / 16.0 + 0.5, -game.sim.py / 16.0 - 0.5, 0.0)
 
 func _check(nm: String) -> void:
+	# magenta mask render: the foreground drawn flat magenta, glow off (no bloom halo), vs hidden
+	var env := wv.get_environment()
+	var glow := env.glow_enabled
+	env.glow_enabled = false
+	vx.fore.set_debug_mask(true)
+	await _wait(0.3)
 	await RenderingServer.frame_post_draw
 	var on := get_viewport().get_texture().get_image()
+	on.save_png("user://voxel_fore_mask_%s.png" % nm)
 	vx.fore.visible = false
-	await _wait(0.35)   # let TAA / temporal effects settle
+	await _wait(0.3)
 	await RenderingServer.frame_post_draw
 	var off := get_viewport().get_texture().get_image()
 	vx.fore.visible = true
+	vx.fore.set_debug_mask(false)
+	env.glow_enabled = glow
 	var cam := get_viewport().get_camera_3d()
 	var vs := Vector2(on.get_width(), on.get_height())
 	var vp := get_viewport().get_visible_rect().size
@@ -94,29 +105,28 @@ func _check(nm: String) -> void:
 					if cam.is_position_behind(w):
 						continue
 					var sp := cam.unproject_position(w) / vp * vs
-					if sp.x < 1 or sp.y < 1 or sp.x >= vs.x - 1 or sp.y >= vs.y - 1:
+					if sp.x < 8 or sp.y < 8 or sp.x >= vs.x - 8 or sp.y >= vs.y - 8:
 						continue
 					n += 1
-					var a := on.get_pixelv(Vector2i(sp))
-					var b := off.get_pixelv(Vector2i(sp))
-					var dd := absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
-					if dd > 0.12:
+					var dd := _mag(on.get_pixelv(Vector2i(sp))) - _mag(off.get_pixelv(Vector2i(sp)))
+					if dd > 0.15:
 						bad += 1
 						if bad <= 5:
-							print("   %s: tile (%d,%d) changed by %.3f" % [nm, tx, ty, dd])
+							print("   %s: tile (%d,%d) changed by %.3f at px %s on=%s off=%s" % [nm, tx, ty, dd, str(Vector2i(sp)), str(on.get_pixelv(Vector2i(sp))), str(off.get_pixelv(Vector2i(sp)))])
 	# how much of the frame the foreground actually draws (anywhere)
 	for py in range(0, int(vs.y), 16):
 		for px in range(0, int(vs.x), 16):
-			var a := on.get_pixel(px, py)
-			var b := off.get_pixel(px, py)
-			if absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) > 0.12:
+			if _mag(on.get_pixel(px, py)) - _mag(off.get_pixel(px, py)) > 0.15:
 				changed += 1
 	total_bad += bad
 	print("FORE SAFETY %s: %d / %d protected samples changed %s; foreground covers %.1f%% of the frame" % [nm, bad, n,
 		"OK" if bad == 0 else "FAIL", 100.0 * changed / ((vs.x / 16.0) * (vs.y / 16.0))])
 
+## Magenta-ness of a pixel (0 for natural colours, ~1 for the debug mask).
+func _mag(c: Color) -> float:
+	return clampf(minf(c.r, c.b) - c.g, 0.0, 1.0)
+
 func _wait(s: float) -> void:
 	var end := Time.get_ticks_msec() + int(s * 1000.0)
 	while Time.get_ticks_msec() < end:
-		vx.update_focus(_ball(), 0.016)
 		await get_tree().process_frame

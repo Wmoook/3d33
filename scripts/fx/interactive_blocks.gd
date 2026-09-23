@@ -781,15 +781,23 @@ func _build_portals() -> void:
 		var rots := []
 		for t in tiles:
 			_portal_tiles[t] = id
-			rots.append(float(int(lvl.get_extra(t.x, t.y).get("rotation", 0))) / 4.0)
+			if odyssey:
+				rots.append(float(int(lvl.get_extra(t.x, t.y).get("rotation", 0))) / 4.0)
+			else:
+				# pair hue: a portal and its target share a colour (hash of the unordered id pair)
+				var ex := lvl.get_extra(t.x, t.y)
+				var a := int(ex.get("id", 0))
+				var b := int(ex.get("target", 0))
+				var key := mini(a, b) * 7919 + maxi(a, b) * 104729
+				rots.append(fposmod(float((key * 2654435761) & 0xFFFF) / 65535.0, 1.0))
 		var q := QuadMesh.new()
 		q.size = Vector2(1.45, 1.45) if id == 242 else Vector2(1.2, 1.2)
 		var m := ShaderMaterial.new()
 		m.shader = PORTAL_SHADER
 		if not odyssey:
 			# "the Veil": shimmering membranes in stone rings instead of Odyssey's vortices
-			m.shader = preload("res://shaders/fx/veil_portal.gdshader")
-			q.size = Vector2(1.2, 1.3) if id == 242 else Vector2(1.0, 1.1)
+			m.shader = preload("res://shaders/fx/rift_portal.gdshader")   # voxel rifts (user: mirrors looked dumb)
+			q.size = Vector2(1.22, 1.22) if id == 242 else Vector2(1.0, 1.0)   # <= 0.12 over neighbours
 			_veil_mats.append(m)
 		if id == 381:
 			m.set_shader_parameter("invisible", 1.0)
@@ -805,7 +813,9 @@ func _build_portals() -> void:
 			var gq := QuadMesh.new()
 			gq.size = Vector2(2.4, 2.4)
 			gq.material = gm
-			_multimesh(gq, tiles, Vector3(0, 0, Z_PORTAL - 0.1), 1.0, false).name = "PortalGlow"
+			var pg := _multimesh(gq, tiles, Vector3(0, 0, Z_PORTAL - 0.1), 1.0, false)
+			pg.name = "PortalGlow"
+			pg.visible = odyssey   # the rifts carry their own light
 
 var _veil_mats: Array[ShaderMaterial] = []
 var _veil_flares: Array = []   # Vector4(x, y, age, strength)
