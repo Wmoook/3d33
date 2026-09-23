@@ -84,6 +84,7 @@ func add_trauma(a: float) -> void:
 
 func snap_to(world_pos: Vector3) -> void:
 	focus = Vector3(world_pos.x - 0.5, world_pos.y + 0.5, 0.0)  # EE target: player top-left, no clamp
+	_ee_live = false
 	_focus_vel = Vector3.ZERO
 	_look = Vector2.ZERO
 	_fall_look = Vector2.ZERO
@@ -101,6 +102,9 @@ func begin_follow(swoop: bool) -> void:
 const EE_CAMERA_LAG := 1.0 / 16.0
 const EE_SNAP := 0.5 / 16.0          # 0.5 px in tiles
 var _ee_accum := 0.0
+var _ee_focus := Vector3.ZERO   # EE tick-lattice camera focus (exact)
+var _ee_prev := Vector3.ZERO    # its previous tick state (render blends the two)
+var _ee_live := false
 func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = Vector2(0, -1)) -> void:
 	_t += delta
 	zoom = _damp(zoom, target_zoom, 7.0, delta)
@@ -113,14 +117,25 @@ func follow(world_pos: Vector3, vel: Vector2, delta: float, gravity: Vector2 = V
 		_smooth_boost = maxf(0.0, _smooth_boost - delta * 0.45)
 		focus = _smooth_damp(focus, target, 0.14 + _smooth_boost * _smooth_boost * 1.1, delta)
 	else:
+		# EE's camera moves in 100 Hz ticks; the screen draws faster (120+ fps), so stepping `focus` directly
+		# left 1 frame in 6 without camera motion: the whole world juddered at 20 Hz and textures shimmered.
+		# The tick lattice stays EE-exact (_ee_focus); the rendered focus blends its last two tick states.
+		if not _ee_live:
+			_ee_focus = focus
+			_ee_prev = focus
+			_ee_live = true
 		_ee_accum += delta * 100.0
 		var steps := int(_ee_accum)
 		_ee_accum -= steps
 		for i in mini(steps, 60):
-			focus.x -= (focus.x - target.x) * EE_CAMERA_LAG
-			focus.y -= (focus.y - target.y) * EE_CAMERA_LAG
-			if absf(focus.x - target.x) < EE_SNAP: focus.x = target.x
-			if absf(focus.y - target.y) < EE_SNAP: focus.y = target.y
+			_ee_prev = _ee_focus
+			_ee_focus.x -= (_ee_focus.x - target.x) * EE_CAMERA_LAG
+			_ee_focus.y -= (_ee_focus.y - target.y) * EE_CAMERA_LAG
+			if absf(_ee_focus.x - target.x) < EE_SNAP: _ee_focus.x = target.x
+			if absf(_ee_focus.y - target.y) < EE_SNAP: _ee_focus.y = target.y
+		if steps > 60:
+			_ee_prev = _ee_focus
+		focus = _ee_prev.lerp(_ee_focus, _ee_accum)
 	focus.z = 0.0
 	_tilt = Vector2.ZERO
 	trauma = 0.0
@@ -177,6 +192,7 @@ func cinematic(delta: float, speed: float = 0.055) -> void:
 	zoom = lerpf(p1.zoom, p2.zoom, f * f * (3.0 - 2.0 * f))
 	target_zoom = zoom
 	focus = _clamp_focus(Vector3(pos.x, -pos.y, 0.0))
+	_ee_live = false
 	var d := _catmull(p0.pos, p1.pos, p2.pos, p3.pos, minf(f + 0.02, 1.0)) - pos
 	var tilt := Vector2(clampf(d.x * 6.0, -1.0, 1.0) * MAX_YAW * 1.4, clampf(-d.y * 6.0, -1.0, 1.0) * MAX_PITCH_TILT)
 	_tilt = _tilt.lerp(tilt, 1.0 - exp(-1.2 * delta))
