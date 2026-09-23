@@ -99,11 +99,53 @@ func build(lvl: EELevel, s) -> void:
 		add_child(shrine)
 		shrine.build(lvl, s, player, bursts)
 	_no_shadows(self)
+	if is_odyssey():
+		_restore_fog(self)
 	if s != null:
 		if "px" in s:
 			player.position = EECoords.player_center(s.px, s.py)
 		if s.has_signal("sim_event"):
 			s.sim_event.connect(_on_sim_event)
+
+## The additive FX shaders are fog_disabled (FV's bright day fog painted every card as a translucent
+## rectangle). Odyssey's look was tuned WITH fog on them, so there every such shader is swapped back to
+## a fogged twin (same code minus fog_disabled).
+var _fog_twins := {}
+
+func _fogged(sh: Shader) -> Shader:
+	if sh == null or not sh.code.contains("fog_disabled"):
+		return sh
+	if not _fog_twins.has(sh):
+		var t := Shader.new()
+		t.code = sh.code.replace(", fog_disabled", "")
+		_fog_twins[sh] = t
+	return _fog_twins[sh]
+
+func _refog_mat(m: Material) -> void:
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).shader = _fogged((m as ShaderMaterial).shader)
+
+func _refog_mesh(mesh: Mesh) -> void:
+	if mesh == null:
+		return
+	if mesh is PrimitiveMesh:
+		_refog_mat((mesh as PrimitiveMesh).material)
+	for i in mesh.get_surface_count():
+		_refog_mat(mesh.surface_get_material(i))
+
+func _restore_fog(n: Node) -> void:
+	if n is GeometryInstance3D:
+		_refog_mat((n as GeometryInstance3D).material_override)
+	if n is MeshInstance3D:
+		_refog_mesh((n as MeshInstance3D).mesh)
+		for i in (n as MeshInstance3D).get_surface_override_material_count():
+			_refog_mat((n as MeshInstance3D).get_surface_override_material(i))
+	if n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh:
+		_refog_mesh((n as MultiMeshInstance3D).multimesh.mesh)
+	if n is GPUParticles3D:
+		_refog_mesh((n as GPUParticles3D).draw_pass_1)
+	for c in n.get_children():
+		_restore_fog(c)
 
 ## FX never cast shadows (each shadow-casting light would re-render them; the world's lights do cast).
 func _no_shadows(n: Node) -> void:
