@@ -207,7 +207,7 @@ void sky() {
 				float sunlit = mix(0.45, mix(0.12, 1.0, face), exp(-depthb * 0.05));
 				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
 				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 0.4 + pl.y * 0.2, pl.y * 0.3)));
-				vec3 rock = mix(vec3(0.04, 0.06, 0.13), vec3(0.14, 0.18, 0.32), sunlit) * (1.0 - gully * 0.25);
+				vec3 rock = mix(vec3(0.17, 0.22, 0.4), vec3(0.3, 0.36, 0.58), sunlit) * (1.0 - gully * 0.15);   // flanks stay >= ~60% of sky value
 				vec3 sn = mix(vec3(0.28, 0.36, 0.6), vec3(1.2, 1.15, 1.08), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);
 				mcol = mix(mcol, horizon_haze, L == 0 ? 0.14 : 0.06);
@@ -256,6 +256,13 @@ void sky() {
 			float lit2 = clamp(0.55 + (cd - up) * 1.6 + (bill - 0.5) * 0.5, 0.0, 1.0);
 			vec3 cc = mix(vec3(0.62, 0.68, 0.84), vec3(1.0, 0.98, 0.94), lit2);
 			c = mix(c, cc, dens * 0.95);
+		}
+		// soft contact haze just beneath masses over open sky (sampled on the gameplay plane)
+		{
+			vec2 pp = vec2(hit.x, -hit.y);
+			float above = texture(depth_mask, (pp - vec2(0.0, 1.2)) / level_size).r;
+			float at = texture(depth_mask, pp / level_size).r;
+			c *= 1.0 - 0.18 * smoothstep(0.2, 0.8, above) * (1.0 - smoothstep(0.3, 0.7, at));
 		}
 		// MIST BANK: soft sunlit valley cloud layer at the bottom of the view, where the echo foundations
 		// fade out (camera-relative, gentle parallax)

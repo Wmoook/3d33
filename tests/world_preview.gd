@@ -231,6 +231,47 @@ func _run_perf() -> void:
 	print("PERF -terrain %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	get_tree().quit()
 
+## Readability check (day levels): behind every sky-connected air tile in view, the backdrop must stay
+## >= 60% of the local sky luminance (max over a 21x21-tile window of sky tiles), so open air never reads
+## as a dark wall.
+func _sky_luma_check(img: Image, nm: String) -> void:
+	var t := world.terrain
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var samples := {}
+	for ty in t.H:
+		for tx in t.W:
+			var i := ty * t.W + tx
+			if not t.sky[i] or t.solid[i]:
+				continue
+			var w := Vector3(tx + 0.5, -ty - 0.5, 0.0)
+			if cam.is_position_behind(w):
+				continue
+			var sp := cam.unproject_position(w) / vp * vs
+			if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+				continue
+			samples[Vector2i(tx, ty)] = img.get_pixelv(Vector2i(sp)).get_luminance()
+	var bad := 0
+	for k: Vector2i in samples:
+		# local sky value = 80th percentile of sky-tile luminance in a 21x21 window (ignores sun/snow peaks)
+		var vals := []
+		for dy in range(-10, 11, 2):
+			for dx in range(-10, 11, 2):
+				if samples.has(k + Vector2i(dx, dy)):
+					vals.append(samples[k + Vector2i(dx, dy)])
+		vals.sort()
+		var mx: float = vals[int(vals.size() * 0.8)] if vals.size() > 0 else 0.0
+		if samples[k] < mx * 0.6:
+			bad += 1
+			var w2 := Vector3(k.x + 0.5, -k.y - 0.5, 0.0)
+			var sp2 := Vector2i(cam.unproject_position(w2) / vp * vs)
+			for oy in range(-6, 7):
+				for ox in range(-6, 7):
+					if absi(ox) == 6 or absi(oy) == 6:
+						img.set_pixelv((sp2 + Vector2i(ox, oy)).clamp(Vector2i.ZERO, Vector2i(vs) - Vector2i.ONE), Color.RED)
+	img.save_png("user://world_fv_%s_skyluma.png" % nm)
+	print("SKY LUMA %s: %d / %d sky tiles below 60%% of local sky %s" % [nm, bad, samples.size(), "OK" if bad * 100 <= samples.size() else "CHECK"])
+
 func _run() -> void:
 	if _perf:
 		await _run_perf()
@@ -251,4 +292,6 @@ func _run() -> void:
 		var path := "user://world_%s%s%s.png" % ["" if level_id == "odyssey" else "fv_", nm, _suffix]
 		img.save_png(path)
 		print("SHOT %s -> %s  (%.2f ms/frame, %.0f fps)" % [nm, ProjectSettings.globalize_path(path), frame_us / 1000.0, 1e6 / frame_us])
+		if level_id != "odyssey":
+			_sky_luma_check(img, nm)
 	get_tree().quit()

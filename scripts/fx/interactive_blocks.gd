@@ -803,7 +803,9 @@ func _build_spawn() -> void:
 		ring2.position = Vector3(0, floor_y + 0.04, 0)
 		ring2.name = "Inner"
 		root.add_child(ring2)
+		# non-Odyssey (user: "a weird glowing line above me"): only the floor ring, nothing above the ball
 		var beam := MeshInstance3D.new()
+		beam.visible = odyssey
 		var q := QuadMesh.new()
 		q.size = Vector2(1.1, 3.2)
 		beam.mesh = q
@@ -827,7 +829,12 @@ func _build_spawn() -> void:
 		p.amount = 10
 		(p.process_material as ParticleProcessMaterial).gravity = Vector3(0, 0.9, 0)
 		p.position = Vector3(0, floor_y + 0.3, 0)
+		p.visible = odyssey
 		root.add_child(p)
+		if not odyssey:
+			ring2.visible = false   # one subtle ring only
+			rm.emission_energy_multiplier = 1.2
+			l.light_energy = 0.5
 		_spawn_nodes.append(root)
 
 var _spawn_nodes: Array = []

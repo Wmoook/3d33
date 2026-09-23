@@ -127,7 +127,7 @@ func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
 						continue
 					for k in 4:
 						var up := Vector3(side * 0.6, 0.8, _rng.randf_range(-0.1, 0.2)).normalized()
-						var ex := x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12)
+						var ex: float = x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12)
 						var z := _rng.randf_range(-1.6, 0.25)
 						var p := Vector3(ex, -y - _bevel_drop(z) - _rng.randf_range(0.0, 0.08), z)
 						_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.9), _vary(base, 0.12), _rng.randf() * 0.99, up)

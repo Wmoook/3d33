@@ -82,8 +82,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 					var r := _rng.randf_range(0.17, 0.27)
 					var along := _rng.randf_range(0.1, 0.9)
 					var out := 0.5 + EDGE_OVER - r      # centre offset from the tile centre toward the side
-					var cx := x + (0.5 + side.x * out if side.x != 0 else along)
-					var cy := y + (0.5 + side.y * out if side.y != 0 else along)
+					var cx: float = x + (0.5 + side.x * out if side.x != 0 else along)
+					var cy: float = y + (0.5 + side.y * out if side.y != 0 else along)
 					_push(key, Vector3(cx, -cy, _rng.randf_range(0.3, 0.65)), r / VIS_R, base, 0.55 + 0.35 * _rng.randf())
 					n_edge += 1
 			if ext_d < 0.5 and _rng.randf() < 0.35:

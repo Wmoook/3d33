@@ -33,6 +33,9 @@ var _motes: GPUParticles3D
 var _mote_w := 0.0
 var _cull_t := 0.0
 var focus_override := Vector3(INF, 0, 0)
+## Dappled leaf-light decals: OFF (lead: two rounds of reading as paint splotches in-game; no effect beats
+## a bad one). The code stays for a future pass with a proper light projector.
+var enable_dapples := false
 
 func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	lvl = level
@@ -51,7 +54,8 @@ func build(level: EELevel, overlay_maps: FxOverlayMaps) -> void:
 	_find_foliage()
 	_build_falls()
 	_build_leaves()
-	_build_dapples()
+	if enable_dapples:
+		_build_dapples()
 	_build_glints()
 	_build_drips()
 	_motes = _mote_emitter()
