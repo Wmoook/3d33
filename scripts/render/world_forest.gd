@@ -208,7 +208,9 @@ static func _merge_rects(rs: Array[Rect2i]) -> Array[Rect2i]:
 ## The hollow mask dilated one tile into the SOLID tiles around it (R8, 255): world discards its back-wall
 ## layers there too and my layers draw behind the solids' rounded edges, so no sky / wall sliver can show
 ## between a solid's silhouette and the forest behind it. Air outside the hollow is never included.
-static func hollow_image(terrain: WorldTerrain) -> Image:
+## room_border: also stone-room tiles bordering the hollow (WorldForest's own draw mask only; world keeps the
+## plain image so its room faces aren't forest-fogged).
+static func hollow_image(terrain: WorldTerrain, room_border := false) -> Image:
 	var m := hollow_mask(terrain)
 	var W := terrain.W
 	var H := terrain.H
@@ -225,6 +227,15 @@ static func hollow_image(terrain: WorldTerrain) -> Image:
 				# through it look back up into the forest, so the backstop must cover it too
 				if y > 0 and m[i - W] and not stone_room(terrain, i):
 					b[i] = 255
+				# a stone-room tile bordering the hollow: rays entering the room at its edge leave it again sideways
+				# behind the plane (through the room box's back-faced side wall) into the forest space: the forest
+				# must draw there too. The closed room box is nearer and still occludes everything inside it.
+				elif room_border and stone_room(terrain, i):
+					for d: int in [-1, 1, -W, W]:
+						var j := i + d
+						if j >= 0 and j < W * H and m[j]:
+							b[i] = 90   # backstop only (forest_visible_deep): nothing may draw in front of the room
+							break
 				continue
 			for dy in range(-1, 2):
 				for dx in range(-1, 2):
@@ -258,7 +269,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_rng.seed = 5151
 	var hm := hollow_mask(terrain)
 	region_list = regions(terrain)
-	_hollow_tex = ImageTexture.create_from_image(hollow_image(terrain))
+	_hollow_tex = ImageTexture.create_from_image(hollow_image(terrain, true))
 	var totals := {"trunks": 0, "ferns": 0, "cards": 0, "shafts": 0}
 	for r: Rect2i in region_list:
 		var reg := _build_region(lvl, terrain, hm, r)

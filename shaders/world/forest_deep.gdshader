@@ -43,7 +43,7 @@ void vertex() {
 }
 
 void fragment() {
-	if (!forest_visible(v_wp, CAMERA_POSITION_WORLD)) {
+	if (!forest_visible_deep(v_wp, CAMERA_POSITION_WORLD)) {
 		discard;
 	}
 	vec3 col;

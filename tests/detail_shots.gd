@@ -21,6 +21,7 @@ const SPOTS_FV := [
 	["user7", Vector2(11, 56)],
 	["cave43", Vector2(43, 64)],
 	["cave4360", Vector2(43, 60)],
+	["room227", Vector2(231, 162)],
 	["ov_spire", Vector2(245, 90)],
 	["ov_falls", Vector2(140, 150)],
 	["far_grove", Vector2(35, 50)],
