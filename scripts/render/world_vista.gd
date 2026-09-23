@@ -41,6 +41,9 @@ var _pines: Array[Transform3D] = []
 var _pine_c: Array[Color] = []
 var _broad: Array[Transform3D] = []
 var _broad_c: Array[Color] = []
+var _seam_h := PackedFloat32Array()   # world's depth continuation back edge (WorldDepth.depth_seam)
+var _seam_c := PackedColorArray()
+var _seam_z := -26.0
 var _vcount := {}                   # SurfaceTool instance id -> vertices added (indexed islands)
 var _ruin_sites: Array = []          # [x, ground_y, z, height, width] ruins standing on island tops
 
@@ -77,6 +80,33 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 ## when no sky can be visible (sky_visibility 0 = deep underground), which also skips the cloud march.
 func update(_camera_pos: Vector3, sky_visibility: float = 1.0) -> void:
 	visible = sky_visibility > 0.001
+
+## World's depth continuation (WorldDepth.depth_seam()): {z, height (world y per column, NAN = none),
+## color (sRGB)}. Call BEFORE build(): the vista's front row then continues those hillsides exactly.
+func set_depth_seam(seam: Dictionary) -> void:
+	_seam_z = float(seam.get("z", -26.0))
+	_seam_h = seam.get("height", PackedFloat32Array())
+	_seam_c = seam.get("color", PackedColorArray())
+
+## Seam height at column x (averaged over valid neighbours) or NAN, and its colour.
+func _seam_at(x: float) -> Array:
+	if _seam_h.is_empty():
+		return [NAN, Color()]
+	var xi := int(floor(x))
+	var sh := 0.0
+	var sw := 0.0
+	var sc := Color(0, 0, 0)
+	for dx in range(-2, 3):
+		var j := xi + dx
+		if j < 0 or j >= _seam_h.size() or is_nan(_seam_h[j]):
+			continue
+		var wgt := 1.0 / (1.0 + absf(x - (j + 0.5)))
+		sh += _seam_h[j] * wgt
+		sc += _seam_c[j] * wgt
+		sw += wgt
+	if sw < 0.3:
+		return [NAN, Color()]
+	return [sh / sw, sc / sw]
 
 func set_sun_dir(d: Vector3) -> void:
 	sun_dir = d.normalized()
@@ -197,7 +227,14 @@ func sample(x: float, z: float) -> Vector4:
 	var hn := _fn_hill.get_noise_2d(x, z)
 	var h := g + hn * lerpf(3.0, 22.0, above) * (0.35 + 0.65 * away) + _fn_big.get_noise_2d(x, z) * 16.0 * away * above
 	# right behind the level the highlands sit a little below the level's own skyline (never edge-on at it)
-	h -= 16.0 * above * (1.0 - smoothstep(20.0, 110.0, dz))
+	var seam: Array = _seam_at(x)
+	var seam_w := 0.0
+	if not is_nan(seam[0]):
+		# continue world's extruded hillsides exactly at their back edge, melting into the profile
+		seam_w = 1.0 - smoothstep(-_seam_z, -_seam_z + 70.0, dz)
+		h = lerpf(h, seam[0] - (dz + _seam_z) * 0.12, seam_w)
+	else:
+		h -= 16.0 * above * (1.0 - smoothstep(20.0, 110.0, dz))
 	# the island top rounds down toward its rim
 	var inside := minf(island_edge(x) - dz, minf(x + 70.0 + 25.0 * _fn_hill.get_noise_1d(dz * 1.3), 470.0 - x + 25.0 * _fn_hill.get_noise_1d(dz * 1.3 + 77.0)))
 	h -= (1.0 - smoothstep(0.0, 45.0, inside)) * 14.0
@@ -228,6 +265,7 @@ func sample(x: float, z: float) -> Vector4:
 		mtn = m
 	var fo := smoothstep(-0.15, 0.25, _fn_forest.get_noise_2d(x, z)) * smoothstep(FLOOR_Y + 2.0, FLOOR_Y + 10.0, h)
 	fo = maxf(fo, above * 0.85 * (1.0 - smoothstep(60.0, 140.0, dz)))
+	fo *= 1.0 - seam_w * 0.8
 	fo = maxf(fo * (1.0 - mtn) * (1.0 - cliff) * smoothstep(2.0, 10.0, inside), 0.0)
 	return Vector4(h, water, fo, mtn)
 
@@ -245,11 +283,19 @@ func _land_mesh(nm: String, x0: float, x1: float, dx: float, z0: float, z1: floa
 	hs.resize(nx * nz)
 	var cols := PackedColorArray()
 	cols.resize(nx * nz)
+	var cust := PackedFloat32Array()      # CUSTOM0: seam colour (sRGB) + seam weight
+	cust.resize(nx * nz * 4)
 	for j in nz:
 		for i in nx:
 			var s := sample(x0 + i * dx, zs[j])
 			hs[j * nx + i] = s.x
 			cols[j * nx + i] = Color(s.y, s.z, s.w, 0.0)
+			var sa: Array = _seam_at(x0 + i * dx)
+			if not is_nan(sa[0]):
+				var sc: Color = sa[1]
+				var k := (j * nx + i) * 4
+				cust[k] = sc.r; cust[k + 1] = sc.g; cust[k + 2] = sc.b
+				cust[k + 3] = 1.0 - smoothstep(-_seam_z, -_seam_z + 70.0, -zs[j])
 	var verts := PackedVector3Array()
 	verts.resize(nx * nz)
 	var norms := PackedVector3Array()
@@ -279,6 +325,7 @@ func _land_mesh(nm: String, x0: float, x1: float, dx: float, z0: float, z1: floa
 			verts.append(v - Vector3(0, 40.0, 0))
 			norms.append(norms[(nz - 1) * nx + i])
 			cols.append(cols[(nz - 1) * nx + i])
+			cust.append_array([0.0, 0.0, 0.0, 0.0])
 		for i in nx - 1:
 			var a := (nz - 1) * nx + i
 			var b := base + i
@@ -288,9 +335,10 @@ func _land_mesh(nm: String, x0: float, x1: float, dx: float, z0: float, z1: floa
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_CUSTOM0] = cust
 	arr[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	var mi := MeshInstance3D.new()
 	mi.name = nm
 	mi.mesh = mesh

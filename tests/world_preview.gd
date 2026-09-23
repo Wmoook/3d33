@@ -115,6 +115,8 @@ func _ready() -> void:
 			only = a.substr(5).split(",")
 		elif a == "perf":
 			_perf = true
+		elif a == "nodepth":
+			WorldView.depth_enabled = false
 		elif a == "grid":
 			_grid = true
 			_mode = 1; _suffix = "_grid"
@@ -219,6 +221,12 @@ func _run_perf() -> void:
 	print("PERF base %.2f ms, %.1fM primitives/frame, gpu %.2f ms" % [base_ms,
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1e6,
 		RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
+	if world.depth:
+		world.depth.visible = false
+		print("PERF -depth %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
+		if world.depth_green:
+			world.depth_green.visible = false
+			print("PERF -depthgreen %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.doors.visible = false
 	print("PERF -doors %.2f ms gpu %.2f" % [await _measure(focus, 120), RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())])
 	world.decor.visible = false

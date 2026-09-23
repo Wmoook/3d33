@@ -13,7 +13,9 @@ const Z_TIP := -3.6
 ## [{tip: Vector3 (world), width: float (tiles), depth: float (tiles below the cluster bottom), rune: Vector3}]
 var keel_sites: Array = []
 
-func build(lvl: EELevel, terrain: WorldTerrain) -> void:
+## dep (optional, WorldDepth): the island's extruded depth; the keel then spans the whole underside
+## (front sheet from z Z_TOP and back sheet from the volume's back edge, meeting at a mid-depth tip).
+func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	var W := lvl.width
 	var H := lvl.height
 	var seen := PackedByteArray()
@@ -67,12 +69,18 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		var depth := clampf(sqrt(width) * rng.randf_range(1.3, 2.0), 1.6, 7.0)
 		var cx := (x0 + x1 + 1) * 0.5
 		var tip_x := cx + rng.randf_range(-0.2, 0.2) * width
-		_keel(st, bottom, x0, x1, depth, tip_x, rng)
+		var ext := 0.0
+		if dep:
+			for x in bottom:
+				ext = maxf(ext, dep.depth[bottom[x] * W + x])
+		# the tip sits under the middle of the extruded island (the volume's own underside closes the rest)
+		var z_tip := Z_TIP if ext <= 0.0 else Z_TOP - clampf(ext * 0.5, 1.2, 4.0)
+		_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0)
 		var ybot := 0
 		for x in bottom:
 			ybot = maxi(ybot, bottom[x])
-		keel_sites.append({"tip": Vector3(tip_x, -(ybot + 1) - depth, Z_TIP), "width": width, "depth": depth,
-			"rune": Vector3(cx, -(ybot + 1) - depth * 0.35, (Z_TOP + Z_TIP) * 0.5)})
+		keel_sites.append({"tip": Vector3(tip_x, -(ybot + 1) - depth, z_tip), "width": width, "depth": depth,
+			"rune": Vector3(cx, -(ybot + 1) - depth * 0.35, (Z_TOP + z_tip) * 0.5)})
 	if keel_sites.is_empty():
 		return
 	st.generate_normals()
@@ -88,7 +96,9 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 
 ## Tapered keel: a smooth hull from the cluster's bottom edge (z Z_TOP) down to one tip point (z Z_TIP).
 ## Vertex colour: r = v (0 at the top edge, 1 at the tip), g = random per keel (rune seed).
-func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, tip_x: float, rng: RandomNumberGenerator) -> void:
+## z0 = z of the sheet's top edge, z1 = tip z; bulge -1 = a back-facing sheet (reversed winding).
+func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, tip_x: float, rng: RandomNumberGenerator,
+		z0: float = Z_TOP, z1: float = Z_TIP, bulge: float = 0.0) -> void:
 	var rows := 10
 	var seed := rng.randf()
 	var cols: Array[float] = []
@@ -115,7 +125,8 @@ func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, 
 			var t := pow(v, 0.8)
 			var px := lerpf(x0f, tip_x, t) + sin(v * 7.0 + k * 1.7 + seed * 10.0) * 0.12 * (1.0 - v)
 			var py := lerpf(tops[k], tops[k] - depth, pow(v, 1.15)) - (1.0 - absf(float(k) / (cols.size() - 1) * 2.0 - 1.0)) * depth * 0.15 * v * (1.0 - v) * 4.0
-			var pz := lerpf(Z_TOP, Z_TIP, v) - 0.5 * sin(v * PI) * (1.0 - absf(float(k) / (cols.size() - 1) * 2.0 - 1.0))
+			var bow := 0.5 * sin(v * PI) * (1.0 - absf(float(k) / (cols.size() - 1) * 2.0 - 1.0))
+			var pz := lerpf(z0, z1, v) + (bow if bulge < -0.5 else -bow)
 			row.append(Vector3(px, py, pz))
 		grid.append(row)
 	for r in rows:
@@ -126,7 +137,10 @@ func _keel(st: SurfaceTool, bottom: Dictionary, x0: int, x1: int, depth: float, 
 			var d: Vector3 = grid[r + 1][k + 1]
 			var va := float(r) / rows
 			var vb := float(r + 1) / rows
-			for pv in [[a, va], [c, vb], [b, va], [b, va], [c, vb], [d, vb]]:
+			var order := [[a, va], [c, vb], [b, va], [b, va], [c, vb], [d, vb]]
+			if bulge < -0.5:
+				order = [[a, va], [b, va], [c, vb], [b, va], [d, vb], [c, vb]]
+			for pv in order:
 				st.set_color(Color(pv[1], seed, 0.0))
 				st.set_uv(Vector2((pv[0] as Vector3).x, (pv[0] as Vector3).y))
 				st.add_vertex(pv[0])

@@ -17,6 +17,11 @@ const DENS_MID := 0.9
 const STEP := 0.5              # sampling grid over (x, z)
 const BUSH_CHANCE := 0.012     # per sampled cell beyond z -4
 const TREE_CHANCE := 0.003
+const Z_TOP_BEGIN := -1.2      # WorldDepth: extruded solid tops start here
+const TREE_MIN_D := 4.5        # trees stand at least this far behind the front edge (they'd poke into the
+                               # sky above the gameplay air otherwise)
+const TREE_NEAR_D := 8.0       # ... and stay short (<= TREE_NEAR_H incl. crown) within this depth
+const TREE_NEAR_H := 2.5
 
 var depth_stats := {}
 var _leaf_mat: ShaderMaterial
@@ -72,8 +77,10 @@ func build_depth(lvl: EELevel, terrain: WorldTerrain, top_at: Callable, mat_at: 
 					if z < -4.0 and _rng.randf() < BUSH_CHANCE:
 						_bush(Vector3(x + 0.25, y, z - 0.25), base, leaf_x, leaf_c, 0.9)
 						n.bush += 1
-					elif z < -4.0 and _rng.randf() < TREE_CHANCE:
+					elif Z_TOP_BEGIN - z > TREE_MIN_D and _rng.randf() < TREE_CHANCE:
 						var h := _rng.randf_range(2.2, 3.6)
+						if Z_TOP_BEGIN - z < TREE_NEAR_D:
+							h = minf(h, TREE_NEAR_H - 0.9)   # crown cards reach ~0.9 above the trunk top
 						trunk_x.append(Transform3D(Basis().scaled(Vector3(0.22, h, 0.22)), Vector3(x + 0.25, y + h * 0.5, z - 0.25)))
 						for c in 3:
 							_bush(Vector3(x + 0.25 + _rng.randf_range(-0.6, 0.6), y + h + _rng.randf_range(-0.4, 0.5), z - 0.25 + _rng.randf_range(-0.4, 0.4)), base.darkened(0.08), leaf_x, leaf_c, 1.6)

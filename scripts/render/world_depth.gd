@@ -59,6 +59,7 @@ func build(t: WorldTerrain) -> void:
 	t0 = Time.get_ticks_msec()
 	_make_material()
 	_build_mesh()
+	terrain.material.set_shader_parameter("depth_cont", 1.0)
 	timings["depth_mesh"] = Time.get_ticks_msec() - t0
 
 # ---------------------------------------------------------------- depth field

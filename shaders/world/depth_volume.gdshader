@@ -85,6 +85,21 @@ void fragment() {
 	} else if (mat == -1) {
 		albedo *= 0.8;   // interior walls: the painted back-wall colour, a little shaded
 	}
+	bool leafy = mat == M_GRASS || mat == M_FOLIAGE;
+	if (leafy && !horiz) {
+		albedo *= 0.62;   // inside a crown / a turf wall: shaded leaves, not a lit lawn
+	}
+	{
+		// big rock lumps so the receding faces aren't flat planes (the slab front is sculpted)
+		vec3 U = horiz ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+		vec3 V = horiz ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+		vec2 luv = horiz ? wp.xz : wp.zy;
+		vec3 t1 = texture(detail_nrm2, luv * 0.18).xyz * 2.0 - 1.0;
+		vec3 t2 = texture(detail_nrm2, luv * 0.55 + 0.37).xyz * 2.0 - 1.0;
+		vec2 tb = t1.xy * 0.75 + t2.xy * 0.4;
+		n = normalize(n + (U * tb.x + V * tb.y) * (mat == M_RUIN ? 0.35 : (leafy ? (horiz ? 0.25 : 0.6) : 0.7)));
+		albedo *= mix(0.8, 1.1, texture(detail_hgt, luv * 0.2).r);
+	}
 	pbr_terrain(mat, wp, gn, vec2(wp.x, -wp.y), CAMERA_POSITION_WORLD, albedo, n, rough, ao);
 	// patchy large-scale tone so the hillsides don't read as one flat colour
 	albedo *= mix(0.86, 1.08, vnoise(vec2(wp.x, wp.z) * 0.12));

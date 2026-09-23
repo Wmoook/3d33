@@ -29,6 +29,7 @@ uniform sampler2D trans_tex : filter_linear, repeat_disable;   // day: r foliage
 uniform vec4 scroll_rect = vec4(-1.0);
 uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
 uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
+uniform float depth_cont = 0.0;   // 1 = WorldDepth continues the masses backward (day levels)
 uniform int debug_mode = 0;   // 1 grid, 2 zones, 3 solidity mask
 uniform sampler2D zone_tex : filter_nearest, repeat_disable;
 uniform sampler2D visual_tex : filter_nearest, repeat_disable;   // WorldPalette.Z_* per tile
@@ -170,6 +171,9 @@ void fragment() {
 	if (layer == 2 && fld.r > 0.5) {
 		discard; // open night sky: the Sky + backdrop show through
 	}
+	if (depth_cont > 0.5 && layer == 1 && texelFetch(info_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(level_size) - 1), 0).a > 0.5) {
+		discard; // the thin wall skirt around masses against the sky: the depth volume continues there
+	}
 
 	// ---- geometric normal (world space) from the height field ----
 	// central differences on the (bilinear) baked height, one texel apart: 4 taps
@@ -215,7 +219,7 @@ void fragment() {
 		region_sample(orig_tex, p + vec2(fbm2(p * 1.7), fbm2(p * 1.7 + 4.0)) * 0.18, 6.0, oc, om, ob);
 		albedo = mix(c, oc, mottle);
 		// cliffs darken with depth (they are the sides of the solid mass)
-		ao = mix(1.0, 0.4, smoothstep(0.0, 3.5, -wp.z));
+		ao = depth_cont > 0.5 ? mix(1.0, 0.75, smoothstep(0.0, 2.3, -wp.z)) : mix(1.0, 0.4, smoothstep(0.0, 3.5, -wp.z));
 	} else if (layer == 1) {
 		vec3 c; int bm; float bb;
 		vec2 bwarp = vec2(fbm2(p * 0.7 + 1.3), fbm2(p * 0.7 - 5.1)) * (scroll_rect.x >= 0.0 ? 0.45 : 0.0);

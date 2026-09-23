@@ -16,11 +16,15 @@ uniform float water_y = -172.0;
 varying vec3 v_wpos;
 varying vec3 v_n;
 varying vec4 v_col;
+varying vec4 v_seam;
+// world's depth continuation haze at its back edge (WorldDepth): albedo * (1 - 0.42) + haze * 0.42 * 0.9
+const vec3 SEAM_HAZE = vec3(0.74, 0.82, 0.92);
 
 void vertex() {
 	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	v_col = COLOR;
+	v_seam = CUSTOM0;
 }
 
 float tn(vec2 p, int ch) {
@@ -76,5 +80,12 @@ void fragment() {
 		wc += V_SUN * pow(max(dot(r, sd), 0.0), 60.0) * 1.5;
 		lit = mix(lit, wc, smoothstep(0.2, 0.7, water));
 	}
-	ALBEDO = vista_fog(lit, wp, cam, sd, fog_density, fog_near);
+	// at the seam: world's painted colour and haze, melting into the vista's own look
+	if (v_seam.a > 0.001) {
+		vec3 sc = pow(v_seam.rgb, vec3(2.2));
+		vec3 slit = vista_light(sc * (0.85 + 0.3 * h0), n, sd, 1.15, 0.62);
+		slit = slit * (1.0 - 0.42) + SEAM_HAZE * 0.42 * 0.9;
+		lit = mix(lit, slit, smoothstep(0.0, 1.0, v_seam.a));
+	}
+	ALBEDO = vista_fog(lit, wp, cam, sd, fog_density, fog_near * (1.0 - v_seam.a));
 }
