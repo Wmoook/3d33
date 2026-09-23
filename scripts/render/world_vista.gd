@@ -16,10 +16,12 @@ extends Node3D
 
 const FLOOR_Y := -172.0          # the valley floor / pool level under the spires and the falls (world y)
 const NEAR_Z := -26.0            # first row of the landscape, just behind the level's deepest layers
-const MID_Z := -350.0            # near landscape / far range seam
+const MID_Z := -250.0            # home island mesh / far range seam
 const FAR_Z := -835.0            # camera.far is 900 and the camera sits at z <= +60
-const CLOUD_BASE := -121.0
-const CLOUD_NEAR_Z := -205.0
+const UNDER_Y := -420.0         # island undersides / the world far below, hidden under the cloud sea
+const PEAK_FLOOR_Y := -330.0     # base of the far ranges (under the clouds)
+const CLOUD_BASE := -236.0       # cloud sea below the level's lower edge (level spans y -200..0)
+const CLOUD_NEAR_Z := -30.0
 
 var sun_dir := Vector3(-0.30, 0.67, 0.68)
 var noise_tex: ImageTexture
@@ -35,6 +37,11 @@ var _fn_mass := FastNoiseLite.new()
 var _land_near: MeshInstance3D
 var _land_far: MeshInstance3D
 var _clouds: MeshInstance3D
+var _pines: Array[Transform3D] = []
+var _pine_c: Array[Color] = []
+var _broad: Array[Transform3D] = []
+var _broad_c: Array[Color] = []
+var _ruin_sites: Array = []          # [x, ground_y, z, height, width] ruins standing on island tops
 
 ## sky_ids: background ids that paint the open sky in this level (FV: 531 pastel sky, 540 clouds/snow).
 func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = null, sky_ids: Array = [531, 540]) -> void:
@@ -46,10 +53,11 @@ func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = 
 	_make_profile(lvl, sky_ids)
 	timings["vista_profile"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
-	_land_near = _land_mesh("VistaLandNear", -240.0, 640.0, 2.0, NEAR_Z, MID_Z, 1.4, 0.012, true)
+	_land_near = _land_mesh("VistaLandNear", -150.0, 560.0, 2.0, NEAR_Z, MID_Z, 1.4, 0.012, true)
 	_land_far = _land_mesh("VistaLandFar", -560.0, 960.0, 4.0, MID_Z + 6.0, FAR_Z, 4.0, 0.0, false)
 	timings["vista_land"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
+	_make_islands()
 	_make_trees()
 	_make_ruins()
 	_make_cumulus()
@@ -169,43 +177,51 @@ func _ground_at(x: float) -> float:
 func river_x(dz: float) -> float:
 	return 148.0 + 30.0 * sin(dz * 0.0125) + 13.0 * (sin(dz * 0.031 + 1.1) - sin(1.1))
 
+## How far (in z) the home island reaches behind the level at column x before its cliff edge.
+func island_edge(x: float) -> float:
+	return 150.0 + 45.0 * _fn_big.get_noise_1d(x * 4.0 + 900.0) + 20.0 * _fn_hill.get_noise_1d(x * 0.9 + 300.0)
+
 ## Height + attributes of the vista landscape at world (x, z): Vector4(y, water, forest, mountain).
+## The HOME ISLAND carries the level: its top continues the level's own ground profile back to a cliff
+## edge that plunges into the cloud sea. Far behind, snowy peaks rise out of the clouds.
 func sample(x: float, z: float) -> Vector4:
 	var dz := -z
-	var away := smoothstep(30.0, 240.0, dz)
+	var away := smoothstep(30.0, 200.0, dz)
 	var rx := river_x(dz)
-	# the valley follows the river's meander with distance
 	var g := _ground_at(x - (rx - 148.0) * 0.85 * away)
 	var above := clampf((g - FLOOR_Y) / 50.0, 0.0, 1.0)
 	var hn := _fn_hill.get_noise_2d(x, z)
-	var h := g + hn * lerpf(3.0, 26.0, above) * (0.35 + 0.65 * away) + _fn_big.get_noise_2d(x, z) * 20.0 * away * above
-	# valley floor: flat meadows along the river, the river itself sunk a little
+	var h := g + hn * lerpf(3.0, 22.0, above) * (0.35 + 0.65 * away) + _fn_big.get_noise_2d(x, z) * 16.0 * away * above
+	# the island top rounds down toward its rim
+	var inside := minf(island_edge(x) - dz, minf(x + 70.0 + 25.0 * _fn_hill.get_noise_1d(dz * 1.3), 470.0 - x + 25.0 * _fn_hill.get_noise_1d(dz * 1.3 + 77.0)))
+	h -= (1.0 - smoothstep(0.0, 45.0, inside)) * 14.0
+	# valley floor: meadows along the river, the river itself sunk a little
 	var rd := absf(x - rx)
-	var rw := lerpf(5.5, 3.2, smoothstep(40.0, 300.0, dz))
+	var rw := lerpf(5.5, 3.8, smoothstep(40.0, 200.0, dz))
 	var water := 0.0
 	if h < FLOOR_Y + 30.0 or rd < 40.0:
 		var bank := FLOOR_Y + 0.4 + smoothstep(rw, rw + 45.0, rd) * 60.0
 		h = minf(h, bank) if rd < rw + 45.0 else h
-		if rd < rw:
+		if rd < rw and inside > 2.0:
 			h = FLOOR_Y - 0.8
 			water = 1.0 - smoothstep(rw * 0.7, rw, rd)
-	h = maxf(h, FLOOR_Y - 0.8)
-	# mountain ranges rising behind (uplift ramps in beyond ~380, a second taller range beyond ~640)
-	var edge := _fn_big.get_noise_2d(x * 0.7, 5000.0) * 70.0
-	var m := smoothstep(360.0, 540.0, dz + edge)
+	h = maxf(h, FLOOR_Y - 0.8 - 14.0)
+	# the cliff: beyond the rim the island's rocky underside plunges into the clouds
+	var cliff := smoothstep(0.0, 16.0, -inside)
+	if cliff > 0.0:
+		h = lerpf(h, UNDER_Y, cliff)
+	# snowy peaks poking through the cloud sea far behind
+	var m := smoothstep(420.0, 560.0, dz + _fn_big.get_noise_2d(x * 0.7, 5000.0) * 70.0)
 	var mtn := 0.0
 	if m > 0.0:
-		# broad massifs (smooth) carved by ridges: alpine ranges, not needles
 		var mass := _fn_mass.get_noise_2d(x, z) * 0.5 + 0.5
 		var r := _fn_ridge.get_noise_2d(x, z) * 0.5 + 0.5
-		var shape := clampf(mass * 0.6 + r * 0.55 - 0.18, 0.0, 1.0)
-		var amp := 260.0 * (1.0 + 0.35 * smoothstep(600.0, 800.0, dz))
-		var hm := FLOOR_Y + 6.0 + shape * shape * amp
-		h = lerpf(h, maxf(h, hm), m)
-		mtn = m * smoothstep(FLOOR_Y + 40.0, FLOOR_Y + 90.0, h)
-	# forest cover on the hills (not the floor meadows, not the high rock)
+		var shape := clampf(mass * 0.65 + r * 0.5 - 0.3, 0.0, 1.0)
+		var hm := PEAK_FLOOR_Y + shape * shape * 420.0
+		h = maxf(h, lerpf(UNDER_Y, hm, m))
+		mtn = m
 	var fo := smoothstep(-0.15, 0.25, _fn_forest.get_noise_2d(x, z)) * smoothstep(FLOOR_Y + 2.0, FLOOR_Y + 10.0, h)
-	fo = maxf(fo * (1.0 - mtn), 0.0)
+	fo = maxf(fo * (1.0 - mtn) * (1.0 - cliff) * smoothstep(2.0, 10.0, inside), 0.0)
 	return Vector4(h, water, fo, mtn)
 
 # ------------------------------------------------------------------ landscape meshes
@@ -292,32 +308,35 @@ func _setup_instance(gi: GeometryInstance3D, nm: String) -> void:
 	add_child(gi)
 
 # ------------------------------------------------------------------ forests
+func _add_tree(rng: RandomNumberGenerator, px: float, gy: float, pz: float, sc: float) -> void:
+	if rng.randf() < 0.55:
+		var hgt := rng.randf_range(8.0, 13.0) * sc
+		var rad := hgt * rng.randf_range(0.2, 0.26)
+		_pines.append(Transform3D(Basis.from_scale(Vector3(rad, hgt, rad)), Vector3(px, gy - 1.0 + hgt * 0.5, pz)))
+		_pine_c.append(Color(0.08, 0.17, 0.11).lerp(Color(0.12, 0.22, 0.12), rng.randf()))
+	else:
+		var w := rng.randf_range(3.2, 5.0) * sc
+		_broad.append(Transform3D(Basis.from_scale(Vector3(w, w * rng.randf_range(0.8, 1.05), w)), Vector3(px, gy + w * 0.55, pz)))
+		_broad_c.append(Color(0.14, 0.27, 0.11).lerp(Color(0.24, 0.36, 0.13), rng.randf()))
+
+## Forests of the home island (+ the trees the floating islands queued), as two MultiMeshes.
 func _make_trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var pines: Array[Transform3D] = []
-	var pine_c: Array[Color] = []
-	var broad: Array[Transform3D] = []
-	var broad_c: Array[Color] = []
+	var pines := _pines
+	var pine_c := _pine_c
+	var broad := _broad
+	var broad_c := _broad_c
 	var step := 4.2
 	var z := NEAR_Z - 12.0
-	while z > -330.0:
-		var x := -200.0
-		while x < 600.0:
+	while z > MID_Z:
+		var x := -150.0
+		while x < 560.0:
 			var px := x + rng.randf_range(-1.8, 1.8)
 			var pz := z + rng.randf_range(-1.8, 1.8)
 			var s := sample(px, pz)
 			if s.z > 0.45 and rng.randf() < s.z * 0.95:
-				var sc := rng.randf_range(0.8, 1.25) * (1.0 + (-pz) / 500.0)
-				if rng.randf() < 0.55:
-					var hgt := rng.randf_range(8.0, 13.0) * sc
-					var rad := hgt * rng.randf_range(0.2, 0.26)
-					pines.append(Transform3D(Basis.from_scale(Vector3(rad, hgt, rad)), Vector3(px, s.x - 1.0 + hgt * 0.5, pz)))
-					pine_c.append(Color(0.08, 0.17, 0.11).lerp(Color(0.12, 0.22, 0.12), rng.randf()))
-				else:
-					var w := rng.randf_range(3.2, 5.0) * sc
-					broad.append(Transform3D(Basis.from_scale(Vector3(w, w * rng.randf_range(0.8, 1.05), w)), Vector3(px, s.x + w * 0.55, pz)))
-					broad_c.append(Color(0.14, 0.27, 0.11).lerp(Color(0.24, 0.36, 0.13), rng.randf()))
+				_add_tree(rng, px, s.x, pz, rng.randf_range(0.8, 1.25) * (1.0 + (-pz) / 500.0))
 			x += step * (1.0 + (-z) / 260.0)
 		z -= step * (1.0 + (-z) / 260.0)
 	var cone := CylinderMesh.new()
@@ -353,15 +372,6 @@ func _tree_mm(nm: String, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]
 	_setup_instance(mmi, nm)
 
 # ------------------------------------------------------------------ ruin spires
-## (x, z, height, width): distant towers of the level's own grey temple architecture (wide plinth, slender
-## shaft ringed by ledges, a bulky crown block broken at the top - the Great Spire's silhouette).
-const RUINS := [
-	[300.0, -350.0, 120.0, 22.0],
-	[20.0, -320.0, 80.0, 18.0],
-	[110.0, -500.0, 150.0, 26.0],
-	[480.0, -470.0, 125.0, 22.0],
-]
-
 func _make_ruins() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
@@ -370,12 +380,12 @@ func _make_ruins() -> void:
 	var stone := Color(0.52, 0.52, 0.53, 1.0)
 	var cap := Color(0.52, 0.52, 0.53, 0.0)
 	var crowns: Array[Vector3] = []
-	for r in RUINS:
+	for r in _ruin_sites:
 		var x: float = r[0]
-		var z: float = r[1]
-		var ht: float = r[2]
-		var w: float = r[3]
-		var gy := sample(x, z).x
+		var gy: float = r[1]
+		var z: float = r[2]
+		var ht: float = r[3]
+		var w: float = r[4]
 		var dep := w * 0.8
 		# plinth
 		var y := gy - 10.0
@@ -422,8 +432,8 @@ func _make_ruins() -> void:
 	blob.rings = 5
 	var xf: Array[Transform3D] = []
 	var cols: Array[Color] = []
-	for k in [0, 2]:
-		var tw: float = RUINS[k][3] * 0.85
+	for k in range(0, _ruin_sites.size(), 2):
+		var tw: float = _ruin_sites[k][4] * 0.85
 		xf.append(Transform3D(Basis.from_scale(Vector3(tw, tw * 0.8, tw * 0.8)), crowns[k] + Vector3(0, tw * 0.3, 0)))
 		cols.append(Color(0.2, 0.34, 0.13))
 	_tree_mm("VistaRuinTrees", blob, xf, cols)

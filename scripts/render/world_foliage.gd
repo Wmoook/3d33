@@ -113,12 +113,16 @@ func _build_litter(lvl: EELevel, terrain: WorldTerrain, canopy: PackedByteArray)
 				continue   # never over a gameplay glyph
 			# the crown this litter fell from: first crown tile up the column
 			var crown := cols.get_pixel(x, y)
+			var has_crown := false
 			for d in range(1, 18):
 				if y - d < 0:
 					break
 				if canopy[(y - d) * W + x]:
 					crown = cols.get_pixel(x, y - d)
+					has_crown = true
 					break
+			if not has_crown:
+				continue   # litter piles only fall where a crown hangs above (beside-crown tiles get shader litter only)
 			var ground := cols.get_pixel(x, y)
 			var key := Vector2i(x / CHUNK, y / CHUNK)
 			var cnt := int(2.0 + 5.0 * lm[i] / 255.0)
