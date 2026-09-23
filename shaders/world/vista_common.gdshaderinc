@@ -33,8 +33,14 @@ vec3 vista_sky(vec3 d, vec3 sd) {
 
 // Aerial perspective: haze toward the sky colour of the same direction. Thicker in the low valley air,
 // thinner up at the peaks, never below `near_f` (the vista never competes with gameplay).
+// Distance is measured as if the camera stood at its gameplay distance (z = VISTA_CAM_Z): zooming out
+// (C overview, zoom 60-150) moves the camera back along +z, and that extra stretch of air in FRONT of the
+// level must not add haze - the overview stays a crisp diorama; only depth behind the level hazes.
+const float VISTA_CAM_Z = 26.0;
 float vista_fog_f(vec3 wpos, vec3 cam, float density, float near_f) {
-	float d = length(wpos - cam);
+	vec3 v = wpos - cam;
+	float extra = max(cam.z - VISTA_CAM_Z, 0.0);
+	float d = max(length(v) - extra * length(v) / max(abs(v.z), 1e-3), 0.0);
 	float hy = 0.5 * (wpos.y + cam.y);
 	float hf = mix(1.3, 0.45, smoothstep(-175.0, 40.0, hy));
 	float f = 1.0 - exp(-d * density * hf);
