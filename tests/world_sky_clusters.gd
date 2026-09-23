@@ -34,6 +34,34 @@ func _init() -> void:
 			if lost.size() <= 3 and lost[b] <= 2:
 				print("NO-WALL tile (%d, %d) bg %d" % [i % W, i / W, b])
 	print("NO-WALL painted bg (neither sky nor wall) by bg: ", lost)
+	# floating wall specks: back-wall components of <= 6 tiles whose outline is mostly open sky air
+	var seen2 := PackedByteArray(); seen2.resize(W * t.H)
+	var specks := 0
+	for s0 in W * t.H:
+		if seen2[s0] or not t.backwall[s0] or t.solid[s0]:
+			continue
+		var comp2 := PackedInt32Array([s0]); seen2[s0] = 1
+		var q2 := 0
+		var edges := 0
+		var skye := 0
+		while q2 < comp2.size():
+			var i := comp2[q2]; q2 += 1
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j < 0 or j >= W * t.H:
+					continue
+				if t.backwall[j] and not t.solid[j]:
+					if not seen2[j]:
+						seen2[j] = 1
+						comp2.append(j)
+				else:
+					edges += 1
+					if t.sky[j] and not t.solid[j]:
+						skye += 1
+		if comp2.size() <= 6 and edges > 0 and skye * 2 >= edges:
+			specks += 1
+			print("FLOATING-WALL speck %d tiles at (%d, %d)" % [comp2.size(), comp2[0] % W, comp2[0] / W])
+	print("FLOATING-WALL specks: ", specks)
 	var seen := PackedByteArray(); seen.resize(W * t.H)
 	for s in W * t.H:
 		if seen[s] or not t.sky[s] or t.solid[s]:

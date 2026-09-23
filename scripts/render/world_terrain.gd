@@ -610,6 +610,10 @@ func _find_enclosed_sky_bg() -> void:
 					comp.append(j)
 		var inside := _inside_fraction(comp)
 		if is_stone:
+			# a tiny speck of the painted mountains inside cloud / sky paint is sky, not a floating stone block
+			var speck_sky := comp.size() <= 6 and touches_paint and edges > 0 and (edges - wall_edges) * 4 >= edges * 3
+			if speck_sky:
+				continue
 			if inside >= 0.5 or not touches_paint:
 				for i in comp:
 					enclosed_sky_bg[i] = 1
@@ -778,6 +782,42 @@ func _open_sky_mask() -> PackedByteArray:
 			q.append(j)
 	return o
 
+## Day levels: tiny (<= 6 tile) back-wall specks of SKY paint (530/531/540) or painted mountains (541-544) whose
+## outline is mostly open sky are sky, not small stone blocks floating in the air.
+func _sky_specks(has_bgc: PackedByteArray) -> void:
+	var n := W * H
+	var seen := PackedByteArray(); seen.resize(n)
+	var changed := false
+	for s0 in n:
+		if seen[s0] or not backwall[s0] or solid[s0] or not (level.bg[s0] in WorldPalette.FV_SKY_BG):
+			continue
+		var comp := PackedInt32Array([s0]); seen[s0] = 1
+		var qi := 0
+		var edges := 0
+		var skye := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j < 0 or j >= n:
+					continue
+				if backwall[j] and not solid[j] and level.bg[j] in WorldPalette.FV_SKY_BG:
+					if not seen[j]:
+						seen[j] = 1
+						comp.append(j)
+				else:
+					edges += 1
+					if sky[j] and not solid[j]:
+						skye += 1
+		if comp.size() <= 6 and edges > 0 and skye * 2 >= edges:
+			for i in comp:
+				backwall[i] = 0
+				has_bgc[i] = 0
+				sky[i] = 1
+				zones[i] = WorldPalette.Z_DAY
+				enclosed_sky_bg[i] = 0
+			changed = true
+
 func _classify() -> void:
 	_find_art_doors()
 	_find_enclosed_sky_bg()
@@ -898,6 +938,7 @@ func _classify() -> void:
 				backwall[i] = 1
 				has_bgc[i] = 1
 				bg_region[i] = 1
+		_sky_specks(has_bgc)
 	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
 	_dilate(fgb, has_fg)
