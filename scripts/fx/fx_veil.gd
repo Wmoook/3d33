@@ -211,17 +211,19 @@ func _build_fall(comp: Array[Vector2i]) -> void:
 	ring.position = base + Vector3(0, 0.05, 0.97)
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(ring)
-	# a faint rainbow in the spray on the sunnier side of the plunge
+	# a faint rainbow in the spray on the more open, daylit side of a tall fall's plunge
+	var h_fall := y1 - lip
 	var side := 1.0
 	var sun_r := 0
 	var sun_l := 0
 	for k in range(2, 10):
-		for dy in [3, 5, 7]:
-			sun_r += 1 if sunny(int(cx) + k, int(py) - dy) else 0
-			sun_l += 1 if sunny(int(cx) - k, int(py) - dy) else 0
+		for dy in [6, 9, 12, 15]:
+			# open daylit air (sky or shade next to the open falls basin)
+			sun_r += 1 if FxOverlayMaps.is_open(lvl, int(cx) + k, int(py) - dy) and (light == null or light.at(int(cx) + k, int(py) - dy) != FxLightMap.DARK) else 0
+			sun_l += 1 if FxOverlayMaps.is_open(lvl, int(cx) - k, int(py) - dy) and (light == null or light.at(int(cx) - k, int(py) - dy) != FxLightMap.DARK) else 0
 	if sun_l > sun_r:
 		side = -1.0
-	if maxi(sun_l, sun_r) >= 8:
+	if maxi(sun_l, sun_r) >= 12 and h_fall >= 15:
 		var rb := MeshInstance3D.new()
 		rb.name = "SprayRainbow"
 		var rq := QuadMesh.new()
@@ -230,7 +232,7 @@ func _build_fall(comp: Array[Vector2i]) -> void:
 		var rbm := ShaderMaterial.new()
 		rbm.shader = preload("res://shaders/fx/rainbow.gdshader")
 		rb.material_override = rbm
-		rb.position = base + Vector3(side * 4.0, 3.0 - 0.3, 0.3)
+		rb.position = base + Vector3(side * 5.0, 8.0, 0.3)   # arcs up through the mist above the plunge
 		rb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(rb)
 	_falls.append({"center": Vector2(cx, (lip + y1) * 0.5), "sheet": mi, "mist": mist, "spray": spray,
@@ -452,7 +454,7 @@ func _build_dapples() -> void:
 			d.texture_albedo = shade_tex
 			if layer == 0:
 				d.texture_emission = fleck_tex   # sun flecks only on the main layer
-				d.emission_energy = 0.45
+				d.emission_energy = 1.0
 			d.albedo_mix = 1.0 if layer == 0 else 0.6
 			d.modulate = Color(1.0, 1.0, 1.0)
 			d.upper_fade = 0.2
@@ -498,7 +500,7 @@ func _dapple_texture(flecks: bool) -> ImageTexture:
 				var a := hole * edge   # decal emission ignores alpha: bake the mask into the colour
 				img.set_pixel(x, y, Color(1.0 * a, 0.85 * a, 0.55 * a, a))
 			else:
-				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.55))
+				img.set_pixel(x, y, Color(0.02, 0.03, 0.01, (1.0 - hole) * edge * 0.75))
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 

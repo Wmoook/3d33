@@ -39,7 +39,7 @@ const SPOTS := [
 	["scroll_far", Vector2(372, 30)],
 	["logo", Vector2(322, 28)],
 	["veils", Vector2(245, 84)],
-	["rainbow", Vector2(146, 158)],
+	["rainbow", Vector2(141, 164)],
 	["updraft", Vector2(200, 64)],
 	["aqueduct", Vector2(360, 180)],
 	["sky_birds", Vector2(20, 12)],

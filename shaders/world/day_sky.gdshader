@@ -194,12 +194,12 @@ void sky() {
 		vec3 cam2 = POSITION;
 		for (int L = 0; L < 2; L++) {
 			float pf = L == 0 ? 0.15 : 0.3;
-			vec2 wl = anchor + (cam2.xy - anchor) * pf + (hit - cam2.xy) * (L == 0 ? 2.2 : 1.8);
+			vec2 wl = anchor + (cam2.xy - anchor) * pf + (hit - cam2.xy) * (L == 0 ? 1.6 : 1.35);
 			vec2 pl = vec2(wl.x, -wl.y);
-			float top = ridge_line(pl.x, L == 0 ? 118.0 : 134.0, L == 0 ? 42.0 : 30.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0);
+			float top = ridge_line(pl.x, L == 0 ? 128.0 : 142.0, L == 0 ? 62.0 : 38.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0);
 			float cov = smoothstep(-0.6, 0.6, pl.y - top);
 			if (cov > 0.0) {
-				float slope = ridge_line(pl.x + 1.0, L == 0 ? 118.0 : 134.0, L == 0 ? 42.0 : 30.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0) - top;
+				float slope = ridge_line(pl.x + 1.0, L == 0 ? 128.0 : 142.0, L == 0 ? 62.0 : 38.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0) - top;
 				float sunlit = smoothstep(-0.3, 0.6, -slope + (fbm(pl * 0.3) - 0.5));
 				float snow = smoothstep(9.0, 2.0, pl.y - top) * smoothstep(0.35, 0.55, fbm(pl * 0.4) + (pl.y - top) * -0.03);
 				vec3 rock = mix(vec3(0.2, 0.26, 0.45), vec3(0.45, 0.5, 0.7), sunlit);
@@ -225,18 +225,18 @@ void sky() {
 		}
 		// MID: hazy forgotten ruins, forested hills and distant waterfalls
 		{
-			vec2 wm = anchor + (cam2.xy - anchor) * 0.5 + (hit - cam2.xy) * 1.45;
+			vec2 wm = anchor + (cam2.xy - anchor) * 0.5 + (hit - cam2.xy) * 1.15;
 			vec2 pm = vec2(wm.x, -wm.y);
 			float lit; float fall;
-			float rc = ruins(pm, 150.0, lit, fall);
+			float rc = ruins(pm, 160.0, lit, fall);
 			vec3 rcol = mix(vec3(0.34, 0.42, 0.55), vec3(0.62, 0.64, 0.66), lit * 0.8);
-			rcol = mix(rcol, vec3(0.25, 0.4, 0.33), smoothstep(-1.0, 3.0, pm.y - (150.0 - 6.0 * fbm(vec2(pm.x * 0.03, 11.0)))) * 0.5);
+			rcol = mix(rcol, vec3(0.25, 0.4, 0.33), smoothstep(-1.0, 3.0, pm.y - (160.0 - 6.0 * fbm(vec2(pm.x * 0.03, 11.0)))) * 0.5);
 			rcol = mix(rcol, haze, 0.28);
 			c = mix(c, rcol, rc);
 			float fs = fall * (0.6 + 0.4 * n2(vec2(pm.x * 3.0, pm.y * 0.5 - TIME * 3.0)));
 			c = mix(c, vec3(0.85, 0.92, 1.0), fs * 0.7);
 			// valley mist below the mid layer
-			c = mix(c, haze, smoothstep(146.0, 175.0, pm.y) * 0.85);
+			c = mix(c, haze, smoothstep(166.0, 195.0, pm.y) * 0.75);
 		}
 		// soft cumulus: blurred painted cloud mask as density hint + billowing fbm, sun-lit tops,
 		// shaded bellies, slow drift
@@ -260,8 +260,8 @@ void sky() {
 			vec2 lp = vec2(hp.x, -hp.y) / level_size;
 			vec2 dm = texture(depth_mask, lp).rg;
 			float body = smoothstep(0.35, 0.6, dm.r);
-			float drop = dm.g * dm.g * (0.6 + 0.4 * fbm(vec2(hp.x * 0.4, hp.y * 0.08)));
-			float a = max(body, drop) * (S == 0 ? 0.85 : (S == 1 ? 0.6 : 0.4));
+			float drop = pow(dm.g, 5.0) * (0.6 + 0.4 * fbm(hp * 0.25));   // cliffs fall away just below each mass
+			float a = max(body, drop * 0.8) * (S == 0 ? 0.75 : (S == 1 ? 0.45 : 0.25));
 			vec3 dcol = mix(vec3(0.24, 0.28, 0.36), vec3(0.38, 0.44, 0.55), float(S) / 2.0);
 			dcol = mix(dcol, haze, float(S) * 0.25 + (1.0 - body) * 0.35 * (1.0 - dm.g));
 			// sunward rim on the receding copies
