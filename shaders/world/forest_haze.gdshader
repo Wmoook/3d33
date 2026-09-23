@@ -5,6 +5,7 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_opaque, fog_disabled;
 
 #include "res://shaders/world/forest_mask.gdshaderinc"
+#include "res://shaders/world/bg_space.gdshaderinc"
 
 uniform vec3 deep_col : source_color = vec3(0.035, 0.07, 0.03);   // the painting's black gaps: deep shade
 uniform vec3 haze_col : source_color = vec3(0.1, 0.2, 0.17);      // green-blue far forest haze
@@ -44,7 +45,9 @@ void fragment() {
 	float span = max(v_floor.x - v_floor.y, 1.0);
 	float v = clamp(above / span, 0.0, 1.0);
 	// the painted colour sets the local key: black gaps stay deepest, trunks/undergrowth lift it a little
-	vec3 key = mix(deep_col, v_col * 0.55 + deep_col * 0.5, 0.5);
+	// regional tone (sky's WorldBgSpace) instead of the painter's per-tile colour: no flat squares
+	vec3 tile_col = bg_space_on > 0.5 ? bg_space_tint(p, hollow_size, v_col) : v_col;
+	vec3 key = mix(deep_col, tile_col * 0.55 + deep_col * 0.5, 0.5);
 	vec3 col = mix(key, haze_col, 0.35 + 0.25 * (1.0 - v));
 	// three rows of distant trunks, darker and sharper the nearer the row
 	float t1 = trunks(p.x + 0.13 * sin(p.y * 0.3), 0.55, 1.0);
