@@ -124,6 +124,12 @@ func update_player(world_pos: Vector3, s, delta: float) -> void:
 		var inb := t.x >= 0 and t.y >= 0 and t.x < m.W and t.y < m.H
 		player.underwater = inb and (m.water[t.y * m.W + t.x] == 1 or not FxOverlayMaps.is_open(level, t.x, t.y))
 	player.update_from_sim(world_pos, s, delta)
+	if not _intro_done and not is_odyssey():
+		# the level's first frame: the ball materializes with a soft burst of light at the spawn
+		_intro_done = true
+		player.on_respawn()
+		bursts.play(&"respawn", world_pos, Vector3.UP, Color(0.75, 0.9, 1.0))
+		bursts.flash(world_pos, Color(0.8, 0.92, 1.0), 2.5, 0.8, 5.0)
 	blocks.set_ball_pos(world_pos)
 	if mech:
 		mech.sim = sim
@@ -182,6 +188,7 @@ func set_ball_shadows(on: bool) -> void:
 func get_player_node() -> Node3D:
 	return player
 
+var _intro_done := false
 var _last_key_flash := 0
 var _had_crown := false
 

@@ -45,9 +45,10 @@ float fbm(vec2 p) {
 // ---------- far / mid landscape ----------
 // signed coverage of a far mountain ridge (level tile space of that layer, y down)
 float ridge_line(float x, float base, float amp, float freq, float seed) {
-	float h = fbm(vec2(x * freq, seed)) ;
-	float r = 1.0 - abs(fbm(vec2(x * freq * 2.3, seed + 5.0)) * 2.0 - 1.0);
-	return base - amp * (h * 0.7 + r * 0.45);
+	// sharp alpine peaks: sum of pointed (abs) waves at two scales + fine jagged noise
+	float a = 1.0 - abs(fbm(vec2(x * freq, seed)) * 2.0 - 1.0);
+	float b = 1.0 - abs(fbm(vec2(x * freq * 3.1, seed + 3.0)) * 2.0 - 1.0);
+	return base - amp * (a * a * 0.8 + b * 0.35) - fbm(vec2(x * 0.6, seed + 9.0)) * 1.5;
 }
 
 // distant forgotten ruins (spires, arches, towers) + forested hills: returns coverage, and (out) a
@@ -184,7 +185,7 @@ void sky() {
 		float sd2 = length(sp);
 		c += vec3(1.0, 0.92, 0.75) * (smoothstep(3.2, 2.6, sd2) * 6.0 + exp(-sd2 * 0.12) * 0.35 + exp(-sd2 * 0.03) * 0.12);
 		float ang = atan(sp.y, sp.x);
-		float rays = pow(n2(vec2(ang * 9.0, TIME * 0.05)), 3.0) * smoothstep(0.0, 25.0, sd2) * exp(-sd2 * 0.015) * step(0.0, sp.y);
+		float rays = pow(n2(vec2(ang * 9.0, TIME * 0.05)), 3.0) * smoothstep(2.0, 10.0, sd2) * exp(-sd2 * 0.07);   // short crown of rays around the disc only
 		c += vec3(1.0, 0.9, 0.7) * rays * 0.25;
 		// high wispy cirrus
 		float ci = fbm(vec2(p.x * 0.012 + TIME * 0.004, p.y * 0.09)) ;
@@ -196,17 +197,19 @@ void sky() {
 			float pf = L == 0 ? 0.15 : 0.3;
 			vec2 wl = anchor + (cam2.xy - anchor) * pf + (hit - cam2.xy) * (L == 0 ? 1.6 : 1.35);
 			vec2 pl = vec2(wl.x, -wl.y);
-			float top = ridge_line(pl.x, L == 0 ? 128.0 : 142.0, L == 0 ? 62.0 : 38.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0);
-			float cov = smoothstep(-0.6, 0.6, pl.y - top);
+			float top = ridge_line(pl.x, L == 0 ? 112.0 : 126.0, L == 0 ? 58.0 : 36.0, L == 0 ? 0.02 : 0.034, float(L) * 7.0);
+			float cov = smoothstep(-0.25, 0.25, pl.y - top);
 			if (cov > 0.0) {
-				float slope = ridge_line(pl.x + 1.0, L == 0 ? 128.0 : 142.0, L == 0 ? 62.0 : 38.0, L == 0 ? 0.008 : 0.014, float(L) * 7.0) - top;
-				float sunlit = smoothstep(-0.3, 0.6, -slope + (fbm(pl * 0.3) - 0.5));
-				float snow = smoothstep(9.0, 2.0, pl.y - top) * smoothstep(0.35, 0.55, fbm(pl * 0.4) + (pl.y - top) * -0.03);
-				vec3 rock = mix(vec3(0.2, 0.26, 0.45), vec3(0.45, 0.5, 0.7), sunlit);
-				vec3 sn = mix(vec3(0.62, 0.7, 0.9), vec3(1.0, 0.97, 0.92), sunlit);
+				float slope = ridge_line(pl.x + 0.5, L == 0 ? 112.0 : 126.0, L == 0 ? 58.0 : 36.0, L == 0 ? 0.02 : 0.034, float(L) * 7.0) - top;
+				float sunlit = slope > 0.0 ? 1.0 : 0.25;                       // east faces lit, west in shadow
+				float depthb = pl.y - top;
+				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
+				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 1.2, pl.y * 0.08)));
+				vec3 rock = mix(vec3(0.16, 0.2, 0.34), vec3(0.4, 0.44, 0.6), sunlit) * (1.0 - gully * 0.25);
+				vec3 sn = mix(vec3(0.55, 0.64, 0.86), vec3(1.0, 0.97, 0.93), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);
-				mcol = mix(mcol, haze, L == 0 ? 0.32 : 0.18);
-				mcol = mix(mcol, haze, smoothstep(0.0, 40.0, pl.y - top) * 0.45);   // foot dissolves into haze
+				mcol = mix(mcol, haze, L == 0 ? 0.3 : 0.1);
+				mcol = mix(mcol, haze, smoothstep(10.0, 45.0, pl.y - top) * 0.5);   // foot dissolves into haze
 				c = mix(c, mcol, cov);
 			}
 		}
@@ -261,7 +264,7 @@ void sky() {
 			vec2 dm = texture(depth_mask, lp).rg;
 			float body = smoothstep(0.35, 0.6, dm.r);
 			float drop = pow(dm.g, 5.0) * (0.6 + 0.4 * fbm(hp * 0.25));   // cliffs fall away just below each mass
-			float a = max(body, drop * 0.8) * (S == 0 ? 0.75 : (S == 1 ? 0.45 : 0.25));
+			float a = body * (S == 0 ? 0.75 : (S == 1 ? 0.45 : 0.25));
 			vec3 dcol = mix(vec3(0.24, 0.28, 0.36), vec3(0.38, 0.44, 0.55), float(S) / 2.0);
 			dcol = mix(dcol, haze, float(S) * 0.25 + (1.0 - body) * 0.35 * (1.0 - dm.g));
 			// sunward rim on the receding copies

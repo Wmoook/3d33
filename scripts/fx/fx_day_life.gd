@@ -209,6 +209,8 @@ func _spawn_butterflies() -> void:
 		tries += 1
 		var s: Vector2i = _bfly_sites[near[randi() % near.size()]]
 		var home := Vector2(s.x + 0.5, s.y + 0.3)
+		if home.distance_to(ball) < 5.0:
+			continue   # never pop in on (or right next to) the ball
 		_bflies.append({"home": home, "pos": home + Vector2(randf_range(-1, 1), randf_range(-0.5, 0.5)),
 			"vel": Vector2.ZERO, "ph": randf() * TAU, "hue": BUTTERFLY_HUES[randi() % BUTTERFLY_HUES.size()],
 			"flee": 0.0, "rate": randf_range(15.0, 20.0)})
@@ -217,7 +219,7 @@ func _update_butterflies(delta: float, t: float) -> void:
 	var n := 0
 	for b in _bflies:
 		var db: Vector2 = b.pos - ball
-		if db.length() < 2.2 and b.flee <= 0.0:
+		if db.length() < 3.0 and b.flee <= 0.0:
 			b.flee = randf_range(2.5, 4.0)
 			b.vel = (db.normalized() + Vector2(0, -1.2)).normalized() * 4.5
 		var target: Vector2 = b.home + Vector2(sin(t * 0.7 + b.ph) * 1.6, sin(t * 1.1 + b.ph * 2.0) * 0.8 - 0.4)
