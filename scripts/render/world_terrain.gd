@@ -614,7 +614,9 @@ func _find_enclosed_sky_bg() -> void:
 			var speck_sky := comp.size() <= 6 and touches_paint and edges > 0 and (edges - wall_edges) * 4 >= edges * 3
 			if speck_sky:
 				continue
-			if inside >= 0.5 or not touches_paint:
+			# (a big stone-paint area is a wall even outside a structure: the EE minimap draws the Ruined Keep's
+			# 541/542 bg between its merlons as grey masonry, not sky)
+			if inside >= 0.5 or not touches_paint or comp.size() >= 20:
 				for i in comp:
 					enclosed_sky_bg[i] = 1
 		elif comp.size() <= WINDOW_MAX and wall_edges * 8 >= edges and _inside_fraction(comp, WINDOW_SIDE, WINDOW_ROOF) >= 0.7:
@@ -679,7 +681,8 @@ func window_image() -> Image:
 		if window[i]:
 			b[i] = mini(6 + d[i] * 34, 255)
 		elif backwall[i] and not solid[i]:
-			b[i] = 2 if _earth_wall(i) else 6
+			var sb: int = level.bg[i]
+			b[i] = 6 if (sb >= 541 and sb <= 544) else (2 if _earth_wall(i) else 6)   # stone-sky paint is grey masonry on the minimap
 		elif not solid[i] and not sky[i]:
 			b[i] = 2   # enclosed air without a painted bg (caves, pores): an earth cave room, never a floating slab
 		else:
@@ -717,7 +720,7 @@ const SKY_REACH := 10
 ## Big sky paint (sky / cloud bg 530/531/540) walled in by the spires or bridged over (the Hanging Gardens gap
 ## between the Great and Twin Spires, user report): the EE minimap shows it as open sky, so it is sky (with the
 ## vista behind), not a sealed painted wall. Small patches keep the window / notch rules.
-const PAINTED_SKY_MIN := 150
+const PAINTED_SKY_MIN := 20   # (behind the falls: 27-114 tile sky / cloud pockets are sky on the minimap too)
 
 func _open_painted_sky(open: PackedByteArray) -> void:
 	var n := W * H
@@ -1007,7 +1010,7 @@ func _classify() -> void:
 		for i in n:
 			if sky[i] and not open[i] and not solid[i] and not _deferred[i]:
 				sky[i] = 0
-			if not sky[i] and not solid[i] and not backwall[i] and level.bg[i] != 0 and not (level.bg[i] in WorldPalette.FV_SKY_BG):
+			if not sky[i] and not solid[i] and not backwall[i] and level.bg[i] != 0 and (not (level.bg[i] in WorldPalette.FV_SKY_BG) or (enclosed_sky_bg[i] and level.bg[i] >= 541)):
 				backwall[i] = 1
 				has_bgc[i] = 1
 				bg_region[i] = 1

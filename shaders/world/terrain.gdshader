@@ -752,8 +752,8 @@ void fragment() {
 		if (bay_wall > 0.5) {
 			// roofless bay: warm sunlit masonry like the room back walls (dark painted stone lifted, as WorldDepth)
 			float bl = dot(albedo, vec3(0.3, 0.55, 0.15));
-			albedo = mix(albedo, vec3(bl) * vec3(1.25, 1.0, 0.72), 0.6);
-			albedo *= clamp(0.13 / max(bl, 0.001), 1.0, 4.0);
+			albedo = mix(albedo, vec3(bl) * vec3(1.08, 1.0, 0.9), 0.5);   // the painting's own grey stone (minimap), barely warmed
+			albedo *= clamp(0.16 / max(bl, 0.001), 1.0, 4.0);
 		}
 	}
 	if (win_frame > 0.5) {
