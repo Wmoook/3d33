@@ -893,6 +893,17 @@ void fragment() {
 		ao *= mix(1.0, 0.45, lipk);
 		n = normalize(mix(n, vec3(0.0, -1.0, 0.35), lipk * 0.6));
 	}
+	if (scroll_rect.x >= 0.0) {
+		// never black (audit: exact (0,0,0) pixels): NaN guards, then a structural floor - a surface in full
+		// shadow still reads as dark shaded rock, the same floor depth_volume uses
+		if (any(isnan(albedo)) || any(isinf(albedo))) { albedo = vec3(0.35, 0.33, 0.3); }
+		if (isnan(ao) || isinf(ao)) { ao = 0.8; }
+		if (any(isnan(emit)) || any(isinf(emit))) { emit = vec3(0.0); }
+		if (any(isnan(n)) || dot(n, n) < 1e-8) { n = (any(isnan(gn)) || dot(gn, gn) < 1e-8) ? vec3(0.0, 0.0, 1.0) : gn; }
+		albedo = max(albedo, vec3(0.0));
+		ao = clamp(ao, 0.15, 1.0);
+		emit = max(emit, albedo * 0.04);   // just above black: cave mood stays within a few %
+	}
 	ALBEDO = albedo * ao * (1.0 - backdrop_haze);
 	ROUGHNESS = rough;
 	METALLIC = metal;
