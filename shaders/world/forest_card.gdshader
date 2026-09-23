@@ -47,6 +47,7 @@ void fragment() {
 	ALPHA_ANTIALIASING_EDGE = clamp(fwidth(cov) * 0.75, 0.005, 0.25);
 	vec3 col = mix(v_c.rgb * mix(0.6, 1.1, lum * 0.5), haze_col * 0.55, haze);
 	ALBEDO = col * mix(0.15, 1.0, vis);
+	EMISSION = shade_floor(ALBEDO);
 	BACKLIGHT = col * 0.4 * vis;
 	ROUGHNESS = 0.7;
 	SPECULAR = 0.2;

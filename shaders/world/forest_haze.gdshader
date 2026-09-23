@@ -58,4 +58,8 @@ void fragment() {
 	col = mix(col, mist_col, clamp(mist, 0.0, 1.0) * 0.45);
 	// outside the forest the card stays as the painting's deep shade (no illusion)
 	ALBEDO = mix(deep_col * 0.8, col, vis);
+	if (!(ALBEDO.r == ALBEDO.r) || !(ALBEDO.g == ALBEDO.g) || !(ALBEDO.b == ALBEDO.b)) {
+		ALBEDO = deep_col;
+	}
+	ALBEDO = max(ALBEDO, vec3(0.02, 0.035, 0.025));
 }

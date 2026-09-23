@@ -5,6 +5,8 @@ shader_type spatial;
 // +10 = SNAP: the card sits on the sculpted canopy surface (baked terrain height), instance z = offset.
 render_mode cull_disabled, depth_draw_opaque, alpha_to_coverage;
 
+#include "res://shaders/world/forest_mask.gdshaderinc"
+
 uniform sampler2D leaf_albedo : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2D leaf_normal : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform vec3 ball_pos = vec3(-1000.0);
@@ -75,11 +77,12 @@ void fragment() {
 	vec2 cp = (UV - 0.5) * 2.0;
 	vec3 ns = normalize(v_right * cp.x - v_up * cp.y + fwd * 0.9);
 	nw = normalize(mix(nw, ns, round_normal));
-	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
+	NORMAL = normalize((VIEW_MATRIX * vec4(safe_normal(nw, fwd), 0.0)).xyz);
 	float lum = mix(1.0, al.r * 2.0, 0.75);
 	// deeper cards sit in the crown's shade; the painted colour stays the average
 	vec3 col = v_tint * lum * mix(0.5, 1.0, v_shade);
 	ALBEDO = col;
+	EMISSION = shade_floor(col);
 	BACKLIGHT = col * al.g * mix(0.35, 0.95, day);
 	ROUGHNESS = 0.62;
 	SPECULAR = 0.3;

@@ -40,3 +40,13 @@ bool forest_visible(vec3 wp, vec3 cam) {
 	tc = clamp(tc, vec2(0.0), hollow_size - 0.5);
 	return texelFetch(hollow_tex, ivec2(floor(tc)), 0).r > 0.5;
 }
+
+// Never-black guards (audit: exact (0,0,0) pixels = NaN normals / zero light): a unit normal with a fallback,
+// and a small emission floor so a surface in full shadow still reads as dark shade.
+vec3 safe_normal(vec3 n, vec3 fb) {
+	float l = length(n);
+	return (l > 1e-4 && l == l) ? n / l : fb;
+}
+vec3 shade_floor(vec3 albedo) {
+	return max(albedo, vec3(0.0)) * 0.1;
+}

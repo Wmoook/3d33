@@ -59,8 +59,8 @@ void fragment() {
 	vec3 fc = mix(fog_near, fog_far, fz);
 	vec3 col = albedo * shade * ao;
 	ALBEDO = mix(col, fc * 0.6, fog) * mix(0.15, 1.0, vis);
-	EMISSION = fc * fog * 0.45 * vis + vec3(0.02, 0.035, 0.022) * vis;   // faint ambient floor: shade, never black
+	EMISSION = fc * fog * 0.45 * vis + vec3(0.02, 0.035, 0.022) * vis + shade_floor(ALBEDO);   // never black
 	ROUGHNESS = rough;
 	SPECULAR = 0.3;
-	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(n, gn, fog)), 0.0)).xyz);
+	NORMAL = normalize((VIEW_MATRIX * vec4(safe_normal(mix(safe_normal(n, gn), gn, fog), gn), 0.0)).xyz);
 }

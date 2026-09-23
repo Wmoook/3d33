@@ -73,4 +73,9 @@ void fragment() {
 		// room-border sliver: a mid-tone forest haze (not a black line, not sky)
 		ALBEDO = mix(fog_near, fog_far, 0.6) * 1.4;
 	}
+	// never black: guard against NaN (black after tonemapping) and keep a small floor
+	if (!(ALBEDO.r == ALBEDO.r) || !(ALBEDO.g == ALBEDO.g) || !(ALBEDO.b == ALBEDO.b)) {
+		ALBEDO = mix(fog_near, fog_far, 0.5);
+	}
+	ALBEDO = max(ALBEDO, vec3(0.02, 0.035, 0.025));
 }

@@ -122,6 +122,7 @@ void fragment() {
 	}
 	float fv = use_mask > 0.5 ? vis : 1.0;
 	ALBEDO = col * fv;
+	EMISSION = shade_floor(ALBEDO);
 	BACKLIGHT *= fv;
 	ROUGHNESS = 0.55;
 	SPECULAR = 0.35;

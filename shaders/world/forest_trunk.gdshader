@@ -61,7 +61,7 @@ void fragment() {
 	float dark = smoothstep(canopy_y - 1.0, canopy_y + 3.0 + 0.1 * -v_wp.z, v_wp.y);
 	col *= 1.0 - dark * 0.92;
 	ALBEDO = col * mix(0.15, 1.0, vis);
-	EMISSION = mix(fog_near, fog_far, fz) * fog * 0.35 * (1.0 - dark) * vis;
+	EMISSION = mix(fog_near, fog_far, fz) * fog * 0.35 * (1.0 - dark) * vis + shade_floor(ALBEDO);
 	NORMAL_MAP = vec3(tn.xy * 0.7 * (1.0 - fog) + 0.5, 1.0);
 	ROUGHNESS = 0.88;
 	SPECULAR = 0.2;
