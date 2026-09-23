@@ -92,6 +92,8 @@ func _run(lvl: EELevel) -> void:
 					if checked.has(k):
 						continue
 					checked[k] = true
+					if checked.size() % 2000 == 0:
+						await get_tree().process_frame   # keep the window responsive
 					if (ty == 0 or tx == 0 or tx == W - 1 or ty == H - 1) and not world.terrain.solid[k]:
 						continue   # world border beside open air: invisible by design
 					if lvl.fg[k] == 43 or lvl.fg[k] == 1004:

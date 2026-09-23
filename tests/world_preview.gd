@@ -384,6 +384,48 @@ func _sky_in_structure_check(img: Image, nm: String) -> void:
 	mk.save_png("user://world_fv_%s_skyin.png" % nm)
 	print("SKY-IN-STRUCTURE %s: %d / %d interior tiles look like sky %s" % [nm, bad, total, "OK" if bad * 50 <= maxi(total, 1) else "CHECK"])
 
+## SEAM: no sky may leak through the joints between the play-plane slab and the depth blocks. Samples points
+## 0.08-0.45 tile inside non-sky air tiles next to a solid (where the slab's cliff meets the depth volume) and
+## counts sky-hue pixels there (bright, blue-dominant). Must be 0.
+func _seam_check(img: Image, nm: String) -> void:
+	var t := world.terrain
+	var vs := Vector2(img.get_width(), img.get_height())
+	var vp := get_viewport().get_visible_rect().size
+	var bad := 0
+	var total := 0
+	var hol := WorldForest.hollow_mask(t)
+	var mk := img.duplicate() as Image
+	for ty in range(1, t.H - 1):
+		for tx in range(1, t.W - 1):
+			var i := ty * t.W + tx
+			if t.solid[i] or t.sky[i] or (world.depth and world.depth.win.size() == t.W * t.H and world.depth.win[i]):
+				continue
+			if not (t.backwall[i] or t.pocket[i] == 1):
+				continue   # open air with nothing behind it (no wall to leak through)
+			if t.wall_code.size() == t.W * t.H and t.wall_code[i] >= 20:
+				continue   # painted windows
+			for k in 4:
+				var o := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)][k] as Vector2i
+				if not t.solid[(ty + o.y) * t.W + tx + o.x]:
+					continue
+				for f: float in [0.08, 0.2, 0.45]:
+					for a: float in [0.25, 0.5, 0.75]:
+						var lx: float = (0.5 + o.x * (0.5 - f)) if o.x != 0 else a
+						var ly: float = (0.5 + o.y * (0.5 - f)) if o.y != 0 else a
+						var w := Vector3(tx + lx, -ty - ly, 0.0)
+						if cam.is_position_behind(w):
+							continue
+						var sp := cam.unproject_position(w) / vp * vs
+						if sp.x < 2 or sp.y < 2 or sp.x >= vs.x - 2 or sp.y >= vs.y - 2:
+							continue
+						total += 1
+						var px := img.get_pixelv(Vector2i(sp))
+						if px.get_luminance() > 0.45 and px.b > px.r + 0.08 and px.b >= px.g:
+							bad += 1
+							mk.set_pixelv(Vector2i(sp), Color(1, 0, 1))
+	mk.save_png("user://world_fv_%s_seam.png" % nm)
+	print("SEAM %s: %d / %d joint samples show sky %s" % [nm, bad, total, "OK" if bad == 0 else "CHECK"])
+
 func _run() -> void:
 	if _perf:
 		await _run_perf()
@@ -407,5 +449,6 @@ func _run() -> void:
 		if level_id != "odyssey":
 			_black_air_check(img.duplicate() as Image, nm)
 			_sky_in_structure_check(img, nm)
+			_seam_check(img, nm)
 			_sky_luma_check(img, nm)
 	get_tree().quit()

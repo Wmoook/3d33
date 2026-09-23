@@ -56,10 +56,11 @@ void fragment() {
 	if (frosted > 0.5) {
 		// behind glyphs: a soft cool frost that dims what is behind so arrows and dots stay crisp
 		float fr = 0.5 + 0.5 * h21(floor(t * 11.0));
-		c = mix(c, vec3(0.55, 0.62, 0.7), 0.6);
-		a += 0.1 + fr * 0.04;
+		c = mix(c, vec3(0.7, 0.76, 0.84), 0.3);
+		a += 0.05 + fr * 0.03;
 	}
 	vec3 lead = vec3(0.06, 0.06, 0.07);
-	ALBEDO = mix(c + vec3(streak * 0.35), lead, came);
+	// HDR-bright glass body: the sky seen through is > 1 before tonemapping, so a plain 0.9 tint would dim it
+	ALBEDO = mix((c * 1.5) + vec3(streak * 0.5), lead, came);
 	ALPHA = clamp(mix(a, 0.92, came), 0.0, 1.0);
 }
