@@ -15,6 +15,8 @@ uniform float pbr_strength = 1.0;      // global detail multiplier (0 disables t
 uniform float pbr_fade_near = 45.0;    // camera distance where detail starts to fade
 uniform float pbr_fade_far = 110.0;    // camera distance where only a faint residue remains
 uniform int pbr_level = 0;             // 0 = Forgotten Veil (day), 1 = Odyssey (night)
+uniform sampler2D pbr_canopy_tex : filter_nearest, repeat_disable;   // R8 per tile: 1 = tree canopy foliage
+uniform vec2 pbr_level_size = vec2(400.0, 200.0);
 
 // layer indices in the arrays
 const int PBR_GRASS = 0;     // leafy_grass
@@ -208,6 +210,13 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 	vec2 fq = fract(q);
 	float patchv = mix(mix(pbr_hash(floor(q)), pbr_hash(floor(q) + vec2(1.0, 0.0)), smoothstep(0.0, 1.0, fq.x)),
 		mix(pbr_hash(floor(q) + vec2(0.0, 1.0)), pbr_hash(floor(q) + vec2(1.0, 1.0)), smoothstep(0.0, 1.0, fq.x)), smoothstep(0.0, 1.0, fq.y));
+	bool canopy = mat == PBR_M_FOLIAGE && texelFetch(pbr_canopy_tex, clamp(ivec2(floor(p)), ivec2(0), ivec2(pbr_level_size) - 1), 0).r > 0.5;
+	if (canopy) {
+		// tree crowns: dense leaf scan, big leaves, strong relief
+		PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.3, 1.0, near);
+		pbr_apply(l, 1.0 * fade, 0.9 * fade, 0.6, 0.0, albedo, n, rough, ao);
+		return 1.0;
+	}
 	if (mat == PBR_M_GRASS || mat == PBR_M_FOLIAGE) {
 		PbrS g = pbr_tri(PBR_GRASS, wp, gn, 0.55, 1.0, near);
 		// mossy / leaf-litter patches break the lawn up

@@ -7,11 +7,12 @@ extends RefCounted
 const MAT_TEX := "res://assets/world/pbr/pbr_mat.png"
 const NRM_TEX := "res://assets/world/pbr/pbr_nrm.png"
 
-static var _mat: Texture2DArray
-static var _nrm: Texture2DArray
+static var _mat: TextureLayered
+static var _nrm: TextureLayered
 
-## odyssey: selects the red-earth soil scan for the Odyssey earth layer.
-static func bind(material: ShaderMaterial, odyssey := false, strength := 1.0) -> void:
+## odyssey: selects the red-earth soil scan for the Odyssey earth layer. terrain (optional): builds the
+## per-tile canopy mask so tree crowns get the leaf scan and ground mantles the lawn scan.
+static func bind(material: ShaderMaterial, odyssey := false, strength := 1.0, terrain: WorldTerrain = null) -> void:
 	if _mat == null:
 		_mat = load(MAT_TEX)
 		_nrm = load(NRM_TEX)
@@ -19,3 +20,19 @@ static func bind(material: ShaderMaterial, odyssey := false, strength := 1.0) ->
 	material.set_shader_parameter("pbr_nrm_tex", _nrm)
 	material.set_shader_parameter("pbr_level", 1 if odyssey else 0)
 	material.set_shader_parameter("pbr_strength", strength)
+	if terrain:
+		material.set_shader_parameter("pbr_canopy_tex", ImageTexture.create_from_image(canopy_mask(terrain)))
+		material.set_shader_parameter("pbr_level_size", Vector2(terrain.W, terrain.H))
+
+## R8, one texel per tile: 255 = tree canopy foliage (see WorldGrass.canopy_column), else 0.
+static func canopy_mask(terrain: WorldTerrain) -> Image:
+	var W := terrain.W
+	var H := terrain.H
+	var b := PackedByteArray()
+	b.resize(W * H)
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			if terrain.solid[i] and terrain.mat_ids[i] == WorldPalette.M_FOLIAGE and WorldGrass.canopy_column(terrain, x, y, W, H):
+				b[i] = 255
+	return Image.create_from_data(W, H, false, Image.FORMAT_R8, b)

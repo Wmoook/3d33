@@ -184,6 +184,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 	}
 	// background wall (tiny enclosed pockets sit much shallower: pits in the rock)
 	float zbase = mix(Z_BG, -1.5, fld.g);   // non-solid tiles always stay below z = -0.8
+	zbase = mix(-0.85, zbase, fld.a);          // inscription pockets (scroll / logo letters): shallow floor
 	float zb = zbase + 0.42 * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10) * smoothstep(0.0, 0.6, sw);
 	float back;
 	if (sw >= 0.0) {
@@ -195,7 +196,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 		float cave = mix(-2.3 - fbm2(p * 0.7) * 0.3, cave_depth(p, fld), skirt * skirt * (3.0 - 2.0 * skirt));
 		back = mix(zbase, cave, smoothstep(0.0, -0.0625, sw));
 	}
-	return mix(0.0, back, smoothstep(0.0, -0.0625, sf));
+	return mix(0.0, back, smoothstep(0.0, mix(-0.3, -0.0625, fld.a), sf));   // inscriptions: soft rounded bevel
 }
 
 vec4 field_at(vec2 p) {

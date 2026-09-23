@@ -374,7 +374,7 @@ func _build_floating_anchors(lvl: EELevel, terrain: WorldTerrain) -> void:
 				continue
 			var pt := Vector2i(x, y)
 			var bird: bool = lvl.fg[i] == 87
-			if not (logo.has_point(pt) or WorldPalette.FV_RECT_SCROLL.has_point(pt) or bird):
+			if not (logo.has_point(pt) or bird):   # (the scroll hangs clean: strands read as ink drips)
 				continue
 			if _rng.randf() > (0.25 if bird else 0.55):
 				continue

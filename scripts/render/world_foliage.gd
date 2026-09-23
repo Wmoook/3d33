@@ -58,7 +58,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				if c.z <= 0.05:
 					continue
 				size = c.z / VIS_R
-				var z := 0.72 + _rng.randf() * 0.38 + minf(inner, 3.0) * 0.1
+				# depth: just in front of the sculpted canopy surface (deeper inside it bulges further forward)
+				var z := (1.12 + _rng.randf() * 0.3) if inner >= 1.0 else (0.55 + _rng.randf() * 0.25)
 				_push(key, Vector3(c.x, c.y, z), size, base, 0.75 + 0.25 * _rng.randf())
 				n_front += 1
 			# top fringe: leafy silhouette over the canopy top (seen along the top strip)
@@ -85,20 +86,7 @@ static func _is_canopy(terrain: WorldTerrain, x: int, y: int, W: int, H: int) ->
 	var i := y * W + x
 	if not terrain.solid[i] or terrain.mat_ids[i] != WorldPalette.M_FOLIAGE:
 		return false
-	if WorldPalette.is_odyssey():
-		return y < 22
-	for d in range(1, 24):
-		var yy := y + d
-		if yy >= H:
-			return false
-		var j := yy * W + x
-		if not terrain.solid[j]:
-			return true
-		var mj: int = terrain.mat_ids[j]
-		if mj == WorldPalette.M_FOLIAGE:
-			continue
-		return mj == WorldPalette.M_WOOD
-	return false
+	return WorldGrass.canopy_column(terrain, x, y, W, H)
 
 ## Tiles of canopy/trunk mass beyond (x, y) in direction (dx, dy) before open air, capped at 3.
 ## Other terrain (earth, stone) counts as a hard stop (the leaves may only touch it).

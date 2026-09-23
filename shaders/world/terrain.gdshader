@@ -462,7 +462,7 @@ void fragment() {
 		albedo = mix(albedo, vec3(0.75, 0.85, 0.95), foam * 0.8);
 		rough = mix(0.04, 0.5, foam);
 		spec = 0.8;
-		if (fld.b > 0.5 || s.w < 1.2) {
+		if (scroll_rect.x >= 0.0 && (fld.b > 0.5 || s.w < 1.2)) {   // day levels only (Odyssey keeps its approved water)
 			// water held in suspension (splash droplets, thin falling sheets): translucent deep blue orb with
 			// internal flow streaks running down, caustic sparkle, wobbling normals, bright fresnel rim
 			vec3 vd = normalize(CAMERA_POSITION_WORLD - wp);
@@ -679,6 +679,13 @@ void fragment() {
 	// margin: the continuing world recedes into atmospheric depth
 	albedo *= mix(1.0, 0.45, smoothstep(1.0, 12.0, p_out));
 	emit *= 1.0 - smoothstep(1.0, 4.0, p_out);
+	if (layer != 0 && fld.a < 0.5) {
+		// inscription pocket floor: the parchment / stone itself, only slightly shaded (ink goes on top)
+		vec3 fc; int fm; float fb;
+		region_sample(fgcol_tex, p, 6.0, fc, fm, fb);
+		albedo = fc * 0.62;
+		ao = 0.85;
+	}
 	emit += rune_emit;
 	if (scroll_rect.x >= 0.0 && layer == 0) {
 		// silhouettes against the sky: warm sun rim on sunward (upper-left) edges, cool sky rim elsewhere

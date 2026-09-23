@@ -207,11 +207,11 @@ void sky() {
 				float sunlit = mix(0.55, mix(0.25, 1.0, face), exp(-depthb * 0.07));
 				float snow = step(depthb, 7.0 + fbm(vec2(pl.x * 0.5, 2.0)) * 6.0) * step(top, 110.0 - float(L) * 6.0);
 				float gully = smoothstep(0.55, 0.8, fbm(vec2(pl.x * 0.4 + pl.y * 0.2, pl.y * 0.3)));
-				vec3 rock = mix(vec3(0.16, 0.2, 0.34), vec3(0.4, 0.44, 0.6), sunlit) * (1.0 - gully * 0.25);
+				vec3 rock = mix(vec3(0.1, 0.14, 0.28), vec3(0.3, 0.36, 0.55), sunlit) * (1.0 - gully * 0.25);
 				vec3 sn = mix(vec3(0.55, 0.64, 0.86), vec3(1.0, 0.97, 0.93), sunlit) * (1.0 - gully * 0.15);
 				vec3 mcol = mix(rock, sn, snow);
-				mcol = mix(mcol, haze, L == 0 ? 0.3 : 0.1);
-				mcol = mix(mcol, haze, smoothstep(10.0, 45.0, pl.y - top) * 0.5);   // foot dissolves into haze
+				mcol = mix(mcol, horizon_haze, L == 0 ? 0.35 : 0.15);
+				mcol = mix(mcol, horizon_haze, smoothstep(10.0, 45.0, pl.y - top) * 0.5);   // foot dissolves into haze
 				c = mix(c, mcol, cov);
 			}
 		}

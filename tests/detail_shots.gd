@@ -91,7 +91,7 @@ func _hide_decor(wv: WorldView, nm: String) -> void:
 ## The integration patch proposed to world, applied to a copy of the terrain shader.
 func _patch_terrain(wv: WorldView) -> void:
 	var mat: ShaderMaterial = wv.terrain.material
-	var code: String = mat.shader.code
+	var code: String = mat.shader.code.replace("\r\n", "\n")
 	code = code.replace('#include "res://shaders/world/terrain_common.gdshaderinc"',
 		'#include "res://shaders/world/terrain_common.gdshaderinc"\n#include "res://shaders/world/pbr_detail.gdshaderinc"')
 	var anchor := "\tif (layer == 0) {\n\t\t// soft rim of the bevel"
@@ -103,7 +103,7 @@ func _patch_terrain(wv: WorldView) -> void:
 	var sh := Shader.new()
 	sh.code = code
 	mat.shader = sh
-	WorldPbr.bind(mat, WorldPalette.is_odyssey())
+	WorldPbr.bind(mat, WorldPalette.is_odyssey(), 1.0, wv.terrain)
 
 func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true, false, true).timeout

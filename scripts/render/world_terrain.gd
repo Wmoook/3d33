@@ -604,7 +604,10 @@ func _field_image() -> Image:
 		b[i * 4] = 255 if sky[i] else 0
 		b[i * 4 + 1] = 255 if pocket[i] else 0
 		b[i * 4 + 2] = 255 if speck[i] else 0
-		b[i * 4 + 3] = 255
+		# a = 0: shallow inscription pocket (non-solid letter tiles in the FV scroll / ΣX logo) -> floor z -0.85
+		var pt := Vector2i(i % W, i / W)
+		var inscr := day and not solid[i] and (WorldPalette.FV_RECT_SCROLL.has_point(pt) or Rect2i(300, 14, 46, 29).has_point(pt))
+		b[i * 4 + 3] = 0 if inscr else 255
 	img.set_data(W, H, false, Image.FORMAT_RGBA8, b)
 	return img
 

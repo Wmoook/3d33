@@ -29,8 +29,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	material.shader = load("res://shaders/world/grass_blade.gdshader")
 	material.set_shader_parameter("day", 0.0 if WorldPalette.is_odyssey() else 1.0)
 	_meshes = {
-		Kind.TALL: _clump_mesh(11, 0.2, 0.34, 0.012, 0.028, 0.16, 5, 1),
-		Kind.SHORT: _clump_mesh(14, 0.07, 0.15, 0.01, 0.02, 0.13, 3, 2),
+		Kind.TALL: _clump_mesh(14, 0.18, 0.34, 0.016, 0.034, 0.17, 5, 1),
+		Kind.SHORT: _clump_mesh(16, 0.07, 0.16, 0.014, 0.026, 0.14, 3, 2),
 		Kind.CLOVER: _clover_mesh(),
 		Kind.FLOWER: _flower_mesh(),
 	}
@@ -62,19 +62,25 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				zb = -1.35
 			var key := Vector2i(x / CHUNK, y / CHUNK)
 			# tall grass on the top strip (behind the gameplay depth)
-			var nt := 13 if not glyph else 0
+			var nt := 24 if not glyph else 0
 			for k in nt:
 				var p := Vector3(_rng.randf_range(x0, x1), -y, _rng.randf_range(zb, Z_FRONT_TALL))
 				var s := _rng.randf_range(0.75, 1.05) * hmul
 				_push(key, Kind.TALL, p, s, _vary(base, 0.12), _rng.randf() * 0.99)
 				n_inst[Kind.TALL] += 1
-			# short grass + clover over the whole strip and the front lip
-			var ns := 16
-			for k in ns:
-				var z := _rng.randf_range(zb, Z_LIP)
+			# short grass over the strip
+			for k in 12:
+				var p := Vector3(_rng.randf_range(x0, x1), -y, _rng.randf_range(zb, 0.0))
+				_push(key, Kind.SHORT, p, _rng.randf_range(0.7, 1.15) * hmul, _vary(base, 0.12), _rng.randf() * 0.99)
+				n_inst[Kind.SHORT] += 1
+			# the rounded front lip: turf growing out of the bevel, perpendicular to it, so the lawn edge
+			# reads as soft grass instead of a hard line (covers only the solid tile's own front face)
+			for k in 14:
+				var z := _rng.randf_range(0.0, Z_LIP)
+				var u := z / BEVEL_Z
+				var up := Vector3(0.0, 1.0 - u * 0.55, u * 1.1).normalized()
 				var p := Vector3(_rng.randf_range(x0, x1), -y - _bevel_drop(z), z)
-				var s := _rng.randf_range(0.7, 1.15) * (hmul if z < 0.0 else minf(hmul, 0.8))
-				_push(key, Kind.SHORT, p, s, _vary(base, 0.12), _rng.randf() * 0.99)
+				_push(key, Kind.SHORT, p, _rng.randf_range(0.75, 1.1) * minf(hmul, 0.85), _vary(base, 0.12), _rng.randf() * 0.99, up)
 				n_inst[Kind.SHORT] += 1
 			if _rng.randf() < 0.45:
 				var z := _rng.randf_range(zb, 0.25)
@@ -96,26 +102,51 @@ func update_focus(world_pos: Vector3, _delta: float) -> void:
 	if material:
 		material.set_shader_parameter("ball_pos", world_pos)
 
-## A top that is lawn: M_GRASS, or an M_FOLIAGE mantle lying on earth/stone (not a tree canopy:
-## canopies end in air or on a trunk when you walk down the column).
+## A top that is lawn: M_GRASS, or an M_FOLIAGE mantle lying on earth/stone (not a tree canopy).
 static func _is_ground_grass(terrain: WorldTerrain, lvl: EELevel, x: int, y: int, W: int, H: int) -> bool:
 	var m: int = terrain.mat_ids[y * W + x]
 	if m == WorldPalette.M_GRASS:
 		return true
 	if m != WorldPalette.M_FOLIAGE:
 		return false
-	for d in range(1, 14):
+	return not canopy_column(terrain, x, y, W, H)
+
+## Walking down the column from a foliage tile: a tree canopy ends in a real gap (>= 3 tiles of air: the
+## space under the crown) or on a trunk (wood); a ground mantle ends on earth / stone, possibly across
+## small holes (windows, pores). Shared with WorldFoliage.
+static func canopy_column(terrain: WorldTerrain, x: int, y: int, W: int, H: int) -> bool:
+	if WorldPalette.is_odyssey():
+		return y < 22
+	var air := 0
+	for d in range(1, 30):
 		var yy := y + d
 		if yy >= H:
-			return true
+			return false
 		var j := yy * W + x
 		if not terrain.solid[j]:
-			return false
-		var mj: int = terrain.mat_ids[j]
-		if mj == WorldPalette.M_FOLIAGE or mj == WorldPalette.M_GRASS:
+			air += 1
+			if air >= 3:
+				return true
 			continue
-		return mj != WorldPalette.M_WOOD
-	return true
+		air = 0
+		var mj: int = terrain.mat_ids[j]
+		if mj == WorldPalette.M_FOLIAGE:
+			continue
+		# a trunk (wood, or a narrow earth column standing in open air) holds up a crown
+		return mj == WorldPalette.M_WOOD or _narrow_run(terrain, x, yy, W, 7)
+	return false
+
+## True if the solid run through (x, y) along the row is at most `maxw` wide with open air at both ends.
+static func _narrow_run(terrain: WorldTerrain, x: int, y: int, W: int, maxw: int) -> bool:
+	var l := x
+	while l > 0 and terrain.solid[y * W + l - 1] and x - l < maxw:
+		l -= 1
+	var r := x
+	while r < W - 1 and terrain.solid[y * W + r + 1] and r - x < maxw:
+		r += 1
+	if r - l + 1 > maxw:
+		return false
+	return l > 0 and r < W - 1 and not terrain.solid[y * W + l - 1] and not terrain.solid[y * W + r + 1]
 
 ## The terrain's rounded front bevel: how far below the tile top the surface is at depth z (> 0).
 static func _bevel_drop(z: float) -> float:
@@ -125,7 +156,7 @@ static func _bevel_drop(z: float) -> float:
 	return 0.5 * (1.0 - sqrt(1.0 - u * u)) + 0.015
 
 ## c = painted tint (sRGB); code = random in [0,1) or 1 + flower palette index + random.
-func _push(key: Vector2i, kind: int, p: Vector3, s: float, c: Color, code: float) -> void:
+func _push(key: Vector2i, kind: int, p: Vector3, s: float, c: Color, code: float, up := Vector3.UP) -> void:
 	if not _chunks.has(key):
 		_chunks[key] = {}
 	var ch: Dictionary = _chunks[key]
@@ -133,6 +164,8 @@ func _push(key: Vector2i, kind: int, p: Vector3, s: float, c: Color, code: float
 		ch[kind] = [[], []]
 	var yaw := _rng.randf_range(-1.1, 1.1)   # blades mostly face the camera (never edge-on slivers)
 	var b := Basis(Vector3.UP, yaw).scaled(Vector3(s, s * _rng.randf_range(0.85, 1.15), s))
+	if up != Vector3.UP:
+		b = Basis(Quaternion(Vector3.UP, up)) * b
 	ch[kind][0].append(Transform3D(b, p))
 	var lc := c.srgb_to_linear()
 	ch[kind][1].append(Color(lc.r, lc.g, lc.b, code))
@@ -249,10 +282,10 @@ func _clover_mesh() -> ArrayMesh:
 			var pts: Array[Vector3] = []
 			for s in 9:
 				var th := float(s) / 8.0 * TAU
-				var rr := ls * (0.62 + 0.38 * abs(sin(th * 0.5 + 0.0))) * (0.85 + 0.15 * cos(th))
-				var q := Vector3(cos(th), 0, sin(th)) * rr * 0.55
+				var rr: float = ls * (0.62 + 0.38 * abs(sin(th * 0.5 + 0.0))) * (0.85 + 0.15 * cos(th))
+				var q: Vector3 = Vector3(cos(th), 0, sin(th)) * rr * 0.55
 				# rotate leaflet into place (tilted plane)
-				var qq := (dir * q.x + dir.cross(Vector3.UP) * q.z)
+				var qq: Vector3 = (dir * q.x + dir.cross(Vector3.UP) * q.z)
 				pts.append(ctr + qq + Vector3.UP * q.x * tilt * 0.8)
 			var cc := Color(0.6, rnd, 1.0, 0.4)
 			var cc0 := Color(0.45, rnd, 1.0, 0.3)

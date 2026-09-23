@@ -82,9 +82,9 @@ void fragment() {
 	} else {
 		// blades: dark humid root -> painted colour -> sun-bleached lighter tip; per-blade tonal jitter
 		float tone = mix(0.8, 1.18, v_rnd);
-		vec3 root = base * 0.32;
+		vec3 root = base * 0.45;
 		vec3 tip = base * 1.35 + vec3(0.03, 0.03, 0.0) * day;
-		col = mix(root, base, smoothstep(0.0, 0.45, t));
+		col = mix(root, base, smoothstep(0.0, 0.3, t));
 		col = mix(col, tip, smoothstep(0.55, 1.0, t)) * tone;
 		// faint midrib highlight
 		col *= 1.0 + 0.12 * (1.0 - abs(UV.x - 0.5) * 2.0);
