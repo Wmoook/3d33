@@ -669,7 +669,7 @@ func _make_rooms() -> void:
 				var j: int = i + o
 				if j >= 0 and j < n and terrain.sky[j] and not terrain.solid[j]:
 					sky_edges += 1
-		if sky_edges > 0 and comp.size() < ROOM_OPEN_MAX and code[start] >= 5:
+		if sky_edges > 0 and comp.size() < (ROOM_OPEN_MAX if code[start] >= 5 else 12):
 			for i in comp:
 				room[i] = 0
 				code[i] = 0
