@@ -431,6 +431,25 @@ func _despeckle_bg(bgb: PackedByteArray, has_bgc: PackedByteArray) -> void:
 					best = c
 			bgb[i * 4] = best.x; bgb[i * 4 + 1] = best.y; bgb[i * 4 + 2] = best.z
 
+## Day levels: soft neighbourhood masks for material transitions (RGBA8, blurred over ~1 tile):
+## r = foliage, g = grass, b = water, a = stone/ruin. The shader blends pair-specific transitions
+## (leaf spill onto trunks / litter, grass fringe + roots, wet band + algae, soil in joints / moss creep).
+func transition_image() -> Image:
+	var buf := PackedByteArray()
+	buf.resize(W * H * 4)
+	for i in W * H:
+		if not solid[i]:
+			continue
+		var m: int = mat_ids[i]
+		if m == WorldPalette.M_FOLIAGE: buf[i * 4] = 255
+		elif m == WorldPalette.M_GRASS: buf[i * 4 + 1] = 255
+		elif m == WorldPalette.M_WATER: buf[i * 4 + 2] = 255
+		elif m == WorldPalette.M_RUIN or m == WorldPalette.M_STONE or m == WorldPalette.M_CRAG: buf[i * 4 + 3] = 255
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_RGBA8, buf)
+	img.resize(W * 2, H * 2, Image.INTERPOLATE_NEAREST)
+	img.resize(W, H, Image.INTERPOLATE_BILINEAR)   # ~1 tile soft band
+	return img
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
@@ -739,6 +758,7 @@ func _make_material() -> void:
 		material.set_shader_parameter("mottle", 0.12)
 		var r := WorldPalette.FV_RECT_SCROLL
 		material.set_shader_parameter("scroll_rect", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
+		material.set_shader_parameter("trans_tex", ImageTexture.create_from_image(transition_image()))
 		var sr := WorldPalette.FV_RECT_SHRINE
 		material.set_shader_parameter("shrine_rect", Vector4(sr.position.x, sr.position.y + 2, sr.end.x, sr.end.y))
 		material.set_shader_parameter("shrine_trophy", Vector2(WorldPalette.FV_SHRINE))

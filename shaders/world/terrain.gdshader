@@ -24,6 +24,7 @@ uniform vec4 rune_pos[16];
 uniform vec4 rune_col[16];
 uniform float rune_state[16];
 uniform float rune_size = 4.6;
+uniform sampler2D trans_tex : filter_linear, repeat_disable;   // day: r foliage, g grass, b water, a stone (soft)
 uniform vec4 scroll_rect = vec4(-1.0);
 uniform vec4 shrine_rect = vec4(-1.0);   // FV finish peak (tile x0, y0, x1, y1)
 uniform vec2 shrine_trophy = vec2(-100.0);   // FV parchment scroll (tile x0, y0, x1, y1), -1 = none
@@ -647,6 +648,45 @@ void fragment() {
 		emit += vec3(solid, 1.0 - solid, 0.0) * 0.25 + vec3(1.0, 1.0, 0.0) * line * 0.6;
 	}
 
+	// ---- material transitions (day levels): pair-specific blends along the soft neighbourhood masks ----
+	if (scroll_rect.x >= 0.0 && layer == 0 && mat != M_WATER) {
+		// warped lookup so bands never follow the tile grid
+		vec2 tq = p + vec2(fbm2(p * 1.3), fbm2(p * 1.3 + 5.0)) * 0.35;
+		vec4 tr = textureLod(trans_tex, tq / level_size, 0.0);
+		// sample slightly above: what sits on top of this tile (canopy overhang, grass fringe)
+		vec4 tr_up = textureLod(trans_tex, (tq - vec2(0.0, 0.6)) / level_size, 0.0);
+		float nz = fbm2(p * 3.1) * 0.5 + 0.5;
+		vec3 leaf = srgb_to_lin(vec3(0.3, 0.52, 0.16));
+		vec3 soil = srgb_to_lin(vec3(0.3, 0.2, 0.12));
+		if (mat != M_FOLIAGE) {
+			// LEAVES -> trunk / earth / stone: leaves spill over the top (height-based: canopy is 'higher'),
+			// litter speckles on up-faces below canopies
+			float spill = smoothstep(0.25, 0.7, tr_up.r + (nz - 0.5) * 0.5) * smoothstep(0.0, 0.5, gn.y + 0.4);
+			albedo = mix(albedo, leaf * mix(0.6, 1.1, nz), spill * 0.85);
+			float litter = step(0.8, hash12(floor(p * 7.0))) * smoothstep(0.1, 0.4, tr.r + tr_up.r) * smoothstep(0.4, 0.8, gn.y);
+			albedo = mix(albedo, mix(srgb_to_lin(vec3(0.45, 0.32, 0.12)), leaf, hash12(floor(p * 7.0) + 3.0)), litter * 0.8);
+		}
+		if (mat != M_GRASS && mat != M_FOLIAGE) {
+			// GRASS -> earth: overhanging grass fringe fading down the face, with dangling root streaks
+			float fringe = smoothstep(0.2, 0.75, tr_up.g + (nz - 0.5) * 0.4);
+			albedo = mix(albedo, srgb_to_lin(vec3(0.3, 0.46, 0.14)) * mix(0.7, 1.1, nz), fringe * 0.7);
+			float roots = smoothstep(0.93, 0.99, ridge(vec2(p.x * 3.0 + fbm2(p) * 0.6, p.y * 0.5))) * smoothstep(0.05, 0.4, tr_up.g) * (1.0 - fringe);
+			albedo = mix(albedo, soil * 0.6, roots * 0.7);
+		}
+		if (mat == M_RUIN || mat == M_STONE) {
+			// EARTH -> STONE: soil packed into the stone, moss creeping up from the earth side
+			float earthy = 1.0 - max(max(tr.a, tr.r), tr.g);
+			albedo = mix(albedo, soil * mix(0.8, 1.2, nz), smoothstep(0.35, 0.8, earthy + (nz - 0.5) * 0.4) * 0.45);
+			float creep = smoothstep(0.3, 0.8, tr.g + tr.r * 0.6 + (nz - 0.5) * 0.5);
+			albedo = mix(albedo, srgb_to_lin(vec3(0.2, 0.34, 0.1)), creep * 0.5 * smoothstep(-0.2, 0.6, gn.y));
+		}
+		// WATER -> stone / earth: wet dark band with algae near the waterline
+		float wetb = smoothstep(0.05, 0.5, tr.b + (nz - 0.5) * 0.25);
+		albedo = mix(albedo, albedo * 0.45, wetb * 0.8);
+		albedo = mix(albedo, srgb_to_lin(vec3(0.12, 0.3, 0.12)), wetb * smoothstep(0.4, 0.7, nz) * 0.5);
+		rough = mix(rough, 0.18, wetb * 0.8);
+		spec = mix(spec, 0.7, wetb * 0.6);
+	}
 	// crisp micro grain on every rock-like surface
 	if (mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {
 		// single planar projection (front-facing) is enough for the fine grain; skipped on steep cliffs

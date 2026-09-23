@@ -6,6 +6,7 @@ extends Node
 const GameScript := preload("res://scripts/game/game.gd")
 const SPOTS_FV := [
 	["spawn", Vector2(6, 56)],
+	["lawn", Vector2(2, 57)],
 	["grove", Vector2(30, 44)],
 	["ruins", Vector2(40, 92)],
 	["spire", Vector2(200, 30)],
