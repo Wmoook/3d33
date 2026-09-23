@@ -115,6 +115,8 @@ func _ready() -> void:
 			only = a.substr(5).split(",")
 		elif a == "perf":
 			_perf = true
+		elif a == "novoxel":
+			WorldVoxel.enabled = false
 		elif a == "nodepth":
 			WorldView.depth_enabled = false
 		elif a == "grid":

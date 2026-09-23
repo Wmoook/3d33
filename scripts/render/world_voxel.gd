@@ -1,5 +1,6 @@
 class_name WorldVoxel
 extends Node3D
+@warning_ignore_start("integer_division")
 ## Day levels: a MINECRAFT-STYLE procedural voxel landscape behind the level, in the level's own block
 ## language (1-unit cubes, the level's palette: grass 35/19, earth 45/47/48, stone 9/46/86, leaves 14,
 ## trunks 16/48, water 54/10, sand 88, ruin stone 42).
@@ -108,17 +109,17 @@ class Noises:
 	var cave := FastNoiseLite.new()
 
 	func _init() -> void:
-		_set(hill, 101, 0.028, 4, FastNoiseLite.FRACTAL_FBM)
-		_set(detail, 102, 0.11, 2, FastNoiseLite.FRACTAL_FBM)
-		_set(mask, 103, 0.0085, 3, FastNoiseLite.FRACTAL_FBM)
-		_set(ridge, 104, 0.019, 4, FastNoiseLite.FRACTAL_RIDGED)
-		_set(cliff, 105, 0.021, 2, FastNoiseLite.FRACTAL_FBM)
-		_set(forest, 106, 0.03, 3, FastNoiseLite.FRACTAL_FBM)
-		_set(under, 107, 0.07, 3, FastNoiseLite.FRACTAL_RIDGED)
-		_set(biome, 108, 0.014, 2, FastNoiseLite.FRACTAL_FBM)
-		_set(cave, 109, 0.06, 3, FastNoiseLite.FRACTAL_FBM)
+		_cfg(hill, 101, 0.028, 4, FastNoiseLite.FRACTAL_FBM)
+		_cfg(detail, 102, 0.11, 2, FastNoiseLite.FRACTAL_FBM)
+		_cfg(mask, 103, 0.0085, 3, FastNoiseLite.FRACTAL_FBM)
+		_cfg(ridge, 104, 0.019, 4, FastNoiseLite.FRACTAL_RIDGED)
+		_cfg(cliff, 105, 0.021, 2, FastNoiseLite.FRACTAL_FBM)
+		_cfg(forest, 106, 0.03, 3, FastNoiseLite.FRACTAL_FBM)
+		_cfg(under, 107, 0.07, 3, FastNoiseLite.FRACTAL_RIDGED)
+		_cfg(biome, 108, 0.014, 2, FastNoiseLite.FRACTAL_FBM)
+		_cfg(cave, 109, 0.06, 3, FastNoiseLite.FRACTAL_FBM)
 
-	func _set(n: FastNoiseLite, s: int, f: float, o: int, t: FastNoiseLite.FractalType) -> void:
+	func _cfg(n: FastNoiseLite, s: int, f: float, o: int, t: FastNoiseLite.FractalType) -> void:
 		n.seed = s
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		n.frequency = f
@@ -186,7 +187,7 @@ func setup(terrain: WorldTerrain, depth: WorldDepth, vista: WorldVista) -> void:
 	timings["voxel_setup"] = Time.get_ticks_msec() - t0
 
 func _fallback_base(x: float) -> float:
-	var lx := clampi(int(floor(x)), 0, W - 1)
+	var lx := clampi(int(floorf(x)), 0, W - 1)
 	return maxf(_ab[lx] - 6.0, float(WATER_Y) - 2.0)
 
 func _load_palette(ref_dir: String) -> void:
@@ -294,7 +295,7 @@ func _row_task(k: int) -> void:
 	var mtn_env := smoothstep(26.0, 48.0, d) * (1.0 - smoothstep(74.0, 89.0, d))
 	for i in NX:
 		var x := X0 + i + 0.5
-		var lx := clampi(int(floor(x)), 0, W - 1)
+		var lx := clampi(int(floorf(x)), 0, W - 1)
 		var hmax := cl[lx] - 1.5 + rise
 		var v := _vista_at(i, k)
 		var base := v
@@ -315,10 +316,10 @@ func _row_task(k: int) -> void:
 		h += mask * (12.0 + 78.0 * rg * rg)
 		var cliffy := smoothstep(0.05, 0.4, nz.cliff.get_noise_2d(x, z)) * env_h
 		if cliffy > 0.0:
-			var step := 7.0
-			var q := h / step
-			var f := q - floor(q)
-			h = lerpf(h, (floor(q) + smoothstep(0.5, 0.8, f)) * step, cliffy)
+			var tstep := 7.0
+			var q := h / tstep
+			var f := q - floorf(q)
+			h = lerpf(h, (floorf(q) + smoothstep(0.5, 0.8, f)) * tstep, cliffy)
 		# the river valley (continues the falls' pool) and the lake floor
 		if valley > 0.2:
 			var rd := absf(x - riv)
@@ -410,7 +411,7 @@ func _place_islands() -> void:
 			continue
 		var falls := 1.0 if (R > 7.0 and rng.randf() < 0.6) else 0.0
 		var ruin := 1.0 if rng.randf() < 0.6 else 0.0
-		_islands.append(PackedFloat32Array([cx, floor(cy), ck, R, Rz, D, falls, ruin]))
+		_islands.append(PackedFloat32Array([cx, floorf(cy), ck, R, Rz, D, falls, ruin]))
 
 ## Island top / bottom at a column, or Vector2(NAN, NAN).
 func _island_col(isl: PackedFloat32Array, x: float, k: float, nz: Noises) -> Vector2:
@@ -425,7 +426,7 @@ func _island_col(isl: PackedFloat32Array, x: float, k: float, nz: Noises) -> Vec
 	var top := isl[1] + (1.0 - q) * 1.6 + nz.hill.get_noise_2d(x * 2.0, k * 2.0) * 0.9
 	var s01 := nz.under.get_noise_2d(x * 1.3 + 50.0, k * 1.3) * 0.5 + 0.5
 	var bot := isl[1] - isl[5] * pow(1.0 - q, 0.62) * (0.7 + 0.6 * s01) - 1.0
-	return Vector2(floor(top) + 1.0, bot)
+	return Vector2(floorf(top) + 1.0, bot)
 
 # ------------------------------------------------------------------- P2 3D noise lattice
 func _n3_task(gk: int) -> void:
@@ -474,8 +475,8 @@ func _fill_task(k: int) -> void:
 		var hb := _H[ci + NX] if k < NZ - 1 else h
 		var slope := maxf(absf(hr - hl), absf(hb - hf)) * 0.5
 		var snow_y := -34.0 + nz.biome.get_noise_2d(x, z) * 10.0
-		var jhi := mini(NY - 1, int(floor(h + amp - Y0)) + 1)
-		var jlo := maxi(0, int(floor(b - Y0)))
+		var jhi := mini(NY - 1, int(floorf(h + amp - Y0)) + 1)
+		var jlo := maxi(0, int(floorf(b - Y0)))
 		col.fill(0)
 		# solid mask (with 3D overhangs in the band around the surface)
 		for j in range(jlo, jhi + 1):
@@ -488,13 +489,13 @@ func _fill_task(k: int) -> void:
 			if dens > 0.0:
 				col[j] = 1
 		# islands
-		for isl in _islands:
+		for isl: PackedFloat32Array in _islands:
 			if absf(x - isl[0]) > isl[3] * 1.2 or absf(kf - isl[2]) > isl[4] * 1.2:
 				continue
 			var tb := _island_col(isl, x, kf, nz)
 			if is_nan(tb.x):
 				continue
-			for j in range(maxi(0, int(floor(tb.y - Y0))), mini(NY, int(tb.x - Y0))):
+			for j in range(maxi(0, int(floorf(tb.y - Y0))), mini(NY, int(tb.x - Y0))):
 				col[j] = 2
 		# materials, top-down
 		var dep := 0
@@ -504,7 +505,7 @@ func _fill_task(k: int) -> void:
 		for jj in range(NY - 1, -1, -1):
 			if col[jj] == 0:
 				dep = 0
-				if Y0 + jj + 1 <= WATER_Y and jj >= jlo and jj <= jhi + 1 and col[jj] == 0 and jj > 0 and h < WATER_Y:
+				if h < WATER_Y and Y0 + jj + 1 <= WATER_Y and jj >= jlo:
 					buf[jj * NX + i] = WATER
 				continue
 			var yt := Y0 + jj + 1.0   # top of this block
@@ -539,7 +540,7 @@ func _fill_task(k: int) -> void:
 func _vi(i: int, j: int, k: int) -> int:
 	return (k * NY + j) * NX + i
 
-func _get(i: int, j: int, k: int) -> int:
+func _vget(i: int, j: int, k: int) -> int:
 	if i < 0 or j < 0 or k < 0 or i >= NX or j >= NY or k >= NZ:
 		return AIR
 	return vox[(k * NY + j) * NX + i]
@@ -593,11 +594,11 @@ func _trees(rng: RandomNumberGenerator, nz: Noises) -> void:
 			if rng.randf() > dens * 0.85 + 0.05:
 				continue
 			var j := _col_top(i, k)
-			if j < 0 or _get(i, j, k) != GRASS and _get(i, j, k) != SNOW_GRASS:
+			if j < 0 or _vget(i, j, k) != GRASS and _vget(i, j, k) != SNOW_GRASS:
 				continue
 			var y := Y0 + j + 1.0
 			var room := _hmax(i, k) - y
-			var pine := y > -95.0 + f * 20.0 or _get(i, j, k) == SNOW_GRASS or rng.randf() < 0.25
+			var pine := y > -95.0 + f * 20.0 or _vget(i, j, k) == SNOW_GRASS or rng.randf() < 0.25
 			if pine:
 				var ph := rng.randi_range(7, 12)
 				if room < ph + 1:
@@ -654,7 +655,7 @@ func _big_oak(i: int, j: int, k: int, rng: RandomNumberGenerator) -> void:
 		for d in 4:
 			_put(i + d % 2, j + y, k + d / 2, LOG, false)
 	# roots
-	for d in [Vector2i(-1, 0), Vector2i(2, 1), Vector2i(0, 2), Vector2i(1, -1)]:
+	for d: Vector2i in [Vector2i(-1, 0), Vector2i(2, 1), Vector2i(0, 2), Vector2i(1, -1)]:
 		_put(i + d.x, j, k + d.y, LOG, false)
 	var blobs := [Vector3(0.5, h + 0.5, 0.5)]
 	for _b in 3:
@@ -667,16 +668,16 @@ func _big_oak(i: int, j: int, k: int, rng: RandomNumberGenerator) -> void:
 				for dk in range(-ri, ri + 1):
 					var p := Vector3(dx, dy * 1.25, dk)
 					if p.length() <= r + rng.randf_range(-0.4, 0.3):
-						_leaf(i + int(floor(bl.x)) + dx, j + int(floor(bl.y)) + dy, k + int(floor(bl.z)) + dk, LEAVES)
+						_leaf(i + int(floorf(bl.x)) + dx, j + int(floorf(bl.y)) + dy, k + int(floorf(bl.z)) + dk, LEAVES)
 		# branch to the blob
 		var steps := 6
 		for s in steps:
 			var p := Vector3(0.5, h - 3.0, 0.5).lerp(bl, float(s) / steps)
-			_put(i + int(floor(p.x)), j + int(floor(p.y)), k + int(floor(p.z)), LOG, false)
+			_put(i + int(floorf(p.x)), j + int(floorf(p.y)), k + int(floorf(p.z)), LOG, false)
 
 # ---- islands: ruins on top, waterfalls off the front edge
 func _island_features(rng: RandomNumberGenerator) -> void:
-	for isl in _islands:
+	for isl: PackedFloat32Array in _islands:
 		var ci := int(isl[0] - X0)
 		var ck := int(isl[2])
 		if isl[7] > 0.5:
@@ -705,7 +706,7 @@ func _island_features(rng: RandomNumberGenerator) -> void:
 			var ti := ci + rng.randi_range(-int(isl[3] * 0.6), int(isl[3] * 0.6))
 			var tk := ck + rng.randi_range(-int(isl[4] * 0.5), int(isl[4] * 0.5))
 			var j := _top(ti, tk, int(isl[1] - Y0) + 3)
-			if j < 0 or _get(ti, j, tk) != GRASS:
+			if j < 0 or _vget(ti, j, tk) != GRASS:
 				continue
 			if rng.randf() < 0.5:
 				_oak(ti, j + 1, tk, rng.randi_range(4, 5), rng)
@@ -725,23 +726,23 @@ func _ruins(rng: RandomNumberGenerator) -> void:
 			continue
 		var h := _H[ci]
 		var flat := true
-		for o in [Vector2i(-3, 0), Vector2i(3, 0), Vector2i(0, -3), Vector2i(0, 3)]:
+		for o: Vector2i in [Vector2i(-3, 0), Vector2i(3, 0), Vector2i(0, -3), Vector2i(0, 3)]:
 			if absf(_H[(k + o.y) * NX + i + o.x] - h) > 1.6:
 				flat = false
 		if not flat or h <= WATER_Y + 1:
 			continue
 		var j := _col_top(i, k)
-		if j < 0 or _get(i, j, k) != GRASS:
+		if j < 0 or _vget(i, j, k) != GRASS:
 			continue
 		if _ruin_at(i, j + 1, k, rng.randi_range(0, 3), rng, _hmax(i, k) - (Y0 + j + 1.0)):
 			placed += 1
 
 ## type 0 = pillar group, 1 = arch, 2 = broken wall, 3 = shrine plinth with columns. Returns false if no room.
-func _ruin_at(i: int, j: int, k: int, type: int, rng: RandomNumberGenerator, room: float) -> bool:
+func _ruin_at(i: int, j: int, k: int, kind: int, rng: RandomNumberGenerator, room: float) -> bool:
 	if room < 6.0:
 		return false
 	var hmax := int(minf(room - 1.0, 12.0))
-	match type:
+	match kind:
 		0:
 			for p in rng.randi_range(1, 3):
 				var pi := i + rng.randi_range(-4, 4)
@@ -752,7 +753,7 @@ func _ruin_at(i: int, j: int, k: int, type: int, rng: RandomNumberGenerator, roo
 					_put(pi, pj + y, pk, RUIN, false)
 				_put(pi, pj + ph, pk, RUIN_MOSS if rng.randf() < 0.6 else RUIN, false)
 				# plinth
-				for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+				for d: Vector2i in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
 					if rng.randf() < 0.7:
 						_put(pi + d.x, pj, pk + d.y, RUIN, false)
 				# fallen drum
@@ -762,7 +763,7 @@ func _ruin_at(i: int, j: int, k: int, type: int, rng: RandomNumberGenerator, roo
 			var span := rng.randi_range(3, 5)
 			var ph := clampi(rng.randi_range(5, 8), 4, hmax - 1)
 			var broken := rng.randf() < 0.5
-			for side in [-1, 1]:
+			for side: int in [-1, 1]:
 				var px := i + side * (span / 2 + 1)
 				var pj := _top(px, k, j + 3) + 1
 				var top := j + ph
@@ -794,7 +795,7 @@ func _ruin_at(i: int, j: int, k: int, type: int, rng: RandomNumberGenerator, roo
 				for dk in range(-2, 3):
 					_put(i + dx, j, k + dk, RUIN, false)
 			var ch := clampi(rng.randi_range(4, 7), 3, hmax - 1)
-			for c in [Vector2i(-3, -2), Vector2i(3, -2), Vector2i(-3, 2), Vector2i(3, 2)]:
+			for c: Vector2i in [Vector2i(-3, -2), Vector2i(3, -2), Vector2i(-3, 2), Vector2i(3, 2)]:
 				var cc: Vector2i = c
 				var hh := ch - (rng.randi_range(0, ch - 1) if rng.randf() < 0.4 else 0)
 				for y in range(1, hh + 1):
@@ -818,7 +819,7 @@ func _cliff_falls(rng: RandomNumberGenerator) -> void:
 		if h - _H[kf * NX + i] < 9.0 or _AMP[ci] > 0.5:
 			continue
 		var jt := _col_top(i, k)
-		if jt < 0 or _get(i, jt, k) != GRASS:
+		if jt < 0 or _vget(i, jt, k) != GRASS:
 			continue
 		for w in 2:
 			for dk in range(0, 6):
@@ -841,7 +842,7 @@ func _plants(rng: RandomNumberGenerator, nz: Noises) -> void:
 	for k in range(12, PLANT_K):
 		for i in NX:
 			var j := _col_top(i, k)
-			if j < 0 or j >= NY - 2 or _get(i, j, k) != GRASS or _get(i, j + 1, k) != AIR:
+			if j < 0 or j >= NY - 2 or _vget(i, j, k) != GRASS or _vget(i, j + 1, k) != AIR:
 				continue
 			var fl := nz.biome.get_noise_2d(i * 0.9, k * 0.9)
 			var r := rng.randf()
@@ -864,12 +865,10 @@ func _mesh_task(c: int) -> void:
 		return
 	var ncx := NX / CHX
 	var ncy := NY / CHY
-	var cxi := c % ncx
-	var cyi := (c / ncx) % ncy
-	var cki := c / (ncx * ncy)
-	var i0 := cxi * CHX
-	var j0 := cyi * CHY
-	var k0 := cki * CHK
+	var i0 := (c % ncx) * CHX
+	var j0 := ((c / ncx) % ncy) * CHY
+	var k0 := (c / (ncx * ncy)) * CHK
+	var j1 := j0 + CHY
 	var ob := Buf.new()
 	var wb := Buf.new()
 	var pb := Buf.new()
@@ -879,58 +878,82 @@ func _mesh_task(c: int) -> void:
 		var zf := -float(Z0 + k)
 		for i in range(i0, i0 + CHX):
 			var x := float(X0 + i)
-			var run := [-1, -1, -1]      # opaque +x, -x, +z runs (start j)
-			var wrun := [-1, -1, -1]     # water runs
-			for j in range(j0, j0 + CHY + 1):
-				var inside := j < j0 + CHY
-				var id := vox[k * sk + j * sy + i] if inside else AIR
-				var s := inside and _occ(id)
-				var wt := inside and id == WATER
-				var ex := [false, false, false]
-				var wx := [false, false, false]
-				if s or wt:
-					var p := k * sk + j * sy + i
-					var npx := vox[p + 1] if i < NX - 1 else STONE
-					var nnx := vox[p - 1] if i > 0 else STONE
-					var nfz := vox[p - sk] if k > 0 else AIR
-					if s:
-						ex = [not _occ(npx), not _occ(nnx), not _occ(nfz)]
+			var colb := k * sk + i
+			# open vertical runs (start j, -1 = none): opaque +x, -x, +z and water +x, -x, +z
+			var r0 := -1
+			var r1 := -1
+			var r2 := -1
+			var w0 := -1
+			var w1 := -1
+			var w2 := -1
+			for j in range(j0, j1 + 1):
+				var e0 := false
+				var e1 := false
+				var e2 := false
+				var f0 := false
+				var f1 := false
+				var f2 := false
+				if j < j1:
+					var p := colb + j * sy
+					var id := vox[p]
+					if id != 0:
+						var npx := vox[p + 1] if i < NX - 1 else STONE
+						var nnx := vox[p - 1] if i > 0 else STONE
+						var nfz := vox[p - sk] if k > 0 else AIR
 						var up := vox[p + sy] if j < NY - 1 else AIR
-						var dn := vox[p - sy] if j > 0 else STONE
-						var y := float(Y0 + j)
-						if not _occ(up):
-							_quad(ob, Vector3(x, y + 1.0, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
-						if not _occ(dn):
-							_quad(ob, Vector3(x, y, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, -1, 0))
+						if id < 64:
+							e0 = npx == 0 or npx > 63
+							e1 = nnx == 0 or nnx > 63
+							e2 = nfz == 0 or nfz > 63
+							if up == 0 or up > 63:
+								_quad(ob, Vector3(x, Y0 + j + 1.0, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
+							var dn := vox[p - sy] if j > 0 else STONE
+							if dn == 0 or dn > 63:
+								_quad(ob, Vector3(x, float(Y0 + j), zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, -1, 0))
+						elif id == WATER:
+							f0 = npx == 0 or npx > WATER
+							f1 = nnx == 0 or nnx > WATER
+							f2 = nfz == 0 or nfz > WATER
+							if up != WATER and (up == 0 or up > 63):
+								_quad(wb, Vector3(x, Y0 + j + 0.88, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
+						elif k < PLANT_K:
+							_plant(pb, x, float(Y0 + j), zf, id, (i * 73856093) ^ (k * 19349663))
+				if e0 != (r0 >= 0):
+					if e0: r0 = j
 					else:
-						wx = [npx == AIR or npx >= TALLGRASS, nnx == AIR or nnx >= TALLGRASS, nfz == AIR or nfz >= TALLGRASS]
-						var up := vox[p + sy] if j < NY - 1 else AIR
-						if up != WATER and not _occ(up):
-							_quad(wb, Vector3(x, Y0 + j + 0.88, zf), Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
-				elif inside and id >= TALLGRASS and k < PLANT_K:
-					_plant(pb, x, float(Y0 + j), zf, id, (i * 73856093) ^ (k * 19349663))
-				for d in 3:
-					_runs(ob, run, d, ex[d], j, x, zf)
-					_runs(wb, wrun, d, wx[d], j, x, zf)
+						_side(ob, 0, r0, j, x, zf); r0 = -1
+				if e1 != (r1 >= 0):
+					if e1: r1 = j
+					else:
+						_side(ob, 1, r1, j, x, zf); r1 = -1
+				if e2 != (r2 >= 0):
+					if e2: r2 = j
+					else:
+						_side(ob, 2, r2, j, x, zf); r2 = -1
+				if f0 != (w0 >= 0):
+					if f0: w0 = j
+					else:
+						_side(wb, 0, w0, j, x, zf); w0 = -1
+				if f1 != (w1 >= 0):
+					if f1: w1 = j
+					else:
+						_side(wb, 1, w1, j, x, zf); w1 = -1
+				if f2 != (w2 >= 0):
+					if f2: w2 = j
+					else:
+						_side(wb, 2, w2, j, x, zf); w2 = -1
 	_chunks[c] = [ob, wb, pb]
 
-func _runs(b: Buf, run: Array, d: int, on: bool, j: int, x: float, zf: float) -> void:
-	if on:
-		if run[d] < 0:
-			run[d] = j
-		return
-	if run[d] < 0:
-		return
-	var y0 := float(Y0 + int(run[d]))
-	var hh := float(j - int(run[d]))
-	run[d] = -1
-	match d:
-		0:
-			_quad(b, Vector3(x + 1.0, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(1, 0, 0))
-		1:
-			_quad(b, Vector3(x, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(-1, 0, 0))
-		2:
-			_quad(b, Vector3(x, y0, zf), Vector3(1, 0, 0), Vector3(0, hh, 0), Vector3(0, 0, 1))
+## A vertical run of side faces from row ja (inclusive) to jb (exclusive). d: 0 = +x, 1 = -x, 2 = +z.
+func _side(b: Buf, d: int, ja: int, jb: int, x: float, zf: float) -> void:
+	var y0 := float(Y0 + ja)
+	var hh := float(jb - ja)
+	if d == 0:
+		_quad(b, Vector3(x + 1.0, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(1, 0, 0))
+	elif d == 1:
+		_quad(b, Vector3(x, y0, zf), Vector3(0, hh, 0), Vector3(0, 0, -1), Vector3(-1, 0, 0))
+	else:
+		_quad(b, Vector3(x, y0, zf), Vector3(1, 0, 0), Vector3(0, hh, 0), Vector3(0, 0, 1))
 
 func _quad(b: Buf, o: Vector3, du: Vector3, dv: Vector3, n: Vector3) -> void:
 	var base := b.v.size()
@@ -938,12 +961,17 @@ func _quad(b: Buf, o: Vector3, du: Vector3, dv: Vector3, n: Vector3) -> void:
 	b.v.append(o + du)
 	b.v.append(o + du + dv)
 	b.v.append(o + dv)
-	for _q in 4:
-		b.n.append(n)
-	if du.cross(dv).dot(n) > 0.0:
-		b.idx.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
-	else:
-		b.idx.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	b.n.append(n)
+	b.n.append(n)
+	b.n.append(n)
+	b.n.append(n)
+	var fl := du.cross(dv).dot(n) > 0.0
+	b.idx.append(base)
+	b.idx.append(base + (2 if fl else 1))
+	b.idx.append(base + (1 if fl else 2))
+	b.idx.append(base)
+	b.idx.append(base + (3 if fl else 2))
+	b.idx.append(base + (2 if fl else 3))
 
 ## Two crossed quads (double-sided in the shader). UV2 = (plant id, random 0..1).
 func _plant(b: Buf, x: float, y: float, zf: float, id: int, seed_v: int) -> void:
@@ -1085,12 +1113,12 @@ func _upload_chunk(c: int) -> void:
 func block_at(p: Vector3) -> int:
 	if vox.is_empty():
 		return AIR
-	return _get(int(floor(p.x - X0)), int(floor(p.y - Y0)), int(floor(-p.z - Z0)))
+	return _vget(int(floorf(p.x - X0)), int(floorf(p.y - Y0)), int(floorf(-p.z - Z0)))
 
 ## Surface height of the voxel terrain at world (x, z) (NAN outside the volume / before the build).
 func height_at(x: float, z: float) -> float:
-	var i := int(floor(x - X0))
-	var k := int(floor(-z - Z0))
+	var i := int(floorf(x - X0))
+	var k := int(floorf(-z - Z0))
 	if _H.is_empty() or i < 0 or i >= NX or k < 0 or k >= NZ:
 		return NAN
 	return _H[k * NX + i]

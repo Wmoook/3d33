@@ -30,6 +30,7 @@ var keels: WorldKeels
 var vista: WorldVista
 var depth: WorldDepth
 var depth_green: WorldDepthGreen
+var voxel: WorldVoxel
 var grass: WorldGrass
 var foliage: WorldFoliage
 var is_built := false
@@ -179,10 +180,16 @@ func _step_vista() -> void:
 		return
 	var t := Time.get_ticks_msec()
 	vista = _add(WorldVista.new(), "Vista")
+	if WorldVoxel.enabled:
+		vista.near_limit = WorldVoxel.BACK_Z   # the vista starts behind the voxel volume (z -91)
 	if depth:
 		vista.set_depth_seam(depth.depth_seam())
 	vista.build(level, lights.moon.transform.basis.z, atmosphere.sky_mat)
 	timings["vista"] = Time.get_ticks_msec() - t
+	if WorldVoxel.enabled:
+		voxel = _add(WorldVoxel.new(), "Voxel")
+		voxel.setup(terrain, depth, vista)
+		timings.merge(voxel.timings)
 
 func _add(n: Node, nm: String) -> Node:
 	n.name = nm
@@ -197,6 +204,8 @@ func _finish() -> void:
 		if trials:
 			trials.sim = sim
 	print("WorldView built in %d ms %s" % [build_ms, str(timings)])
+	if voxel:
+		voxel.start()
 	built.emit()
 
 func set_sim(s) -> void:
