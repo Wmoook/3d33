@@ -95,14 +95,25 @@ func _hide_decor(wv: WorldView, nm: String) -> void:
 func _patch_terrain(wv: WorldView) -> void:
 	var mat: ShaderMaterial = wv.terrain.material
 	var code: String = mat.shader.code.replace("\r\n", "\n")
-	code = code.replace('#include "res://shaders/world/terrain_common.gdshaderinc"',
-		'#include "res://shaders/world/terrain_common.gdshaderinc"\n#include "res://shaders/world/pbr_detail.gdshaderinc"')
-	var anchor := "\tif (layer == 0) {\n\t\t// soft rim of the bevel"
-	assert(code.find(anchor) >= 0, "anchor 1 missing")
-	code = code.replace(anchor, "\tfloat pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);\n" + anchor)
-	var a2 := "if (mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {"
-	assert(code.find(a2) >= 0, "anchor 2 missing")
-	code = code.replace(a2, "if (pbr_k < 0.5 && mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {")
+	if code.find("// DETAIL-PATCH #include") >= 0:
+		# world applied the patch commented out: switch it on
+		code = code.replace('// DETAIL-PATCH #include', '#include')
+		var rx := RegEx.new()
+		rx.compile("float pbr_k = 0\\.0;\\s*// DETAIL-PATCH: ([^\\n]*)")
+		code = rx.sub(code, "float pbr_k = $1", true)
+	elif code.find("pbr_detail.gdshaderinc") < 0:
+		code = code.replace('#include "res://shaders/world/terrain_common.gdshaderinc"',
+			'#include "res://shaders/world/terrain_common.gdshaderinc"
+#include "res://shaders/world/pbr_detail.gdshaderinc"')
+		var anchor := "	if (layer == 0) {
+		// soft rim of the bevel"
+		assert(code.find(anchor) >= 0, "anchor 1 missing")
+		code = code.replace(anchor, "	float pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+" + anchor)
+		var a2 := "if (mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {"
+		assert(code.find(a2) >= 0, "anchor 2 missing")
+		code = code.replace(a2, "if (pbr_k < 0.5 && mat != M_WATER && mat != M_ICE && mat != M_GLASS && mat != M_GEM && mat != M_OBSIDIAN && mat != M_MARBLE) {")
+	assert(code.find("pbr_k = (layer") >= 0, "pbr call missing")
 	var sh := Shader.new()
 	sh.code = code
 	mat.shader = sh

@@ -40,7 +40,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 			if terrain.solid[i]:
 				var m: int = terrain.mat_ids[i]
 				# lawn / leafy tops are WorldGrass's (dense blade carpet); deco tufts and the shrine stay here
-				if above_air and (m == WorldPalette.M_GRASS or (m == WorldPalette.M_FOLIAGE and _leafy(terrain, x, y, W, H))):
+				if WorldPalette.is_odyssey() and above_air and (m == WorldPalette.M_GRASS or (m == WorldPalette.M_FOLIAGE and _leafy(terrain, x, y, W, H))):
 					var base := WorldPalette.base_color(id)
 					var cnt := 5 if m == WorldPalette.M_GRASS else 3
 					for k in cnt:
@@ -156,7 +156,8 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	_add_mm("GlowFloaters", _pebble_mesh(), _mat_glow, glow_x, glow_c, true)
 	_add_mm("Grass", _grass_mesh(), _mat_foliage, grass_x, grass_c)
 	_build_cave_depth(lvl, terrain)
-	_add_mm("Leaves", _leaf_mesh(), _mat_foliage, leaf_x, leaf_c)   # DETAIL-PATCH: remove when WorldFoliage is live
+	if WorldPalette.is_odyssey():   # on day levels the crown edges are WorldFoliage's leaf cards
+		_add_mm("Leaves", _leaf_mesh(), _mat_foliage, leaf_x, leaf_c)
 	_add_mm("Rocks", _rock_mesh(), _mat_prop, rock_x, rock_c)
 	_add_mm("Bulbs", _sphere(), _mat_glow, bulb_x, bulb_c, true)
 	_add_mm("Cones", _cone(), _mat_prop, cone_x, cone_c)

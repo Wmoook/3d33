@@ -77,7 +77,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		moon.shadow_blur = 0.8
 		moon.rotation_degrees = Vector3(-42.0, -24.0, 0.0)
 		moon.light_angular_distance = 1.5
-		moon.light_volumetric_fog_energy = 1.1
+		moon.light_volumetric_fog_energy = 0.25   # (strong values streak the open sky with vertical shafts)
 		sun_scale = 1.8
 	_make_cluster_lights(lvl, terrain)
 	if WorldPalette.is_odyssey():

@@ -2,7 +2,7 @@ shader_type spatial;
 render_mode depth_draw_opaque, cull_back;
 
 #include "res://shaders/world/terrain_common.gdshaderinc"
-// DETAIL-PATCH #include "res://shaders/world/pbr_detail.gdshaderinc"
+#include "res://shaders/world/pbr_detail.gdshaderinc"
 
 uniform sampler2D fgcol_tex : source_color, filter_nearest, repeat_disable; // rgb colour, a = material/255 (dilated)
 uniform sampler2D orig_tex : source_color, filter_nearest, repeat_disable;  // pre-merge colours (the painting's dither)
@@ -399,10 +399,13 @@ void fragment() {
 		albedo = albedo * mix(0.9, 1.05, cloud) * mix(1.0, 0.8, vein);
 		rough = 0.42;
 		spec = 0.4;
-		// crisp bevel highlight + faint sun glint on the top faces
-		float bevm = 1.0 - smoothstep(0.0, 0.12, max(s.x, 0.0));
-		albedo *= (1.0 + bevm * 0.15) * 0.82;
-		emit += vec3(1.0, 0.95, 0.85) * smoothstep(0.6, 0.95, gn.y) * 0.06;
+		if (scroll_rect.x >= 0.0) {
+			// day levels (FV V-bird stepping stones): matte weathered pale stone - no glow, calm
+			albedo *= 0.55 * mix(0.85, 1.05, dh);
+			rough = 0.85;
+			spec = 0.25;
+			n = normalize(mix(gn, dn, 0.5));
+		}
 		n = normalize(mix(gn, dn, 0.25));
 	} else if (mat == M_SNOW) {
 		albedo = mix(albedo, vec3(0.85, 0.9, 1.0), 0.35) * mix(0.85, 1.05, dh);
@@ -629,7 +632,7 @@ void fragment() {
 		n = normalize(mix(gn, dn, 0.8 * detail_amt));
 	}
 
-	float pbr_k = 0.0;   // DETAIL-PATCH: (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+	float pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
 	if (layer == 0) {
 		// soft rim of the bevel catches light; tiny cavity darkening at colour boundaries
 		albedo *= mix(1.0, 0.8, boundary);

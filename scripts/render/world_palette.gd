@@ -29,7 +29,7 @@ const FV_RECT_SCROLL := Rect2i(350, 0, 48, 72)
 const FV_SHRINE := Vector2i(394, 74)
 const FV_RECT_SHRINE := Rect2i(385, 70, 15, 16)
 ## Forgotten Veil sky backdrop bg ids (pastel blue sky, painted clouds / snowy mountains).
-const FV_SKY_BG := [530, 531, 540]
+const FV_SKY_BG := [530, 531, 540, 541, 542, 543, 544]
 
 ## Priority-ordered zone rectangles (x0, y0, x1, y1), inclusive-exclusive. First match wins.
 const ZONE_RECTS := [

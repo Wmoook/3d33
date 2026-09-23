@@ -1,7 +1,8 @@
 shader_type spatial;
 // WorldFoliage leaf-cluster cards (QuadMesh, MultiMesh). Atlas 2x2: leaf_albedo R = leaf luminance (0.5 =
 // mean), G = translucency/thickness, A = coverage; leaf_normal RGB = card-space normal (GL), A = coverage.
-// INSTANCE_CUSTOM: rgb = painted canopy colour (linear), a = atlas cell (int part) + depth shade (fract).
+// INSTANCE_CUSTOM: rgb = painted canopy colour (linear), a = atlas cell (int part) + depth shade (fract);
+// +10 = SNAP: the card sits on the sculpted canopy surface (baked terrain height), instance z = offset.
 render_mode cull_disabled, depth_draw_opaque;
 
 uniform sampler2D leaf_albedo : filter_linear_mipmap_anisotropic, repeat_disable;
@@ -11,6 +12,9 @@ uniform float day = 1.0;
 uniform float wind_strength = 1.0;
 uniform float alpha_cut = 0.45;
 uniform float round_normal = 0.55;   // blend toward a spherical clump normal (reads as a round volume)
+uniform sampler2D height_tex : filter_linear, repeat_disable;
+uniform float height_margin = 16.0;
+uniform vec2 level_size = vec2(400.0, 200.0);
 
 varying vec3 v_tint;
 varying float v_shade;
@@ -21,7 +25,15 @@ varying vec3 v_fwd;
 
 void vertex() {
 	vec3 c = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	float ph = c.x * 0.37 + c.y * 0.21 + INSTANCE_CUSTOM.a * 3.1;
+	float code = INSTANCE_CUSTOM.a;
+	float zs = 0.0;
+	if (code >= 9.5) {
+		code -= 10.0;
+		vec2 hp = vec2(c.x, -c.y);
+		zs = textureLod(height_tex, (hp + height_margin) / (level_size + 2.0 * height_margin), 0.0).r;
+		c.z += zs;
+	}
+	float ph = c.x * 0.37 + c.y * 0.21 + code * 3.1;
 	// whole-cluster sway + corner flutter (leaves shiver in the gusts)
 	float gust = sin(TIME * 0.9 + c.x * 0.12) * 0.5 + 0.5;
 	float sw = (sin(TIME * 1.7 + ph) * 0.6 + sin(TIME * 3.3 + ph * 1.7) * 0.25) * (0.4 + 0.6 * gust) * wind_strength;
@@ -35,9 +47,10 @@ void vertex() {
 	vec3 d = wv - ball_pos;
 	float push = 1.0 - smoothstep(0.3, 0.9, length(d.xy));
 	VERTEX.xy += (inverse(mat3(MODEL_MATRIX)) * vec3(normalize(d.xy + vec2(0.0001)) * push * 0.08, 0.0)).xy;
+	VERTEX += inverse(mat3(MODEL_MATRIX)) * vec3(0.0, 0.0, zs);
 	v_tint = INSTANCE_CUSTOM.rgb;
-	float cell = floor(INSTANCE_CUSTOM.a);
-	v_shade = fract(INSTANCE_CUSTOM.a);
+	float cell = floor(code);
+	v_shade = fract(code);
 	v_cell = vec2(mod(cell, 2.0), floor(cell / 2.0));
 	v_right = normalize(MODEL_MATRIX[0].xyz);
 	v_up = normalize(MODEL_MATRIX[1].xyz);

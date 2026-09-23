@@ -49,6 +49,7 @@ const FV_SPOTS := {
 	"falls": Vector2(142, 150),
 	"spire_top": Vector2(197, 42),
 	"skybar": Vector2(195, 25),
+	"keepsky": Vector2(302, 80),
 	"edge_right": Vector2(392, 100),
 	"edge_bottom": Vector2(200, 192),
 	"birds": Vector2(20, 8),
@@ -100,6 +101,8 @@ var _nomoon := false
 var _nokey := false
 var _nodoors := false
 var _hide := ""
+var _novfog := false
+var _noglow := false
 var sim: EESim
 
 func _ready() -> void:
@@ -119,6 +122,10 @@ func _ready() -> void:
 			_mode = 2; _suffix = "_zones"
 		elif a == "nomoonshadow":
 			_nomoon = true; _suffix += "_nomoon"
+		elif a == "novfog":
+			_novfog = true; _suffix += "_novfog"
+		elif a == "noglow":
+			_noglow = true; _suffix += "_noglow"
 		elif a.begins_with("hide="):
 			_hide = a.substr(5); _suffix += "_no" + _hide
 		elif a == "nodoors":
@@ -157,6 +164,11 @@ func _ready() -> void:
 	world.set_debug_mode(_mode)
 	if _nomoon:
 		world.lights.moon.shadow_enabled = false
+	if _novfog:
+		world.get_environment().volumetric_fog_enabled = false
+	if _noglow:
+		world.get_environment().glow_enabled = false
+		world.atmosphere.post_layer.visible = false
 	if _hide != "":
 		var n := world.find_child(_hide, true, false)
 		if n: n.visible = false

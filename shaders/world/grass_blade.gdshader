@@ -2,7 +2,8 @@ shader_type spatial;
 // WorldGrass blades (MultiMesh clumps, no instance colours). Vertex COLOR: r = t along the blade
 // (0 root .. 1 tip), g = per-blade random, b = part (0 blade, 0.5 stem, 1 leaflet/petal), a = sway weight.
 // INSTANCE_CUSTOM: rgb = painted tile colour (linear), a = clump random in [0,1), or 1 + flower palette
-// index + random for flowers.
+// index + random for flowers; +10 = SNAP: the clump sits on the sculpted surface (baked terrain height at its
+// root) and the instance's z is only an offset from it.
 render_mode cull_disabled, depth_draw_opaque;
 
 uniform vec3 ball_pos = vec3(-1000.0);
@@ -11,6 +12,10 @@ uniform float wind_strength = 1.0;
 uniform vec2 wind_dir = vec2(1.0, 0.15);
 uniform float day = 1.0;                // 1 = sunlit day level, 0 = night (less translucency)
 uniform float fade_far = 85.0;          // blades shrink away beyond this camera distance
+// terrain height field (WorldTerrain's bake) for SNAP instances
+uniform sampler2D height_tex : filter_linear, repeat_disable;
+uniform float height_margin = 16.0;
+uniform vec2 level_size = vec2(400.0, 200.0);
 
 varying vec3 v_tint;
 varying float v_t;
@@ -34,6 +39,14 @@ float vnoise(vec2 p) {
 void vertex() {
 	vec3 root_w = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;   // clump centre (instance origin)
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec4 cust = INSTANCE_CUSTOM;
+	if (cust.a >= 9.5) {
+		cust.a -= 10.0;
+		vec2 hp = vec2(root_w.x, -root_w.y);
+		float zs = textureLod(height_tex, (hp + height_margin) / (level_size + 2.0 * height_margin), 0.0).r;
+		root_w.z += zs;
+		wp.z += zs;
+	}
 	float t = COLOR.r;
 	float sway = COLOR.a;
 	float hgt = max(wp.y - root_w.y, 0.0);
@@ -65,7 +78,7 @@ void vertex() {
 	v_t = t;
 	v_rnd = COLOR.g;
 	v_part = COLOR.b;
-	v_custom = INSTANCE_CUSTOM;
+	v_custom = cust;
 	v_ao = mix(0.35, 1.0, smoothstep(0.0, 0.7, t));
 }
 

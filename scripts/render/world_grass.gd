@@ -115,12 +115,21 @@ func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
 			var base := cols.get_pixel(x, y)
 			var key := Vector2i(x / CHUNK, y / CHUNK)
 			var below := i + W
+			# (the sculpted front sits ~0.9-1.1 deep inside a mass, so the tufts root just proud of it)
 			if terrain.solid[below] and not is_leafy(terrain.mat_ids[below]):
-				for k in 7:
+				for k in 8:
 					var up := Vector3(_rng.randf_range(-0.25, 0.25), -0.8, 0.6).normalized()
-					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.02, 0.1), _rng.randf_range(0.72, 0.95))
-					_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.25), _vary(base, 0.12), _rng.randf() * 0.99, up)
+					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.04, 0.14), _rng.randf_range(1.0, 1.18))
+					_push(key, Kind.SHORT, p, _rng.randf_range(0.9, 1.35), _vary(base, 0.12), _rng.randf() * 0.99, up)
 					n += 1
+			for side in [-1, 1]:
+				var j: int = i + side
+				if terrain.solid[j] and not is_leafy(terrain.mat_ids[j]) and terrain.solid[j - W]:
+					for k in 4:
+						var up := Vector3(side * 0.75, _rng.randf_range(-0.4, 0.1), 0.55).normalized()
+						var p := Vector3(x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12), -(y + _rng.randf()), _rng.randf_range(1.0, 1.18))
+						_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.2), _vary(base, 0.12), _rng.randf() * 0.99, up)
+						n += 1
 			if not terrain.solid[i - W]:
 				for side: int in [-1, 1]:
 					if terrain.solid[i + side]:
