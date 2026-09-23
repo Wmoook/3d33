@@ -340,7 +340,7 @@ void fragment() {
 			region_sample(fgcol_tex, p, 8.0, rock, rm, rb);
 			float depth_in = smoothstep(0.0, 0.5, -s.x);
 			albedo = mix(rock * 0.55, c * 0.5, 0.35);
-			ao = mix(0.7, 0.22, depth_in);
+			ao = mix(0.75, scroll_rect.x >= 0.0 ? 0.5 : 0.22, depth_in);   // day: pores stay readable rock, not black dots
 			float crumb = step(0.93, hash12(floor(p * 9.0))) * (1.0 - depth_in * 0.6);
 			albedo = mix(albedo, rock * 0.9, crumb);
 		}

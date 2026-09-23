@@ -208,6 +208,9 @@ void fragment() {
 		float pl = dot(pc, vec3(0.3, 0.55, 0.15));
 		pc = mix(pc, vec3(pl), smoothstep(0.12, 0.35, pl) * 0.8) * min(1.0, 0.14 / max(pl, 0.001));
 		vec3 stone = mix(pc * 0.8, vec3(0.2, 0.17, 0.135), 0.55);
+		// very dark painted stone (the Great Spire's 542-544) is lifted to the warm mid-dark target
+		float sl = dot(stone, vec3(0.3, 0.55, 0.15));
+		stone *= clamp(0.18 / max(sl, 0.001), 1.0, 2.6);
 		vec2 wq = p + vec2(vnoise(p * 0.5), vnoise(p * 0.5 + 3.0)) * 0.2;
 		float row = floor(wq.y * 2.0);
 		vec2 bq = vec2(wq.x * 0.75 + h21(vec2(row, 1.7)) * 3.0, wq.y * 2.0);
@@ -288,8 +291,10 @@ void fragment() {
 	// patchy large-scale tone so the hillsides don't read as one flat colour
 	albedo *= mix(0.86, 1.08, vnoise(vec2(wp.x, wp.z) * 0.12));
 	if (gn.y < -0.5) {
-		albedo *= 0.45;   // undersides: shadowed rock
-		ao *= 0.8;
+		// undersides: shaded rock, not black. Seen almost edge-on from the straight-on camera they are thin
+		// strips under every ledge / floating stone; at x0.45 they read as black "floating lines" (audit)
+		albedo *= 0.72;
+		ao *= 0.9;
 	}
 	// contact shading where the volume leaves the slab (matches the slab cliff's darkening)
 	if (!lip) {
@@ -314,7 +319,7 @@ void fragment() {
 		hz = max(hz, smoothstep(0.3, 6.0, d) * 0.8);
 		albedo *= 0.7;
 		if (gn.y < -0.5) {
-			albedo /= 0.45 * 1.6;   // crown / trunk undersides in the forest: no near-black dashes along slab edges
+			albedo /= 0.72;   // forest crown / trunk undersides: as lit as their fronts (the base 0.72 is undone)
 		}
 	}
 	ALBEDO = albedo * ao * (1.0 - hz);
