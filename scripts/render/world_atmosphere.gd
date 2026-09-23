@@ -212,7 +212,10 @@ func _make_post() -> void:
 	rect.material = m
 	if day:
 		m.set_shader_parameter("vignette", 0.19)
-		m.set_shader_parameter("grain", 0.012)
+		# no animated film grain (a per-frame fizz over every pixel read as texture flicker) and no chromatic
+		# aberration (it split bright block edges into blue/red fringes: the "blue lines" at silhouettes)
+		m.set_shader_parameter("grain", 0.0)
+		m.set_shader_parameter("aberration", 0.0)
 		m.set_shader_parameter("highlight_tint", Vector3.ONE)   # neutral: a warm highlight pulls the day sky grey-green
 	post_layer.add_child(rect)
 	add_child(post_layer)
