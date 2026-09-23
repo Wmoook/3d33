@@ -17,6 +17,23 @@ func _init() -> void:
 	t.H = lvl.height
 	t._classify()
 	var W := t.W
+	# painted non-sky bg rendered as open sky
+	var bad := {}
+	for i in W * t.H:
+		var b: int = lvl.bg[i]
+		if t.sky[i] and not t.solid[i] and b != 0 and not (b in WorldPalette.FV_SKY_BG):
+			bad[b] = bad.get(b, 0) + 1
+			if bad[b] <= 3:
+				print("PAINTED-SKY tile (%d, %d) bg %d" % [i % W, i / W, b])
+	print("PAINTED-SKY totals by bg: ", bad)
+	var lost := {}
+	for i in W * t.H:
+		var b: int = lvl.bg[i]
+		if not t.sky[i] and not t.solid[i] and not t.backwall[i] and b != 0 and not (b in WorldPalette.FV_SKY_BG):
+			lost[b] = lost.get(b, 0) + 1
+			if lost.size() <= 3 and lost[b] <= 2:
+				print("NO-WALL tile (%d, %d) bg %d" % [i % W, i / W, b])
+	print("NO-WALL painted bg (neither sky nor wall) by bg: ", lost)
 	var seen := PackedByteArray(); seen.resize(W * t.H)
 	for s in W * t.H:
 		if seen[s] or not t.sky[s] or t.solid[s]:

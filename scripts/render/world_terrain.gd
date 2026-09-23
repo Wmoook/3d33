@@ -889,6 +889,15 @@ func _classify() -> void:
 				has_bgc[i] = 1
 				backwall[i] = 1
 		_classify_bg_regions(has_bgc)
+		# the region pass re-floods the sky: keep it inside the open-sky mask, and give painted bg that ended
+		# up neither sky nor wall (an "exterior" region the sky cannot reach) its recessed wall back
+		for i in n:
+			if sky[i] and not open[i] and not solid[i] and not _deferred[i]:
+				sky[i] = 0
+			if not sky[i] and not solid[i] and not backwall[i] and level.bg[i] != 0 and not (level.bg[i] in WorldPalette.FV_SKY_BG):
+				backwall[i] = 1
+				has_bgc[i] = 1
+				bg_region[i] = 1
 	var orig := fgb.duplicate()
 	fgb = WorldSdfBaker.merge_colors(fgb, W, H)
 	_dilate(fgb, has_fg)
