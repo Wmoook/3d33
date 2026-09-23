@@ -28,6 +28,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	material = ShaderMaterial.new()
 	material.shader = load("res://shaders/world/grass_blade.gdshader")
 	material.set_shader_parameter("day", 0.0 if WorldPalette.is_odyssey() else 1.0)
+	bind_height(material, terrain)
 	_meshes = {
 		Kind.TALL: _clump_mesh(14, 0.18, 0.34, 0.016, 0.034, 0.17, 5, 1),
 		Kind.SHORT: _clump_mesh(16, 0.07, 0.16, 0.014, 0.026, 0.14, 3, 2),
@@ -74,13 +75,13 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				_push(key, Kind.SHORT, p, _rng.randf_range(0.7, 1.15) * hmul, _vary(base, 0.12), _rng.randf() * 0.99)
 				n_inst[Kind.SHORT] += 1
 			# the rounded front lip: turf growing out of the bevel, perpendicular to it, so the lawn edge
-			# reads as soft grass instead of a hard line (covers only the solid tile's own front face)
+			# reads as soft grass instead of a hard line (SNAP: rooted exactly on the sculpted surface;
+			# covers only the solid tile's own front face)
 			for k in 14:
-				var z := _rng.randf_range(0.0, Z_LIP)
-				var u := z / BEVEL_Z
-				var up := Vector3(0.0, 1.0 - u * 0.55, u * 1.1).normalized()
-				var p := Vector3(_rng.randf_range(x0, x1), -y - _bevel_drop(z), z)
-				_push(key, Kind.SHORT, p, _rng.randf_range(0.75, 1.1) * minf(hmul, 0.85), _vary(base, 0.12), _rng.randf() * 0.99, up)
+				var d := _rng.randf_range(0.01, 0.3)
+				var up := Vector3(0.0, 1.0 - d * 1.4, 0.35 + d * 2.0).normalized()
+				var p := Vector3(_rng.randf_range(x0, x1), -y - d, -0.01)
+				_push(key, Kind.SHORT, p, _rng.randf_range(0.75, 1.1) * minf(hmul, 0.85), _vary(base, 0.12), _rng.randf() * 0.99, up, true)
 				n_inst[Kind.SHORT] += 1
 			if _rng.randf() < 0.45:
 				var z := _rng.randf_range(zb, 0.25)
@@ -119,16 +120,16 @@ func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
 			if terrain.solid[below] and not is_leafy(terrain.mat_ids[below]):
 				for k in 8:
 					var up := Vector3(_rng.randf_range(-0.25, 0.25), -0.8, 0.6).normalized()
-					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.04, 0.14), _rng.randf_range(1.0, 1.18))
-					_push(key, Kind.SHORT, p, _rng.randf_range(0.9, 1.35), _vary(base, 0.12), _rng.randf() * 0.99, up)
+					var p := Vector3(x + _rng.randf(), -(y + 1) + _rng.randf_range(0.04, 0.14), -0.01)
+					_push(key, Kind.SHORT, p, _rng.randf_range(0.9, 1.35), _vary(base, 0.12), _rng.randf() * 0.99, up, true)
 					n += 1
 			for side in [-1, 1]:
 				var j: int = i + side
 				if terrain.solid[j] and not is_leafy(terrain.mat_ids[j]) and terrain.solid[j - W]:
 					for k in 4:
 						var up := Vector3(side * 0.75, _rng.randf_range(-0.4, 0.1), 0.55).normalized()
-						var p := Vector3(x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12), -(y + _rng.randf()), _rng.randf_range(1.0, 1.18))
-						_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.2), _vary(base, 0.12), _rng.randf() * 0.99, up)
+						var p := Vector3(x + (0.0 if side < 0 else 1.0) - side * _rng.randf_range(0.04, 0.12), -(y + _rng.randf()), -0.01)
+						_push(key, Kind.SHORT, p, _rng.randf_range(0.8, 1.2), _vary(base, 0.12), _rng.randf() * 0.99, up, true)
 						n += 1
 			if not terrain.solid[i - W]:
 				for side: int in [-1, 1]:
@@ -142,6 +143,13 @@ func _build_fringes(lvl: EELevel, terrain: WorldTerrain) -> int:
 						_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.9), _vary(base, 0.12), _rng.randf() * 0.99, up)
 						n += 1
 	return n
+
+## Shares the terrain's baked height field with a detail material (for SNAP instances).
+static func bind_height(m: ShaderMaterial, terrain: WorldTerrain) -> void:
+	if terrain.material:
+		m.set_shader_parameter("height_tex", terrain.material.get_shader_parameter("height_tex"))
+		m.set_shader_parameter("height_margin", terrain.material.get_shader_parameter("height_margin"))
+	m.set_shader_parameter("level_size", Vector2(terrain.W, terrain.H))
 
 ## Every frame: the ball flattens nearby blades.
 func update_focus(world_pos: Vector3, _delta: float) -> void:
@@ -281,7 +289,10 @@ static func _bevel_drop(z: float) -> float:
 	return 0.5 * (1.0 - sqrt(1.0 - u * u)) + 0.015
 
 ## c = painted tint (sRGB); code = random in [0,1) or 1 + flower palette index + random.
-func _push(key: Vector2i, kind: int, p: Vector3, s: float, c: Color, code: float, up := Vector3.UP) -> void:
+## snap: p.z is an offset from the sculpted surface at the root (resolved on the GPU from the height bake).
+func _push(key: Vector2i, kind: int, p: Vector3, s: float, c: Color, code: float, up := Vector3.UP, snap := false) -> void:
+	if snap:
+		code += 10.0
 	if not _chunks.has(key):
 		_chunks[key] = {}
 	var ch: Dictionary = _chunks[key]

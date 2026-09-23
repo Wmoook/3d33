@@ -339,9 +339,9 @@ func update_focus(world_pos: Vector3, delta: float) -> void:
 		for pn in pr["parts"]:
 			parts[pn] = parts.get(pn, 0.0) + pr["parts"][pn] * wk
 	environment.ambient_light_color = amb
-	environment.ambient_light_energy = amb_e * lerpf(1.35, 1.0, weights[WorldPalette.Z_SURFACE])
+	environment.ambient_light_energy = amb_e * lerpf(1.35, 1.0, weights[WorldPalette.Z_SURFACE] + weights[WorldPalette.Z_DAY])
 	# sky radiance params only when they change noticeably (each change re-bakes the radiance cubemap)
-	var surf := weights[WorldPalette.Z_SURFACE]
+	var surf := weights[WorldPalette.Z_SURFACE] + weights[WorldPalette.Z_DAY]   # open sky (night or day)
 	var cave := clampf(1.0 - surf, 0.0, 1.0)
 	var amb_v := Vector3(amb.r, amb.g, amb.b)
 	if absf(cave - _sky_cave) > 0.03 or amb_v.distance_to(_sky_amb) > 0.03:

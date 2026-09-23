@@ -26,6 +26,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 	material.set_shader_parameter("leaf_albedo", load("res://assets/world/pbr/leaf_cluster_albedo.png"))
 	material.set_shader_parameter("leaf_normal", load("res://assets/world/pbr/leaf_cluster_normal.png"))
 	material.set_shader_parameter("day", 0.0 if WorldPalette.is_odyssey() else 1.0)
+	WorldGrass.bind_height(material, terrain)
 	var W := lvl.width
 	var H := lvl.height
 	var canopy := PackedByteArray()
@@ -60,9 +61,9 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				if c.z <= 0.05:
 					continue
 				size = c.z / VIS_R
-				# depth: just in front of the sculpted canopy surface (deeper inside it bulges further forward)
-				var z := (1.12 + _rng.randf() * 0.3) if inner >= 1.0 else (0.55 + _rng.randf() * 0.25)
-				_push(key, Vector3(c.x, c.y, z), size, base, 0.75 + 0.25 * _rng.randf())
+				# depth: SNAP onto the sculpted canopy surface, layered 0.03-0.3 in front of it
+				var z := 0.03 + _rng.randf() * 0.27
+				_push(key, Vector3(c.x, c.y, z), size, base, 0.75 + 0.25 * _rng.randf(), true)
 				n_front += 1
 			# top fringe: leafy silhouette over the canopy top (seen along the top strip)
 			if ext_u < 0.5:
@@ -84,7 +85,7 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 					var out := 0.5 + EDGE_OVER - r      # centre offset from the tile centre toward the side
 					var cx: float = x + (0.5 + side.x * out if side.x != 0 else along)
 					var cy: float = y + (0.5 + side.y * out if side.y != 0 else along)
-					_push(key, Vector3(cx, -cy, _rng.randf_range(0.3, 0.65)), r / VIS_R, base, 0.55 + 0.35 * _rng.randf())
+					_push(key, Vector3(cx, -cy, _rng.randf_range(0.02, 0.15)), r / VIS_R, base, 0.55 + 0.35 * _rng.randf(), true)
 					n_edge += 1
 			if ext_d < 0.5 and _rng.randf() < 0.35:
 				leaf_spawn_points.append(Vector3(x + _rng.randf(), -y - 1.0, _rng.randf_range(-0.6, 0.6)))
@@ -230,20 +231,21 @@ func _fit(x: int, y: int, r: float, el: float, er: float, eu: float, ed: float) 
 	var oy := _rng.randf_range(maxf(lo_y, -0.5), minf(hi_y, 0.5))
 	return Vector3(x + 0.5 + ox, -(y + 0.5 + oy), r)
 
-func _push(key: Vector2i, p: Vector3, size: float, c: Color, shade: float) -> void:
+## snap: p.z is an offset from the sculpted surface under the card centre (resolved on the GPU).
+func _push(key: Vector2i, p: Vector3, size: float, c: Color, shade: float, snap := false) -> void:
 	var roll := _rng.randf() * TAU
 	var b := Basis(Vector3.BACK, roll)
 	b = Basis(Vector3.RIGHT, _rng.randf_range(-0.35, 0.35)) * Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)) * b
-	_push_basis(key, Transform3D(b.scaled(Vector3.ONE * size), p), c, shade)
+	_push_basis(key, Transform3D(b.scaled(Vector3.ONE * size), p), c, shade, snap)
 
-func _push_basis(key: Vector2i, t: Transform3D, c: Color, shade: float) -> void:
+func _push_basis(key: Vector2i, t: Transform3D, c: Color, shade: float, snap := false) -> void:
 	if not _chunks.has(key):
 		_chunks[key] = [[], []]
 	_chunks[key][0].append(t)
 	var lc := c.srgb_to_linear()
 	var f := 1.0 + _rng.randf_range(-0.12, 0.12)
 	# custom: rgb = tint (linear), a = atlas cell (0..3) + shade (0..0.99)
-	_chunks[key][1].append(Color(lc.r * f, lc.g * f, lc.b * f, float(_rng.randi() % 4) + clampf(shade, 0.0, 0.99)))
+	_chunks[key][1].append(Color(lc.r * f, lc.g * f, lc.b * f, float(_rng.randi() % 4) + clampf(shade, 0.0, 0.99) + (10.0 if snap else 0.0)))
 
 func _make_chunk(key: Vector2i, ch: Array) -> void:
 	var origin := Vector3((key.x + 0.5) * CHUNK, -(key.y + 0.5) * CHUNK, 0.0)
