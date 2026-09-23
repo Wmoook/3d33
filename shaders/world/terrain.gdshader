@@ -865,6 +865,11 @@ void fragment() {
 		ao = 0.85;
 	}
 	emit += rune_emit;
+	if (scroll_rect.x >= 0.0 && layer == 0 && gn.y < -0.25 && field_at(p + vec2(0.0, 0.8)).r < 0.5) {
+		// cliff undersides inside caves / rooms (no sky below): the sun never reaches them - keep a soft lit floor
+		// so the lower bevel of every ledge doesn't read as a black line against the lit recess behind
+		emit += albedo * 0.22 * smoothstep(-0.25, -0.7, gn.y);
+	}
 	if (scroll_rect.x >= 0.0 && layer == 0 && gn.y < -0.25) {
 		// heavy undersides over open sky: shadowed, a touch of moss/damp - masses feel grounded
 		float skyb = field_at(p + vec2(0.0, 0.8)).r;

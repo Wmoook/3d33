@@ -303,8 +303,8 @@ void fragment() {
 	float hz = smoothstep(haze_z.x, haze_z.y, wp.z) * haze_amt;
 	if (inroom) {
 		// the room's receding side walls / floor / ceiling: AO into the back corner, interior light floor
-		ao *= mix(0.55, 1.0, smoothstep(nstart, nstart - 1.4, d));
-		emit_x = albedo * 0.08;
+		ao *= mix(0.8, 1.0, smoothstep(nstart, nstart - 1.4, d));
+		emit_x = albedo * 0.3;   // lit like the room's back wall (never darker than ~0.6x of it)
 	}
 	if (lip && horiz) {
 		albedo *= 0.65;   // the near ledge is seen at a grazing angle in full sun: keep it below the level's lawns
@@ -314,7 +314,8 @@ void fragment() {
 		hz = smoothstep(-level_size.y - 0.5, -level_size.y - 6.5, wp.y) * 0.85;
 	}
 	vec3 hcol = haze_color;
-	if (texelFetch(forest_tex, clamp(ivec2(floor(tile)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+	if (!inroom && !back && !earth_back && texelFetch(forest_tex, clamp(ivec2(floor(tile)), ivec2(0), ivec2(level_size) - 1), 0).r > 0.5) {
+		// (room interiors keep their own lighting even where the forest mask spills onto their walls)
 		hcol = forest_fog;   // forest: faces recede into the dark forest fog, not the sky
 		hz = max(hz, smoothstep(0.3, 6.0, d) * 0.8);
 		albedo *= 0.7;
@@ -328,10 +329,10 @@ void fragment() {
 		ALBEDO = kind < 14.5 ? vec3(0.17, 0.115, 0.07) * mix(0.8, 1.2, vnoise(wp.xy * 7.0)) : max(c.rgb * 0.7, vec3(0.08, 0.07, 0.06)) * mix(0.85, 1.15, vnoise(wp.xz * 9.0));
 		rough = 1.0;
 	}
-	if (earth_back || prop || (inroom && sf > 0.5 && ownstart < 2.5)) {
-		ALBEDO *= mix(1.0, 0.5, smoothstep(1.0, 6.0, d));   // the cave darkens as it recedes
+	if (earth_back || prop) {
+		ALBEDO *= mix(1.0, 0.75, smoothstep(1.0, 6.0, d));   // the cave darkens a little as it recedes
 	}
-	if (inner || earth_back) {
+	if ((inner && !inroom) || earth_back) {
 		ALBEDO *= 0.75;
 		rough = 1.0;
 	}
