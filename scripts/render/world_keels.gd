@@ -23,6 +23,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	seen.resize(W * H)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var vb := WorldDepth.Bucket.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 	for start in W * H:
@@ -77,7 +78,7 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 			if terrain.mat_ids[i] == WorldPalette.M_MARBLE:
 				marble += 1
 		var pale := marble * 2 > comp.size()
-		var depth := minf(clampf(sqrt(width) * rng.randf_range(1.1, 1.6), 1.0, 4.0), 1.0 * width)
+		var depth := minf(clampf(sqrt(width) * rng.randf_range(1.1, 1.6), 1.0, 4.0), 1.2 * width)
 		if pale:
 			depth = minf(depth, 0.45 * width)
 		var cx := (x0 + x1 + 1) * 0.5
@@ -88,13 +89,36 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 				ext = maxf(ext, dep.depth[bottom[x] * W + x])
 		# the tip sits under the middle of the extruded island (the volume's own underside closes the rest)
 		var z_tip := Z_TIP if ext <= 0.0 else Z_TOP - clampf(ext * 0.5, 1.0, 1.8)
-		_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0, 1.0 if pale else 0.0)
 		var ybot := 0
 		for x in bottom:
 			ybot = maxi(ybot, bottom[x])
+		if dep:
+			# blocky world: a stepped voxel keel in the island's own underside rock (depth-volume material)
+			depth = float(maxi(1, int(round(depth))))
+			_voxel_keel(vb, x0, x1, ybot, int(depth), tip_x, maxf(ext, 1.0), bottom)
+		else:
+			_keel(st, bottom, x0, x1, depth, tip_x, rng, Z_TOP, z_tip, 1.0, 1.0 if pale else 0.0)
 		keel_sites.append({"tip": Vector3(tip_x, -(ybot + 1) - depth, z_tip), "width": width, "depth": depth,
 			"rune": Vector3(cx, -(ybot + 1) - depth * 0.35, (Z_TOP + z_tip) * 0.5)})
 	if keel_sites.is_empty():
+		return
+	if dep:
+		if vb.v.is_empty():
+			return
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = vb.v
+		arr[Mesh.ARRAY_NORMAL] = vb.n
+		arr[Mesh.ARRAY_TEX_UV] = vb.uv
+		arr[Mesh.ARRAY_TEX_UV2] = vb.uv2
+		var vm := ArrayMesh.new()
+		vm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var vmi := MeshInstance3D.new()
+		vmi.name = "Keels"
+		vmi.mesh = vm
+		vmi.material_override = dep.material
+		vmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(vmi)
 		return
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
@@ -106,6 +130,42 @@ func build(lvl: EELevel, terrain: WorldTerrain, dep: WorldDepth = null) -> void:
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+
+## Stepped keel: `rows` tile-high slabs under the island, each narrower (in x) and shallower (in z) than the
+## one above, ending in a blunt 1-tile-wide stub. Faces carry the source tile of the island's underside
+## (so the colour / material match its rock) and kind 13 (no voxel bevel lookup).
+func _voxel_keel(b: WorldDepth.Bucket, x0: int, x1: int, ybot: int, rows: int, tip_x: float, ext: float, bottom: Dictionary) -> void:
+	var w0 := float(x1 - x0 + 1)
+	for k in rows:
+		var t := float(k + 1) / float(rows + 1)
+		var w := maxf(1.0, round(w0 * pow(1.0 - t, 0.85)))
+		var cx := lerpf((x0 + x1 + 1) * 0.5, tip_x, t)
+		var a := int(round(cx - w * 0.5))
+		a = clampi(a, x0, maxi(x0, x1 + 1 - int(w)))
+		var e := maxf(0.8, ext * (1.0 - t * 0.7))
+		var y := ybot + 1 + k
+		var src_x := clampi(int(cx), x0, x1)
+		var src_y: int = bottom.get(src_x, ybot)
+		_box(b, float(a), float(a) + w, -float(y), -float(y) - 1.0, Z_TOP - 0.05, Z_TOP - 0.05 - e, Vector2(src_x + 0.5, src_y + 0.5))
+
+func _box(b: WorldDepth.Bucket, xa: float, xb: float, ya: float, yb: float, za: float, zb: float, uv: Vector2) -> void:
+	var c := [Vector3(xa, yb, zb), Vector3(xb, yb, zb), Vector3(xb, ya, zb), Vector3(xa, ya, zb),
+		Vector3(xa, yb, za), Vector3(xb, yb, za), Vector3(xb, ya, za), Vector3(xa, ya, za)]
+	# faces: +z (front), -x, +x, -y (under), +y (top, hidden under the island but closes the box)
+	var faces := [[[4, 5, 6, 7], Vector3(0, 0, 1)], [[0, 4, 7, 3], Vector3(-1, 0, 0)], [[5, 1, 2, 6], Vector3(1, 0, 0)],
+		[[0, 1, 5, 4], Vector3(0, -1, 0)], [[3, 7, 6, 2], Vector3(0, 1, 0)]]
+	for f in faces:
+		var idx: Array = f[0]
+		var out: Vector3 = f[1]
+		var p := [c[idx[0]], c[idx[1]], c[idx[2]], c[idx[3]]]
+		var nrm: Vector3 = ((p[1] as Vector3) - (p[0] as Vector3)).cross((p[2] as Vector3) - (p[0] as Vector3))
+		if nrm.dot(out) > 0.0:
+			p = [p[0], p[3], p[2], p[1]]
+		for j in [0, 1, 2, 0, 2, 3]:
+			b.v.append(p[j])
+			b.n.append(out)
+			b.uv.append(uv)
+			b.uv2.append(Vector2(1.0, 13.0))
 
 const ISLAND_CLEAR := 4        # a keeled island has no other mass within this many tiles (sides and below)
 
