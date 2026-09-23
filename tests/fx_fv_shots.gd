@@ -49,8 +49,8 @@ const SPOTS := [
 	["qa_hall", Vector2(350, 95)],
 	["qa_sanctum", Vector2(300, 140)],
 	["qa_halls", Vector2(85, 90)],
-	["keels", Vector2(40, 18)],
-	["keels_b", Vector2(290, 30)],
+	["keels", Vector2(16, 12)],
+	["keels_b", Vector2(322, 46)],
 ]
 var game
 func _ready() -> void:
@@ -106,6 +106,12 @@ func _ready() -> void:
 				await get_tree().process_frame
 		if s[0] == "sky_birds" and game.actors.day_life:
 			print("glide sites ", game.actors.day_life._glide_sites.size(), " gliders ", game.actors.day_life._gliders.size(), " first ", game.actors.day_life._glide_sites.slice(0, 4))
+		if s[0].begins_with("keels") and game.actors.keels:
+			var used: Array = []
+			for sl in game.actors.keels._slots:
+				if sl.site >= 0:
+					used.append(game.actors.keels._sites[sl.site].pos)
+			print("keel slots ", used)
 		if s[0] == "scroll_noink":
 			for n in game.actors.blocks.find_children("InkLetters", "", false, false):
 				n.visible = false

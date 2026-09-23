@@ -6,6 +6,7 @@ uniform sampler2D field_tex : filter_linear, repeat_disable;    // RGBA8 (1 texe
 uniform sampler2D relief_tex : filter_linear, repeat_disable;   // RGBA8 per tile: r = height offset (+0.5), g = relief amplitude, b = pattern weights (see below)
 uniform sampler2D pattern_tex : filter_linear, repeat_disable;  // RGBA8 per tile: r cobbles, g domes, b grain, a strata
 uniform vec2 level_size = vec2(400.0, 200.0);
+uniform float bg_bevel = 0.42;   // back-wall pillow height (day levels: low, so walls read recessed)
 
 const float SPT = 8.0;
 
@@ -185,7 +186,7 @@ float height_from(vec2 p, vec4 s, vec4 fld) {
 	// background wall (tiny enclosed pockets sit much shallower: pits in the rock)
 	float zbase = mix(Z_BG, -1.5, fld.g);   // non-solid tiles always stay below z = -0.8
 	zbase = mix(-0.85, zbase, fld.a);          // inscription pockets (scroll / logo letters): shallow floor
-	float zb = zbase + 0.42 * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10) * smoothstep(0.0, 0.6, sw);
+	float zb = zbase + bg_bevel * round_prof(sw / 0.45) + (fbm2(p * 0.7) * 0.10 * bg_bevel / 0.42) * smoothstep(0.0, 0.6, sw);
 	float back;
 	if (sw >= 0.0) {
 		back = zb;

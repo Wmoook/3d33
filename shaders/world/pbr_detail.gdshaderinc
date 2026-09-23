@@ -15,7 +15,10 @@ uniform float pbr_strength = 1.0;      // global detail multiplier (0 disables t
 uniform float pbr_fade_near = 45.0;    // camera distance where detail starts to fade
 uniform float pbr_fade_far = 110.0;    // camera distance where only a faint residue remains
 uniform int pbr_level = 0;             // 0 = Forgotten Veil (day), 1 = Odyssey (night)
-uniform sampler2D pbr_canopy_tex : filter_linear, repeat_disable;    // RG8 per tile: R = tree crown, G = leaf litter (bilinear = soft bands)
+uniform sampler2D pbr_canopy_tex : filter_linear, repeat_disable;    // RGBA8 per tile (bilinear = soft bands):
+	// R = tree crown, G = leaf litter, B = lawn depth below its top (x4 tiles), A = ruin ledge weight
+uniform vec3 pbr_moss_color : source_color = vec3(0.24, 0.36, 0.12);   // moss / lichen growth on the ruins
+uniform float pbr_moss_tint = 0.65;    // 0 = moss adds texture only (no hue), 1 = full moss colour on ledges
 uniform vec2 pbr_level_size = vec2(400.0, 200.0);
 
 // layer indices in the arrays
@@ -224,6 +227,25 @@ float pbr_transition(int mat_a, int mat_b, float t, vec3 wp, vec3 gn) {
 	return pbr_hblend(ha, hb, t, 0.2);
 }
 
+// Moss / lichen growth weight on ruin stone: ledge = the canopy-mask A channel (open air above), up = the
+// up-facing part of the normal, h = the stone scan's height (cracks are low), patchv = large patch noise.
+float pbr_ruin_moss_mask(float ledge, float up, float h, float patchv) {
+	float m = ledge * (0.35 + 0.9 * up) + ledge * (1.0 - h) * 0.4;
+	return clamp(m * smoothstep(0.15, 0.6, patchv + 0.25), 0.0, 1.0);
+}
+
+// For world: the same moss weight at a ruin pixel (e.g. to drive its own moss colour / wetness).
+float pbr_ruin_moss(vec3 wp, vec3 gn, vec2 p) {
+	float ledge = texture(pbr_canopy_tex, p / pbr_level_size).a;
+	float h = pbr_height_at(PBR_ROCK, wp, gn, 0.33);
+	vec2 q = p * 0.23 + vec2(sin(p.y * 0.17), cos(p.x * 0.13)) * 1.3;
+	vec2 qi = floor(q);
+	vec2 fq = smoothstep(0.0, 1.0, fract(q));
+	float patchv = mix(mix(pbr_hash(qi), pbr_hash(qi + vec2(1.0, 0.0)), fq.x),
+		mix(pbr_hash(qi + vec2(0.0, 1.0)), pbr_hash(qi + vec2(1.0, 1.0)), fq.x), fq.y);
+	return pbr_ruin_moss_mask(ledge, clamp(gn.y, 0.0, 1.0), h, patchv);
+}
+
 // Terrain material ids (mirror WorldPalette.M_*); duplicated here so the include is self-contained.
 const int PBR_M_EARTH = 1; const int PBR_M_STONE = 2; const int PBR_M_MARBLE = 3; const int PBR_M_OBSIDIAN = 8;
 const int PBR_M_GRASS = 10; const int PBR_M_FOLIAGE = 11; const int PBR_M_WOOD = 13; const int PBR_M_METAL = 14;
@@ -252,7 +274,8 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 		mix(pbr_hash(qi + vec2(0.0, 1.0)), pbr_hash(qi + vec2(1.0, 1.0)), fq.x), fq.y);
 	bool leafy = mat == PBR_M_FOLIAGE || mat == PBR_M_GRASS;
 	// crown mask (R) and litter mask (G), bilinear: soft world-space bands, no tile steps
-	vec2 cmask = texture(pbr_canopy_tex, p / pbr_level_size).rg;
+	vec4 cmask4 = texture(pbr_canopy_tex, p / pbr_level_size);
+	vec2 cmask = cmask4.rg;
 	float litter = cmask.g * smoothstep(0.25, 0.75, patchv + 0.35);
 	if (leafy) {
 		float cw = smoothstep(0.3, 0.7, cmask.r);
@@ -268,6 +291,17 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 				s = pbr_mix(s, l, pbr_hblend(s.h, l.h, cov, 0.25));
 			}
 		}
+		// turf side: below the lawn's top the front face turns into soil-laced sod with hanging roots
+		float turf = smoothstep(0.4, 0.85, abs(gn.z)) * smoothstep(0.12, 0.55, cmask4.b) * (1.0 - cw);
+		if (turf > 0.01) {
+			PbrS so = pbr_tri(pbr_level == 1 ? PBR_REDEARTH : PBR_SOIL, wp, gn, 0.5, 1.0, false);
+			s = pbr_mix(s, so, pbr_hblend(s.h, so.h, turf * 0.55, 0.2));
+			// roots: the bark scan stretched vertically reads as fibrous root strands
+			vec2 ruv = vec2(wp.x * 1.3, -wp.y * 0.28);
+			float rl = texture(pbr_tex, vec3(ruv, float(PBR_BARK))).r * 2.0;
+			float roots = smoothstep(0.75, 0.25, rl) * turf * smoothstep(0.3, 0.8, cmask4.b);
+			albedo *= 1.0 - roots * 0.45 * fade;
+		}
 		pbr_apply(s, 1.0 * fade, mix(0.85, 0.9, cw) * fade, 0.6, mix(0.1, 0.0, cw), albedo, n, rough, ao);
 		return 1.0;
 	}
@@ -282,6 +316,15 @@ float pbr_terrain(int mat, vec3 wp, vec3 gn, vec2 p, vec3 cam, inout vec3 albedo
 		if (litter > 0.02) {
 			PbrS l = pbr_tri(PBR_LITTER, wp, gn, 0.45, 1.0, false);
 			s = pbr_mix(s, l, pbr_hblend(s.h, l.h, litter * 0.8, 0.2));
+		}
+		// moss cushions on ledges and in the cracks (low texels) just under them
+		float mm = pbr_ruin_moss_mask(cmask4.a, up, s.h, patchv);
+		if (mm > 0.01) {
+			PbrS mo = pbr_tri(PBR_MOSS, wp, gn, 0.45, 1.0, false);
+			float w = pbr_hblend(1.0 - s.h, mo.h, mm, 0.15);   // moss fills the stone's hollows first
+			s = pbr_mix(s, mo, w);
+			albedo = mix(albedo, pbr_moss_color * mix(0.7, 1.15, mo.h) * (0.6 + 0.4 * dot(albedo, vec3(0.6))), w * pbr_moss_tint * fade);
+			rough = mix(rough, 0.9, w);
 		}
 		pbr_apply(s, 0.9 * fade, 0.8 * fade, 0.5, 0.05, albedo, n, rough, ao);
 		return 1.0;

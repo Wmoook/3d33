@@ -11,7 +11,7 @@ extends Node3D
 ## - snowy mountain ranges rising out of the cloud sea far behind (z -380 .. -835);
 ## - the sky dome (day_sky.gdshader) and all vista materials share one sky/haze model (vista_common), so
 ##   aerial perspective melts every far layer into the sky. Unshaded, no shadows, one draw per layer.
-## Usage (WorldView, day levels only): vista.build(level, terrain, sun_dir, sky_mat); each frame
+## Usage (WorldView, day levels only): vista.build(level, sun_dir, sky_mat); each frame
 ## vista.update(camera_world_pos).
 
 const FLOOR_Y := -172.0          # the valley floor / pool level under the spires and the falls (world y)
@@ -35,13 +35,14 @@ var _land_near: MeshInstance3D
 var _land_far: MeshInstance3D
 var _clouds: MeshInstance3D
 
-func build(lvl: EELevel, terrain: WorldTerrain, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = null) -> void:
+## sky_ids: background ids that paint the open sky in this level (FV: 531 pastel sky, 540 clouds/snow).
+func build(lvl: EELevel, sun: Vector3 = Vector3.ZERO, sky_mat: ShaderMaterial = null, sky_ids: Array = [531, 540]) -> void:
 	var t := Time.get_ticks_msec()
 	if sun.length() > 0.01:
 		sun_dir = sun.normalized()
 	_W = lvl.width
 	_setup_noise()
-	_make_profile(terrain)
+	_make_profile(lvl, sky_ids)
 	timings["vista_profile"] = Time.get_ticks_msec() - t
 	t = Time.get_ticks_msec()
 	_land_near = _land_mesh("VistaLandNear", -240.0, 640.0, 2.0, NEAR_Z, MID_Z, 1.4, 0.012, true)
@@ -110,22 +111,24 @@ func _setup_noise() -> void:
 	noise_tex = ImageTexture.create_from_image(im)
 
 # ------------------------------------------------------------------ level ground profile
-## For every column: the deepest sky-connected air tile = the ground the open sky reaches. A max-envelope
-## over +-R columns ignores narrow structures standing on the floor (the spires), then it is smoothed.
-func _make_profile(terrain: WorldTerrain) -> void:
-	var W := terrain.W
-	var H := terrain.H
+## For every column: the deepest tile of open painted sky (sky bg ids with no foreground) = where the
+## ground under the open sky is. A max-envelope over +-R columns ignores narrow structures standing on the
+## floor (the spires), then it is smoothed.
+func _make_profile(lvl: EELevel, sky_ids: Array) -> void:
+	var W := lvl.width
+	var H := lvl.height
 	var deep := PackedFloat32Array()
 	deep.resize(W)
 	for x in W:
 		var d := 0
 		for y in range(1, H):
-			if terrain.sky[y * W + x]:
+			var i := y * W + x
+			if lvl.fg[i] == 0 and lvl.bg[i] in sky_ids:
 				d = y
 		deep[x] = d + 1
 	var env := PackedFloat32Array()
 	env.resize(W)
-	var R := 16
+	var R := 22
 	for x in W:
 		var m := 0.0
 		for dx in range(-R, R + 1):
@@ -136,9 +139,9 @@ func _make_profile(terrain: WorldTerrain) -> void:
 		sm.resize(W)
 		for x in W:
 			var s := 0.0
-			for dx in range(-6, 7):
+			for dx in range(-7, 8):
 				s += env[clampi(x + dx, 0, W - 1)]
-			sm[x] = s / 13.0
+			sm[x] = s / 15.0
 		env = sm
 	ground.resize(W)
 	for x in W:

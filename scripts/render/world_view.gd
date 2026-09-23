@@ -22,6 +22,7 @@ var decor: WorldDecor
 var backdrop: WorldBackdrop
 var zones: WorldZones
 var trials: WorldTrials
+var keels: WorldKeels
 var grass: WorldGrass
 var foliage: WorldFoliage
 var is_built := false
@@ -67,6 +68,7 @@ func _steps(lvl: EELevel) -> Array:
 		["Charting the depths", _step_zones],
 		["Marking the trial chambers", _step_trials],
 		["Raising the far hills", _step_backdrop],
+		["Lifting the islands", _step_keels],
 		["Growing grass and roots", _step_decor],
 		["Lighting the fires", _step_lights],
 		["Breathing in the air", _step_atmosphere],
@@ -102,6 +104,15 @@ func _step_trials() -> void:
 	_add(trials, "Trials")
 	trials.build(level, terrain)
 	timings["trials"] = Time.get_ticks_msec() - t
+
+func _step_keels() -> void:
+	if not is_day():
+		return
+	var t := Time.get_ticks_msec()
+	keels = WorldKeels.new()
+	_add(keels, "Keels")
+	keels.build(level, terrain)
+	timings["keels"] = Time.get_ticks_msec() - t
 
 func _step_backdrop() -> void:
 	var t := Time.get_ticks_msec()

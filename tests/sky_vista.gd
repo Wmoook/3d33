@@ -21,7 +21,7 @@ func _ready() -> void:
 		vista = WorldVista.new()
 		vista.name = "Vista"
 		wv.add_child(vista)
-		vista.build(wv.level, wv.terrain, wv.lights.moon.transform.basis.z, wv.atmosphere.sky_mat)
+		vista.build(wv.level, wv.lights.moon.transform.basis.z, wv.atmosphere.sky_mat)
 	var only := OS.get_cmdline_user_args()
 	for n in SPOTS:
 		if only.size() > 0 and not (n in only):

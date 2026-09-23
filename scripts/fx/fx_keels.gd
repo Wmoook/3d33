@@ -88,7 +88,7 @@ func _ramp(cols: Array, offs: Array) -> GradientTexture1D:
 func _dust() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.name = "KeelDust"
-	p.amount = 14
+	p.amount = 30
 	p.lifetime = 3.5
 	p.preprocess = 3.5
 	p.randomness = 0.6
@@ -110,10 +110,10 @@ func _dust() -> GPUParticles3D:
 	pm.turbulence_influence_max = 0.12
 	pm.scale_min = 0.5
 	pm.scale_max = 1.3
-	pm.color_ramp = _ramp([Color(0.62, 0.55, 0.45, 0.0), Color(0.62, 0.55, 0.45, 0.55), Color(0.7, 0.65, 0.58, 0.0)], [0.0, 0.15, 1.0])
+	pm.color_ramp = _ramp([Color(0.62, 0.55, 0.45, 0.0), Color(0.58, 0.5, 0.4, 0.75), Color(0.7, 0.65, 0.58, 0.0)], [0.0, 0.15, 1.0])
 	p.process_material = pm
 	var q := QuadMesh.new()
-	q.size = Vector2(0.08, 0.08)
+	q.size = Vector2(0.13, 0.13)
 	var m := ShaderMaterial.new()
 	m.shader = MIX_SHADER
 	q.material = m

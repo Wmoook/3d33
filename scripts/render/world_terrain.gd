@@ -450,6 +450,18 @@ func transition_image() -> Image:
 	img.resize(W, H, Image.INTERPOLATE_BILINEAR)   # ~1 tile soft band
 	return img
 
+## For the sky backdrop: blurred solid mask (L8, W x H, 1 texel per tile, blurred over ~3 tiles). Use it to
+## darken the backdrop just below masses (sample at p + (0, 1..2) tiles).
+func contact_mask_image() -> Image:
+	var b := PackedByteArray()
+	b.resize(W * H)
+	for i in W * H:
+		b[i] = 255 if solid[i] else 0
+	var img := Image.create_from_data(W, H, false, Image.FORMAT_L8, b)
+	img.resize(W / 3, H / 3, Image.INTERPOLATE_BILINEAR)
+	img.resize(W, H, Image.INTERPOLATE_CUBIC)
+	return img
+
 static func _has_bg(id: int) -> bool:
 	return id >= 500 and id != 645
 
@@ -496,8 +508,50 @@ func _find_art_doors() -> void:
 			for i in comp:
 				art_door[i] = v
 
+## Day levels: painted "distant mountain" bg (541-544) regions that never touch the real sky art (bg 0 /
+## 530 / 531 / 540) are interior walls in the painting (e.g. the Great Hall), not sky.
+var enclosed_sky_bg := PackedByteArray()
+
+func _find_enclosed_sky_bg() -> void:
+	enclosed_sky_bg.resize(W * H)
+	enclosed_sky_bg.fill(0)
+	if not day:
+		return
+	var skyish := func(b: int) -> bool: return b == 0 or b == 530 or b == 531 or b == 540
+	var mount := func(i: int) -> bool:
+		var b: int = level.bg[i]
+		return (b == 541 or b == 542 or b == 543 or b == 544) and not WorldPalette.is_world_solid(level.fg[i])
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	for start in W * H:
+		if seen[start] or not mount.call(start):
+			continue
+		var comp := PackedInt32Array([start])
+		seen[start] = 1
+		var qi := 0
+		var touches := false
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			var x := i % W
+			var y := i / W
+			for k in 4:
+				var nx := x + (1 if k == 0 else (-1 if k == 1 else 0))
+				var ny := y + (1 if k == 2 else (-1 if k == 3 else 0))
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var j := ny * W + nx
+				if not WorldPalette.is_world_solid(level.fg[j]) and skyish.call(level.bg[j]):
+					touches = true
+				if not seen[j] and mount.call(j):
+					seen[j] = 1
+					comp.append(j)
+		if not touches:
+			for i in comp:
+				enclosed_sky_bg[i] = 1
+
 func _classify() -> void:
 	_find_art_doors()
+	_find_enclosed_sky_bg()
 	var n := W * H
 	solid.resize(n); mat_ids.resize(n); zones.resize(n); sky.resize(n); backwall.resize(n)
 	solid.fill(0); sky.fill(0); backwall.fill(0)
@@ -566,7 +620,7 @@ func _classify() -> void:
 				has_fg[i] = 1
 				continue
 			var b: int = level.bg[i]
-			if day and (b == 0 or b in WorldPalette.FV_SKY_BG or (_fg_has_minimap_colour(id) and not _has_bg(b))):
+			if day and (b == 0 or (b in WorldPalette.FV_SKY_BG and not enclosed_sky_bg[i]) or (_fg_has_minimap_colour(id) and not _has_bg(b))):
 				# day level: the painted sky (and anything floating in it) is decided by the sky flood
 				if b != 0 or (mm_ok and _fg_has_minimap_colour(id)):
 					_deferred[i] = 1
@@ -585,7 +639,7 @@ func _classify() -> void:
 	if day:
 		_mark_crags(fgb)
 		for i in n:
-			if not sky[i] and _deferred[i] and level.bg[i] in WorldPalette.FV_SKY_BG:
+			if not sky[i] and _deferred[i] and level.bg[i] in WorldPalette.FV_SKY_BG and not enclosed_sky_bg[i]:
 				sky[i] = 1   # painted sky seen through windows / behind the falls is real sky, not a wall
 			if sky[i]:
 				zones[i] = WorldPalette.Z_DAY
@@ -759,6 +813,7 @@ func _make_material() -> void:
 	material.set_shader_parameter("orig_tex", ImageTexture.create_from_image(orig_img))
 	if day:
 		material.set_shader_parameter("mottle", 0.12)
+		material.set_shader_parameter("bg_bevel", 0.12)   # day: back walls recessed and flat (readability)
 		var r := WorldPalette.FV_RECT_SCROLL
 		material.set_shader_parameter("scroll_rect", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
 		material.set_shader_parameter("trans_tex", ImageTexture.create_from_image(transition_image()))
@@ -791,7 +846,7 @@ func _bake_height() -> void:
 	rect.size = Vector2(vp.size)
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/world/height_bake.gdshader")
-	for k in ["sdf_tex", "field_tex", "relief_tex", "pattern_tex", "level_size"]:
+	for k in ["sdf_tex", "field_tex", "relief_tex", "pattern_tex", "level_size", "bg_bevel"]:
 		m.set_shader_parameter(k, material.get_shader_parameter(k))
 	m.set_shader_parameter("margin", float(HMARGIN))
 	rect.material = m

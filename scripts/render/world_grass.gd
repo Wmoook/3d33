@@ -15,7 +15,11 @@ const Z_FRONT_TALL := -0.45       # ... tall grass only behind the ball's depth
 const Z_LIP := 0.42               # short fuzz continues over the rounded front bevel up to here
 const BEVEL_Z := 0.62             # terrain pillow profile (terrain_common Z_FG_TOP)
 
-enum Kind { TALL, SHORT, CLOVER, FLOWER }
+enum Kind { TALL, SHORT, CLOVER, FLOWER, FERN }
+
+## Summit Shrine mantle green (matches world's shrine turf) and the muted fern green used on the ruins.
+const SHRINE_GREEN := Color(0.36, 0.58, 0.16)
+const FERN_GREEN := Color(0.30, 0.45, 0.16)
 
 var material: ShaderMaterial
 var stats := {}
@@ -34,21 +38,24 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 		Kind.SHORT: _clump_mesh(16, 0.07, 0.16, 0.014, 0.026, 0.14, 3, 2),
 		Kind.CLOVER: _clover_mesh(),
 		Kind.FLOWER: _flower_mesh(),
+		Kind.FERN: _fern_mesh(),
 	}
 	var W := lvl.width
 	var H := lvl.height
 	var cols := terrain.fgcol_img
 	var sites := 0
-	var n_inst := {Kind.TALL: 0, Kind.SHORT: 0, Kind.CLOVER: 0, Kind.FLOWER: 0}
+	var n_inst := {Kind.TALL: 0, Kind.SHORT: 0, Kind.CLOVER: 0, Kind.FLOWER: 0, Kind.FERN: 0}
 	for y in range(1, H):
 		for x in W:
 			var i := y * W + x
 			if not terrain.solid[i] or terrain.solid[i - W]:
 				continue
-			if not _is_ground_grass(terrain, lvl, x, y, W, H):
+			# the Summit Shrine peak (FV finale) is painted earth, but world mantles every step top in turf
+			var shrine := not WorldPalette.is_odyssey() and WorldPalette.FV_RECT_SHRINE.has_point(Vector2i(x, y))
+			if not shrine and not _is_ground_grass(terrain, lvl, x, y, W, H):
 				continue
 			sites += 1
-			var base := cols.get_pixel(x, y)
+			var base := SHRINE_GREEN if shrine else cols.get_pixel(x, y)
 			# glyph above (keys, arrows, coins, portals... any non-world block) -> keep it tiny
 			var above: int = lvl.fg[i - W]
 			var glyph := above != 0 and not WorldPalette.is_world_solid(above) and not WorldPalette.is_world_deco(above)
@@ -93,11 +100,65 @@ func build(lvl: EELevel, terrain: WorldTerrain) -> void:
 				_push(key, Kind.FLOWER, p, _rng.randf_range(0.8, 1.15), _vary(base, 0.08), 1.0 + float(_rng.randi() % 5) + _rng.randf() * 0.99)
 				n_inst[Kind.FLOWER] += 1
 	n_inst[Kind.SHORT] += _build_fringes(lvl, terrain)
+	var ruin_n := _build_ruin_growth(lvl, terrain)
+	n_inst[Kind.FERN] += ruin_n.x
+	n_inst[Kind.SHORT] += ruin_n.y
 	for key in _chunks:
 		_make_chunk(key, _chunks[key])
 	stats = {"sites": sites, "chunks": _chunks.size(), "tall": n_inst[Kind.TALL], "short": n_inst[Kind.SHORT],
-		"clover": n_inst[Kind.CLOVER], "flower": n_inst[Kind.FLOWER]}
+		"clover": n_inst[Kind.CLOVER], "flower": n_inst[Kind.FLOWER], "fern": n_inst[Kind.FERN], "ruin_weeds": ruin_n.y}
 	_chunks.clear()
+
+## Overgrown ruins (FV): small ferns and weed tufts on the stone ledges (open air above, behind the ball's
+## depth, <= 0.3 tall) and sprouting from cracks in the front faces (SNAP, kept >= 0.35 tile inside the
+## solid footprint so nothing overhangs open air). Never over gameplay glyph tiles. Returns (ferns, weeds).
+func _build_ruin_growth(lvl: EELevel, terrain: WorldTerrain) -> Vector2i:
+	if WorldPalette.is_odyssey():
+		return Vector2i.ZERO
+	var W := lvl.width
+	var H := lvl.height
+	var cols := terrain.fgcol_img
+	var nf := 0
+	var nw := 0
+	for y in range(2, H - 1):
+		for x in range(1, W - 1):
+			var i := y * W + x
+			if not terrain.solid[i] or terrain.mat_ids[i] != WorldPalette.M_RUIN:
+				continue
+			var stone := cols.get_pixel(x, y)
+			var green := FERN_GREEN.lerp(stone, 0.25)
+			var key := Vector2i(x / CHUNK, y / CHUNK)
+			var open_up := not terrain.solid[i - W]
+			if open_up:
+				var above: int = lvl.fg[i - W]
+				if above != 0 and not WorldPalette.is_world_solid(above) and not WorldPalette.is_world_deco(above):
+					continue
+				if _rng.randf() < 0.16:
+					var p := Vector3(x + _rng.randf_range(0.2, 0.8), -y, _rng.randf_range(-1.5, -0.55))
+					_push(key, Kind.FERN, p, _rng.randf_range(0.8, 1.1), _vary(green, 0.12), _rng.randf() * 0.99)
+					nf += 1
+				if _rng.randf() < 0.3:
+					var p := Vector3(x + _rng.randf_range(0.15, 0.85), -y, _rng.randf_range(-1.6, 0.0))
+					_push(key, Kind.SHORT, p, _rng.randf_range(0.6, 0.95), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99)
+					nw += 1
+				continue
+			# cracks in the face: prefer the courses just under a ledge (water and seeds collect there)
+			var under_ledge := not terrain.solid[i - 2 * W]
+			var chance := 0.06 if under_ledge else 0.02
+			if _rng.randf() >= chance:
+				continue
+			var lx := 0.35 if not terrain.solid[i - 1] else 0.1
+			var rx := 0.65 if not terrain.solid[i + 1] else 0.9
+			var ly := 0.35 if not terrain.solid[i + W] else 0.1
+			var p := Vector3(x + _rng.randf_range(lx, rx), -(y + _rng.randf_range(0.1, 1.0 - ly)), -0.01)
+			var up := Vector3(_rng.randf_range(-0.3, 0.3), 0.75, 0.65).normalized()
+			if _rng.randf() < 0.5:
+				_push(key, Kind.FERN, p, _rng.randf_range(0.55, 0.8), _vary(green, 0.12), _rng.randf() * 0.99, up, true)
+				nf += 1
+			else:
+				_push(key, Kind.SHORT, p, _rng.randf_range(0.5, 0.75), _vary(green.lerp(stone, 0.2), 0.12), _rng.randf() * 0.99, up, true)
+				nw += 1
+	return Vector2i(nf, nw)
 
 ## Grass fringes where the lawn meets other ground: (a) tufts drooping from the lawn's lower edge over the
 ## front face of the earth / stone below it (covers only solid tiles), (b) blades leaning out over the open
@@ -434,6 +495,58 @@ func _clover_mesh() -> ArrayMesh:
 		var root := Vector3(cos(ang) * 0.1, -0.01, sin(ang) * 0.08)
 		_blade(st, root, r.randf_range(0.05, 0.1), 0.012, r.randf_range(-0.8, 0.8), Vector3(r.randf_range(-1, 1), 0, 1).normalized(), 0.3, 3, r.randf(), 0.0)
 	return st.commit()
+
+## Small fern: 6 arching fronds, each a thin rachis with alternating leaflets (pinnae) that shrink toward
+## the tip; fronds spread mostly toward the camera. Leaflets use part = 1 (leaf shading).
+func _fern_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var r := RandomNumberGenerator.new()
+	r.seed = 3131
+	for f in 6:
+		var az := r.randf_range(-1.9, 1.9)             # around +z (toward the camera)
+		var el := r.randf_range(0.55, 1.2)             # elevation of the frond's base
+		var L := r.randf_range(0.2, 0.3)
+		var dir := Vector3(sin(az) * cos(el), sin(el), cos(az) * cos(el))
+		var side := Vector3(cos(az), 0.0, -sin(az))
+		var rnd := r.randf()
+		var prev := Vector3.ZERO
+		var segs := 8
+		for k in segs + 1:
+			var t := float(k) / segs
+			# arching rachis: rises along dir then droops under its own weight
+			var pt := dir * L * t + Vector3.DOWN * L * 0.55 * t * t
+			if k > 0:
+				_blade_seg(st, prev, pt, 0.006, side, float(k - 1) / segs, t, rnd, 0.5)
+				# a pair of leaflets at this node
+				var pl := L * 0.28 * pow(1.0 - t, 0.7) * (0.4 + 0.6 * sin(minf(t * 3.0, 1.0) * PI * 0.5))
+				var tang := (pt - prev).normalized()
+				var nrm := side.cross(tang).normalized()
+				if nrm.y < 0.0:
+					nrm = -nrm
+				for sgn in [-1.0, 1.0]:
+					var tip: Vector3 = pt + side * sgn * pl + tang * pl * 0.35 + Vector3.DOWN * pl * 0.2
+					var b0: Vector3 = pt - tang * pl * 0.18
+					var b1: Vector3 = pt + tang * pl * 0.18
+					var c0 := Color(t, rnd, 1.0, pow(t, 1.5))
+					_v(st, b0, nrm, c0, Vector2(0.5, 0.0))
+					_v(st, tip, nrm, c0, Vector2(sgn * 0.5 + 0.5, 1.0))
+					_v(st, b1, nrm, c0, Vector2(0.5, 0.0))
+			prev = pt
+	return st.commit()
+
+## One flat segment of a thin stem between a and b (two triangles).
+func _blade_seg(st: SurfaceTool, a: Vector3, b: Vector3, w: float, side: Vector3, ta: float, tb: float, rnd: float, part: float) -> void:
+	var tang := (b - a).normalized()
+	var nrm := side.cross(tang).normalized()
+	var ca := Color(ta, rnd, part, pow(ta, 1.5))
+	var cb := Color(tb, rnd, part, pow(tb, 1.5))
+	_v(st, a - side * w, nrm, ca, Vector2(0, ta))
+	_v(st, a + side * w, nrm, ca, Vector2(1, ta))
+	_v(st, b + side * w, nrm, cb, Vector2(1, tb))
+	_v(st, a - side * w, nrm, ca, Vector2(0, ta))
+	_v(st, b + side * w, nrm, cb, Vector2(1, tb))
+	_v(st, b - side * w, nrm, cb, Vector2(0, tb))
 
 ## Small wild flower: a thin stem with leaves and a 6-petal head facing up/forward (petal colour =
 ## INSTANCE_CUSTOM.rgb).

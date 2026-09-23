@@ -538,6 +538,10 @@ void fragment() {
 		albedo *= mix(0.65, 1.2, fuzz);
 		if (mat == M_FOLIAGE) {
 			float dm = domes(p * 2.0 + fbm2(p * 0.8) * 0.4);
+			if (scroll_rect.x >= 0.0) {
+				// day levels: dome shading only on real tree crowns; lawns / ground mantles read as turf
+				dm = mix(0.8, dm, textureLod(pbr_canopy_tex, p / level_size, 0.0).r);
+			}
 			float leaf = fbm3(p * 5.0) * 0.5 + 0.5;
 			albedo *= mix(0.35, 1.15, dm) * mix(0.75, 1.15, leaf);
 			albedo = mix(albedo, albedo * vec3(1.1, 1.15, 0.7), smoothstep(0.6, 1.0, dm) * 0.4);
@@ -633,6 +637,17 @@ void fragment() {
 	}
 
 	float pbr_k = (layer == 2) ? 0.0 : pbr_terrain(mat, wp, gn, p, CAMERA_POSITION_WORLD, albedo, n, rough, ao);
+	if (scroll_rect.x >= 0.0 && layer == 1) {
+		// back walls behind air must read recessed and non-solid: darker (<= ~55% of the fg value), flatter
+		// relief and light, strong AO toward the foreground edges, cooler, no highlights
+		albedo *= 0.5;
+		albedo = mix(albedo, albedo * vec3(0.85, 0.92, 1.08), 0.6);
+		n = normalize(mix(vec3(0.0, 0.0, 1.0), n, 0.35));
+		rough = 0.95;
+		spec = 0.12;
+		ao *= mix(0.45, 1.0, smoothstep(-0.05, -1.4, s.x));
+		emit *= 0.3;
+	}
 	if (layer == 0) {
 		// soft rim of the bevel catches light; tiny cavity darkening at colour boundaries
 		albedo *= mix(1.0, 0.8, boundary);
