@@ -124,7 +124,9 @@ void fragment() {
 		bool fringe = side && open_up && fy > 0.80 - jag;
 		if (top || fringe) {
 			if (id == B_GRASS) {
-				albedo = mix(albedo, grass_b, smoothstep(0.3, 0.75, big));
+				albedo = mix(albedo, grass_b, smoothstep(0.3, 0.75, big)) * 0.82;
+				// per-block hue drift (yellower / bluer greens) like Minecraft's biome-blended grass
+				albedo *= vec3(1.0 + 0.16 * (hb2 - 0.5), 1.0, 1.0 - 0.3 * (hb2 - 0.5));
 				mat = PBR_M_GRASS; layer = PBR_GRASS; tscale = 0.55;
 			} else {
 				mat = PBR_M_SNOW; layer = PBR_MARBLE; tscale = 0.3;
@@ -151,7 +153,8 @@ void fragment() {
 		}
 	} else if (id == B_LEAVES || id == B_PINE) {
 		mat = PBR_M_FOLIAGE; layer = PBR_LITTER; tscale = 0.45;
-		albedo *= mix(0.78, 1.12, big);
+		albedo *= mix(0.7, 1.08, big) * 0.85;
+		albedo *= vec3(1.0 + 0.14 * (hb2 - 0.5), 1.0, 1.0 - 0.25 * (hb2 - 0.5));
 	} else if (id == B_RUIN || id == B_RUIN_MOSS) {
 		mat = PBR_M_RUIN; layer = PBR_ASHLAR; tscale = 0.5;
 		if (id == B_RUIN_MOSS && top) {
@@ -163,6 +166,14 @@ void fragment() {
 	} else if (id == B_STONE || id == B_STONE_W || id == B_STONE_L) {
 		layer = (hb > 0.5) ? PBR_ROCK : PBR_STRATA;
 		tscale = 0.35;
+	}
+	// Minecraft-like pixel texture: a 4x4 grid of light / dark texels per face (strong on grass & leaves)
+	{
+		float tex = pbr_hash(floor(vec2(u, v) * 4.0) + bcf.xy * 5.3 + bcf.z * 11.7 + (top ? 0.0 : 3.1));
+		bool leafy_b = id == B_LEAVES || id == B_PINE || ((id == B_GRASS) && (top || fract(wp.y) > 0.72));
+		float amp = leafy_b ? 0.3 : 0.12;
+		float fk = 1.0 - smoothstep(35.0, 110.0, length(CAMERA_POSITION_WORLD - wp));
+		albedo *= 1.0 + (tex - 0.5) * amp * fk;
 	}
 	// per-block jitter (every cube a slightly different shade, like hand-placed blocks)
 	float far_k = 1.0 - smoothstep(40.0, 120.0, length(CAMERA_POSITION_WORLD - wp)) * 0.7;
@@ -202,7 +213,9 @@ void fragment() {
 	vec3 sd = normalize(sun_dir);
 	float f = vista_fog_f(wp, CAMERA_POSITION_WORLD, fog_density, 0.0);
 	float dz = -wp.z - vol_origin.z;
-	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
+	// the readability floors only matter near the gameplay plane: far things (z < -60) keep crisp colour
+	float rk = 1.0 - smoothstep(55.0, 95.0, dz);
+	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)) * rk);
 	vec3 skyc = vista_sky(normalize(wp - CAMERA_POSITION_WORLD), sd);
 	{
 		vec3 lum_w = vec3(0.2126, 0.7152, 0.0722);
@@ -210,7 +223,7 @@ void fragment() {
 		vec3 pred = albedo * mix(1.0, block_ao, 0.75) * (k_sun * ndl * vec3(1.0, 0.86, 0.66) + k_amb * (0.6 + 0.4 * n.y));
 		float pl = dot(pred, lum_w);
 		float sl = dot(skyc, lum_w);
-		float target = min_rel * sl;
+		float target = min_rel * sl * (0.8 + 0.2 * rk);
 		float lit_l = mix(pl, sl, f);
 		if (lit_l < target) {
 			f = clamp((target - pl) / max(sl - pl, 1e-3), f, 1.0);

@@ -434,7 +434,7 @@ func _place_islands() -> void:
 		var style := rng.randi_range(0, 2)
 		var R := rng.randf_range(6.0, 11.0) if _islands.size() > 3 else rng.randf_range(13.0, 18.0)
 		var Rz := R * rng.randf_range(0.55, 0.85)
-		var ck := rng.randf_range(maxf(46.0 + Rz * 0.5, 118.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
+		var ck := rng.randf_range(maxf(60.0 + Rz * 0.5, 118.0 if R > 12.0 else 0.0), NZ - 6.0 - Rz)
 		var D := R * rng.randf_range(1.3, 1.9) * (0.7 if style == 1 else (1.5 if style == 2 else 1.0))
 		var ground := -INF
 		for s in 9:
@@ -448,6 +448,9 @@ func _place_islands() -> void:
 		if lo > hi:
 			continue
 		var cy := rng.randf_range(maxf(lo, -125.0), hi) if hi > -125.0 else rng.randf_range(lo, hi)
+		# few islands in the gameplay band close behind the level (they'd crowd the play air)
+		if ck < 95.0 and cy > -140.0 and cy < -15.0 and rng.randf() < 0.75:
+			continue
 		var ok := true
 		for o in _islands:
 			if absf(o[0] - cx) < (o[3] + R) * 1.15 and absf(o[2] - ck) < (o[4] + Rz) * 1.3 and absf(o[1] - cy) < o[5] + D + 6.0:

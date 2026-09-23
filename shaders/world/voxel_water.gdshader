@@ -104,7 +104,7 @@ void fragment() {
 	col = mix(col, vec3(0.92, 0.96, 1.0), foam * 0.75);
 	float f = vista_fog_f(wp, cam, fog_density, 0.0);
 	float dz = -wp.z - vol_origin.z;
-	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)));
+	f = max(f, mix(haze_near, haze_far, smoothstep(0.0, 120.0, dz)) * (1.0 - smoothstep(55.0, 95.0, dz)));
 	f = mix(1.0, f, fade);
 	vec3 lit = col * (V_SUN * (max(dot(n, sd), 0.0) * 0.5 + 0.3) + V_AMB * 0.5);
 	lit += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(sd * -1.0, n), -vd), 0.0), 90.0) * 2.0;

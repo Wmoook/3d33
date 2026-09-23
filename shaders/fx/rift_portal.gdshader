@@ -65,26 +65,27 @@ void fragment() {
 	} else {
 		// voxel ring: quantise to a 12x12 block grid, stepped "rounded square" metric
 		vec2 q = (floor(p * 6.0) + 0.5) / 6.0;
-		float m = max(abs(q.x), abs(q.y)) * 0.55 + length(q) * 0.45;
+		float m = max(abs(q.x), abs(q.y)) * 0.3 + length(q) * 0.7;   // stepped octagon ring
 		if (m > 0.97) discard;
 		float core_r = 0.6;
 		float ring = step(core_r, m);
-		float outline = step(0.9, m);                          // dark outer outline row
+		float outline = step(0.88, m);                          // dark outer outline row
 		float inner_edge = step(core_r, m) * (1.0 - step(core_r + 0.1, m));
 		float ang = atan(q.y, q.x);
 		float seg = floor((ang + 3.14159) / 6.28318 * 8.0);     // 8 carved blocks
 		float segf = fract((ang + 3.14159) / 6.28318 * 8.0);
 		float mortar = step(segf, 0.07) + step(0.93, segf);
-		// stone blocks: per-block tone, top-lit
-		float tone = 0.3 + 0.12 * hash12(vec2(seg, 3.0)) + 0.1 * q.y;
-		vec3 stone = vec3(tone * 0.95, tone * 0.93, tone);
-		stone *= 1.0 - mortar * 0.55;
+		// carved stone blocks: per-block tone, top-lit bevel, dark mortar joints
+		float tone = 0.16 + 0.07 * hash12(vec2(seg, 3.0)) + 0.07 * q.y;
+		float bevel = smoothstep(0.62, 0.7, m) * (1.0 - smoothstep(0.8, 0.88, m));
+		vec3 stone = vec3(tone * 1.05, tone, tone * 0.95) * (0.8 + 0.35 * bevel);
+		stone *= 1.0 - mortar * 0.7;
 		// gold rune inlay: a short glowing bar in the middle of each block, brighter when excited
-		float rune = step(0.72, m) * (1.0 - step(0.82, m)) * step(0.35, segf) * (1.0 - step(0.65, segf));
+		float rune = step(0.73, m) * (1.0 - step(0.8, m)) * step(0.4, segf) * (1.0 - step(0.6, segf));
 		float glow_k = 0.6 + 0.4 * sin(t * 1.6 + seg) + excite * 1.2;
 		vec3 gold = vec3(1.0, 0.76, 0.3);
-		stone = mix(stone, gold * (0.9 + glow_k), rune);
-		stone = mix(stone, pair * (0.6 + excite), inner_edge * 0.6);   // hue-lit lip of the rift
+		stone = mix(stone, gold * (0.7 + glow_k * 0.8), rune);
+		stone = mix(stone, pair * (0.35 + excite * 0.8), inner_edge * 0.45);   // hue-lit lip of the rift
 		stone = mix(stone, vec3(0.02, 0.02, 0.03), outline);
 		// vortex core
 		float r = length(p) / (core_r * 1.02);
@@ -94,10 +95,10 @@ void fragment() {
 		float arms = 0.5 + 0.5 * sin(sw * 3.0 + vnoise(vec2(a * 2.0, r * 4.0 - t)) * 2.0);
 		float fine = vnoise(vec2(sw * 2.0, r * 6.0 - t * 2.0));
 		vec3 deep = vec3(0.1, 0.04, 0.3);
-		vec3 mid = mix(vec3(0.45, 0.15, 0.85), pair, 0.6);
+		vec3 mid = mix(vec3(0.5, 0.2, 0.95), pair * 1.25, 0.6);
 		vec3 core_c = mix(deep, mid, smoothstep(0.1, 0.9, arms * (1.0 - r * 0.6)));
 		core_c += pair * fine * 0.35 * (1.0 - r);
-		core_c = mix(core_c, vec3(1.0, 0.97, 0.92), exp(-r * r * 9.0) * (0.85 + excite * 0.3));
+		core_c = mix(core_c, vec3(1.0, 0.97, 0.92), exp(-r * r * 6.0) * (0.9 + excite * 0.3));
 		// motes spiralling in
 		float motes = 0.0;
 		for (int k = 0; k < 6; k++) {
