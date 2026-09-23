@@ -255,7 +255,8 @@ func _build_cave_depth(lvl: EELevel, terrain: WorldTerrain) -> void:
 			crumb_c.append(rc.lightened(0.15))
 	_add_mm("PocketRoots", _box(), _mat_prop, root_x, root_c)
 	_add_mm("PocketCrumbs", _pebble_mesh(), _mat_prop, crumb_x, crumb_c)
-	_add_mm("CaveMoss", _grass_mesh(), _mat_foliage, moss_x, moss_c)
+	# day: a small self-lit floor so tufts in unlit forest-hollow pockets never render exact black (Eastern Wood)
+	_add_mm("CaveMoss", _grass_mesh(), _foliage_mat(1.0, 0.45, 0.1, 0.75) if terrain.day else _mat_foliage, moss_x, moss_c)
 	_add_mm("CaveDepth", _cone(), _mat_prop, mid_x, mid_c)
 	if not terrain.day:
 		_build_near_silhouettes(lvl, terrain)   # day levels: near-camera roots read as floating lines (depth rooms carry the caves)
