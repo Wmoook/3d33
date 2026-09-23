@@ -714,6 +714,66 @@ func window_image() -> Image:
 ## tiles (through air) of such a column. The flood alone also reached underground halls via long corridors.
 const SKY_REACH := 10
 
+## Big sky paint (sky / cloud bg 530/531/540) walled in by the spires or bridged over (the Hanging Gardens gap
+## between the Great and Twin Spires, user report): the EE minimap shows it as open sky, so it is sky (with the
+## vista behind), not a sealed painted wall. Small patches keep the window / notch rules.
+const PAINTED_SKY_MIN := 150
+
+func _open_painted_sky(open: PackedByteArray) -> void:
+	var n := W * H
+	var opened := PackedByteArray(); opened.resize(n)
+	var seen := PackedByteArray(); seen.resize(n)
+	for s0 in n:
+		var b0: int = level.bg[s0]
+		if seen[s0] or solid[s0] or not (b0 == 530 or b0 == 531 or b0 == 540) or enclosed_sky_bg[s0]:
+			continue
+		var comp := PackedInt32Array([s0]); seen[s0] = 1
+		var qi := 0
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j < 0 or j >= n or seen[j] or solid[j]:
+					continue
+				var bj: int = level.bg[j]
+				if (bj == 530 or bj == 531 or bj == 540) and not enclosed_sky_bg[j]:
+					seen[j] = 1
+					comp.append(j)
+		if comp.size() >= PAINTED_SKY_MIN:
+			for i in comp:
+				open[i] = 1
+				opened[i] = 1
+	# thin (<= 2 wide) strips of the darker stone-sky paint (541-544) along an opened region's edge are part of
+	# that sky too - left as a 1-tile wall they show the new sky around them (keep (286,93-95))
+	var seen2 := PackedByteArray(); seen2.resize(n)
+	for s0 in n:
+		var b0: int = level.bg[s0]
+		if seen2[s0] or solid[s0] or opened[s0] or b0 < 541 or b0 > 544:
+			continue
+		var comp := PackedInt32Array([s0]); seen2[s0] = 1
+		var qi := 0
+		var touches := false
+		var x0 := W; var x1 := -1; var y0 := H; var y1 := -1
+		while qi < comp.size():
+			var i := comp[qi]; qi += 1
+			x0 = mini(x0, i % W); x1 = maxi(x1, i % W); y0 = mini(y0, i / W); y1 = maxi(y1, i / W)
+			for o in [-1, 1, -W, W]:
+				var j: int = i + o
+				if j < 0 or j >= n or solid[j]:
+					continue
+				if opened[j]:
+					touches = true
+				var bj: int = level.bg[j]
+				if not seen2[j] and not opened[j] and bj >= 541 and bj <= 544:
+					seen2[j] = 1
+					comp.append(j)
+		if touches and comp.size() <= 24 and mini(x1 - x0, y1 - y0) <= 1:
+			for i in comp:
+				open[i] = 1
+				enclosed_sky_bg[i] = 0
+				backwall[i] = 0
+				_deferred[i] = 1   # joins the sky below (painted sky -> sky where open)
+
 func _open_sky_mask() -> PackedByteArray:
 	var n := W * H
 	var o := PackedByteArray(); o.resize(n)
@@ -923,6 +983,7 @@ func _classify() -> void:
 	if day:
 		_mark_crags(fgb)
 		var open := _open_sky_mask()
+		_open_painted_sky(open)
 		for i in n:
 			if not sky[i] and _deferred[i] and level.bg[i] in WorldPalette.FV_SKY_BG and not enclosed_sky_bg[i]:
 				sky[i] = 1   # painted sky seen through windows / behind the falls is real sky, not a wall
