@@ -15,7 +15,7 @@ Per capture (a = normal camera, b = camera distance x (1 + 1e-5), c = normal aga
   SHIMMER    lum(d) (camera moved 0.45 px) outside lum(a)'s 3x3 range by > 0.10, stable a vs c (move flicker)
   BLACK LINE near-black (luma < 0.02) thin runs (<= 4 px @1080p thick, >= 40 px @1080p long, both sides > 0.06)
              over air tiles
-Excluded: gameplay glyph tiles (+1 ring), window tiles (+1 ring: terrain windows, enclosed painted sky, world_depth.win), water / waterfall tiles (+2 ring, flicker and
+Excluded: a 2 px (@1080p) frame border, gameplay glyph tiles (+1 ring), window tiles (+1 ring: terrain windows, enclosed painted sky, world_depth.win), water / waterfall tiles (+2 ring, flicker and
 shimmer; sky ignores them within 1 tile), the ball (1.7 tiles), pixels outside the level.
 Writes <dir>/<base>.png (dimmed frame; sky leak magenta, flicker yellow, shimmer orange, black line cyan), report.json, report.txt.
 """
@@ -126,6 +126,15 @@ def analyse(d, meta, keep):
     bx, by = meta["ball"]
     ball = ((wx[None, :] - (bx + 0.5)) ** 2 + ((-wy)[:, None] - (by + 0.5)) ** 2) < 1.7 ** 2
     valid = inside & ~glyph & ~ball & ~T["window"][ty, tx]
+    # the outermost pixel rows / columns of the frame are not the world (edge filtering / viewport padding
+    # reads them as exactly black): ignore a 2 px (@1080p) border in every metric
+    bd = max(2, int(round(2 * s)))
+    border = np.zeros((ih, iw), bool)
+    border[:bd, :] = True
+    border[-bd:, :] = True
+    border[:, :bd] = True
+    border[:, -bd:] = True
+    valid &= ~border
     px_per_tile = iw / abs(x1 - x0)
 
     r, g, b = A[..., 0], A[..., 1], A[..., 2]
